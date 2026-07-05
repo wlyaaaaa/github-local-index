@@ -12,10 +12,20 @@
 
 ## 当前关键结论
 
+- 当前 `wlyaaaaa` 账号共有 25 个仓库：原审计 24 个，加上本轮新增的公开总索引仓库 `github-local-index`。
 - `E:\GitHub总索引` 是长期总索引目录，不是临时报告目录。
 - `wlyaaaaa/openclaw-backup` 为私有备份仓库，已按用户需求允许推送密钥/配置快照。
 - `wlyaaaaa/ai-llm-job-prep` 为私有知识库仓库，参考资料和课程产物按私有备份策略处理。
 - 公开仓库仍执行脱敏和暴露面审查。
+
+## 当前审核队列
+
+| 优先级 | 仓库 | 当前判断 |
+|---|---|---|
+| 完成 | `OpenClawGateway` | 完整运维交接已转入私有备份仓库，公开版脱敏后已推送 |
+| 完成 | `rtx5090d-ollama-agent-bundle` | 已生成 public benchmark summary，原始 evidence 已忽略 |
+| 完成 | `md-triple-tactics-talent-solver` | 已整理 3.0 canonical 产物并推送 |
+| 完成 | `TimeAudit` | 已补运行态说明和 `tmp/` 忽略规则，配置文件本机标记 skip-worktree |
 
 ## 历史审计
 

@@ -1,0 +1,16 @@
+99_private/
+*.env
+*.pem
+*.key
+*private_key*
+*client_secret*.json
+*auth-profiles*.json
+raw/
+secrets/
+*.log
+*.sqlite
+*.db
+*.wal
+*.shm
+Thumbs.db
+desktop.ini

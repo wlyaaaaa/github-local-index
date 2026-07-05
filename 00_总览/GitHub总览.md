@@ -12,8 +12,9 @@
 
 ## 当前关键结论
 
-- 当前 `wlyaaaaa` 账号共有 26 个仓库：原审计 24 个，加上公开总索引仓库 `github-local-index` 和新增公开仓库 `TURZX-SideScreen`。
+- 当前 `wlyaaaaa` 账号共有 27 个仓库：原审计 24 个，加上公开总索引仓库 `github-local-index`、新增公开仓库 `TURZX-SideScreen` 和新增私有仓库 `ai-coach`。
 - `E:\GitHub总索引` 是长期总索引目录，不是临时报告目录。
+- `wlyaaaaa/ai-coach` 本地位于 `G:\ai-coach`，`main` 与 `origin/main` 已同步；作为学习记录/复盘/审计仓库，不建议新增后台计划任务。
 - `wlyaaaaa/codex-app-power-user-playbook` 本地位于 `E:\.agents-public-release`，`master` 与 `origin/master` 已同步，当前无需推送。
 - `wlyaaaaa/TURZX-SideScreen` 本地位于 `E:\TURZX-SideScreen`，`main` 与 `origin/main` 已同步，当前无需推送。
 - `wlyaaaaa/openclaw-backup` 为私有备份仓库，已按用户需求允许推送密钥/配置快照。
@@ -30,6 +31,7 @@
 | 完成 | `TimeAudit` | 已补运行态说明和 `tmp/` 忽略规则，配置文件本机标记 skip-worktree |
 | 完成 | `codex-app-power-user-playbook` | 已确认本地 clone 干净，远端同步，无需推送 |
 | 完成 | `TURZX-SideScreen` | 已确认新增远端仓库对应本地 clone，远端同步，无需推送 |
+| 完成 | `ai-coach` | 已确认新增私有仓库对应本地 clone，远端同步，不建议新增计划任务 |
 
 ## 历史审计
 

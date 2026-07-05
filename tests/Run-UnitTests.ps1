@@ -88,6 +88,8 @@ Assert-Equal 'E:\TURZX-SideScreen' $turzx.LocalPath 'marks discovered clone path
 Assert-Equal '`main` 已同步，`0/0`' $turzx.LocalState 'uses clone sync state'
 Assert-Equal '未发现本地 clone' $key.LocalPath 'marks missing clone path'
 Assert-True ($key.NextAction -match '确认本机没有 clone') 'keeps Key as confirmed missing clone'
+Assert-True ($key.NextAction -match '严格禁止克隆') 'keeps Key as do-not-clone repository'
+Assert-True (-not ($key.NextAction -match 'clone 到')) 'does not suggest cloning Key'
 
 $normalTask = ConvertTo-TaskResultAssessment -LastTaskResult 0
 $normalTaskRow = ConvertTo-PublicTaskRow `

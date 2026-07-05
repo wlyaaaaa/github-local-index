@@ -8,6 +8,6 @@
 | --- | --- | --- |
 | wlyaaaaa/EGO | PRIVATE | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | 需要时统一 clone，或标记远端存档 |
-| wlyaaaaa/Key | PRIVATE | 已确认本机没有 clone；如需恢复再 clone 到私有目录 |
+| wlyaaaaa/Key | PRIVATE | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
 
-说明：`Key` 仓库内容不得复制到本公开索引；如果需要备份或恢复，应只在私有仓库和本地私有目录中处理。
+说明：`Key` 仓库严格禁止克隆到本机；本公开索引只记录“远端私有备份存在 / 本机无 clone”状态，不做恢复、展开或内容复制。

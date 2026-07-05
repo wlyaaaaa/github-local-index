@@ -79,7 +79,7 @@ function Get-MissingCloneAction {
     )
 
     if ($NameWithOwner -eq 'wlyaaaaa/Key') {
-        return '已确认本机没有 clone；如需恢复再 clone 到私有目录'
+        return '已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态'
     }
 
     if ($Visibility -eq 'PRIVATE') {
@@ -555,7 +555,7 @@ function Write-GitHubIndexDocuments {
         $missingLines += '当前没有未发现本地 clone 的 GitHub 仓库。'
     }
     $missingLines += ''
-    $missingLines += '说明：`Key` 仓库内容不得复制到本公开索引；如果需要备份或恢复，应只在私有仓库和本地私有目录中处理。'
+    $missingLines += '说明：`Key` 仓库严格禁止克隆到本机；本公开索引只记录“远端私有备份存在 / 本机无 clone”状态，不做恢复、展开或内容复制。'
     Set-TextFile -Path (Join-Path $RepoRoot '01_仓库索引/未发现本地clone.md') -Lines $missingLines
 
     $queueLines = @(

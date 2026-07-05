@@ -384,12 +384,17 @@ function Get-RepositoryTaskRecommendation {
     $hintText = ($ExistingTaskHints -join '；')
 
     if ($LocalPath -eq '未发现本地 clone') {
+        $risk = '需要先决定是否 clone 到固定目录。'
+        if ($NameWithOwner -eq 'wlyaaaaa/Key') {
+            $risk = '严格禁止克隆；只记录远端私有备份存在，不创建本地任务。'
+        }
+
         return [pscustomobject]@{
             Decision  = '不建议新增'
             Frequency = '无'
             Purpose   = '无本地 clone'
             Reason    = '本机没有可执行脚本或工作区，不能创建本地计划任务。'
-            Risk      = '需要先决定是否 clone 到固定目录。'
+            Risk      = $risk
         }
     }
 

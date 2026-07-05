@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $repoRoot 'tools/Update-GitHubIndex.ps1')
 . (Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1')
+. (Join-Path $repoRoot 'tools/Update-UserAutomationMap.ps1')
 
 $script:Failures = 0
 
@@ -105,6 +106,50 @@ Assert-Equal '' $disabledTaskRow.NextRunTime 'omits volatile next run time for d
 Assert-Equal '异常' $interruptedUnsigned.Severity 'classifies unsigned interrupted task result'
 Assert-Equal '异常' $interruptedSigned.Severity 'classifies signed interrupted task result'
 Assert-True ($interruptedUnsigned.Summary -match '中断') 'explains interrupted task result'
+
+$userTask = [pscustomobject]@{
+    TaskName = 'Codex Memory Backup'
+    TaskPath = '\'
+    Actions = @([pscustomobject]@{
+        Execute = 'wscript.exe'
+        Arguments = '"E:\CodexMemoryBackup\tools\codex_memory_backup_hidden.vbs" --token secret'
+    })
+}
+$systemTask = [pscustomobject]@{
+    TaskName = 'GoogleUpdateTaskMachineUA'
+    TaskPath = '\'
+    Actions = @([pscustomobject]@{
+        Execute = 'C:\Program Files (x86)\Google\Update\GoogleUpdate.exe'
+        Arguments = '/ua'
+    })
+}
+$softwareAutostartTask = [pscustomobject]@{
+    TaskName = 'AIDA64 AutoStart'
+    TaskPath = '\'
+    Actions = @([pscustomobject]@{
+        Execute = 'E:\Downloads\aida64extreme800\aida64.exe'
+        Arguments = ''
+    })
+}
+
+$actionSummary = Get-PublicActionSummary -Task $userTask
+$purpose = Get-TaskPurposeInference -TaskName 'WeFlow Watchdog' -ActionSummary 'powershell.exe -> E:\WeFlowBridge\weflow_heartbeat.ps1'
+$memoryRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/codex-memory' -LocalPath 'E:\CodexMemoryBackup' -Visibility 'PRIVATE' -ExistingTaskHints @('Codex Memory Backup')
+$publicRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/md-triple-tactics-talent-solver' -LocalPath 'E:\Pictures\三战之才' -Visibility 'PUBLIC' -ExistingTaskHints @()
+$agentsRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/.agents' -LocalPath 'E:\.agents' -Visibility 'PRIVATE' -ExistingTaskHints @()
+$steamRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/steam-millennium-config-backup' -LocalPath 'E:\steam-millennium-config-backup' -Visibility 'PUBLIC' -ExistingTaskHints @()
+
+Assert-True (Test-IsUserAutomationTask -Task $userTask) 'classifies user-owned backup task'
+Assert-True (-not (Test-IsUserAutomationTask -Task $systemTask)) 'excludes common software updater task'
+Assert-True (-not (Test-IsUserAutomationTask -Task $softwareAutostartTask)) 'excludes common software autostart task'
+Assert-True ($actionSummary -match 'wscript.exe') 'keeps executable name in public action summary'
+Assert-True ($actionSummary -match 'E:\\CodexMemoryBackup\\tools\\codex_memory_backup_hidden.vbs') 'keeps sanitized script path in public action summary'
+Assert-True (-not ($actionSummary -match 'secret')) 'redacts action arguments after known script path'
+Assert-True ($purpose.Purpose -match '看门狗|心跳') 'infers watchdog purpose'
+Assert-Equal '已有任务覆盖' $memoryRecommendation.Decision 'recognizes existing private backup task coverage'
+Assert-Equal '不建议新增' $publicRecommendation.Decision 'does not auto-schedule public content repository'
+Assert-Equal '不建议新增' $agentsRecommendation.Decision 'does not auto-schedule private rules source repository'
+Assert-Equal '建议新增' $steamRecommendation.Decision 'recommends low-frequency steam millennium config snapshot'
 
 if ($script:Failures -gt 0) {
     throw "$script:Failures test(s) failed"

@@ -1,6 +1,6 @@
 param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-    [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*'),
+    [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*LibreHardwareMonitor*'),
     [switch] $NoWrite
 )
 
@@ -256,7 +256,7 @@ function Write-ScheduledTaskDocuments {
 function Invoke-UpdateScheduledTaskHealth {
     param(
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-        [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*'),
+        [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*LibreHardwareMonitor*'),
         [switch] $NoWrite
     )
 

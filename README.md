@@ -37,7 +37,7 @@
 - `.\tools\Update-GitHubIndex.ps1`：刷新 `00_总览/`、`01_仓库索引/`、`02_同步诊断/` 下的公开 Markdown 摘要。
 - `.\tools\Update-ScheduledTaskHealth.ps1`：刷新 `04_计划任务/` 下的计划任务健康摘要和异常清单。
 - `.\tools\Update-UserAutomationMap.ps1`：刷新 `04_计划任务/用户自动化任务地图.md` 和 `04_计划任务/仓库计划任务建议.md`，记录用户自动化任务用途推测和仓库计划任务缺口。
-- `.\tests\Run-UnitTests.ps1`：运行轻量 PowerShell 自测，覆盖 remote URL 解析、clone 映射、计划任务返回码分类、用户自动化识别和仓库任务建议。
+- `pwsh .\tests\Run-UnitTests.ps1`：运行轻量 PowerShell 7 自测，覆盖 remote URL 解析、clone 映射、计划任务返回码分类、用户自动化识别和仓库任务建议。
 
 ## Codex 默认联动
 

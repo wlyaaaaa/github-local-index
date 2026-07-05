@@ -1,3 +1,5 @@
+#requires -Version 7.0
+
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -145,6 +147,7 @@ $steamCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'w
 $indexCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/github-local-index' -LocalPath 'E:\GitHub总索引' -Visibility 'PUBLIC' -ExistingTaskHints @('GitHubLocalIndex Refresh')
 $indexRefreshScriptPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1'
 $indexRegisterScriptPath = Join-Path $repoRoot 'tools/Register-GitHubLocalIndexRefreshTask.ps1'
+$taskHealthScriptPath = Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1'
 
 Assert-True (Test-IsUserAutomationTask -Task $userTask) 'classifies user-owned backup task'
 Assert-True (-not (Test-IsUserAutomationTask -Task $systemTask)) 'excludes common software updater task'
@@ -177,6 +180,13 @@ Assert-True (Test-Path -LiteralPath $indexRegisterScriptPath) 'has github local 
 if (Test-Path -LiteralPath $indexRegisterScriptPath) {
     $indexRegisterScript = Get-Content -LiteralPath $indexRegisterScriptPath -Raw
     Assert-True ($indexRegisterScript -match 'pwsh') 'refresh task registration prefers PowerShell 7 for UTF-8 scripts'
+}
+
+Assert-True (Test-Path -LiteralPath $taskHealthScriptPath) 'has scheduled task health script'
+if (Test-Path -LiteralPath $taskHealthScriptPath) {
+    $taskHealthScript = Get-Content -LiteralPath $taskHealthScriptPath -Raw
+    Assert-True ($taskHealthScript -match '\*GitHubLocalIndex\*') 'health summary tracks github local index task'
+    Assert-True ($taskHealthScript -match '\*SteamMillennium\*') 'health summary tracks steam millennium task'
 }
 
 if ($script:Failures -gt 0) {

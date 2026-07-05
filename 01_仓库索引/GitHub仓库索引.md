@@ -2,11 +2,12 @@
 
 更新时间：2026-07-05
 
-当前 `wlyaaaaa` 账号共有 25 个仓库：原审计时的 24 个仓库，加上本轮新增的公开总索引仓库 `github-local-index`。
+当前 `wlyaaaaa` 账号共有 26 个仓库：原审计时的 24 个仓库，加上公开总索引仓库 `github-local-index` 和新增公开仓库 `TURZX-SideScreen`。
 
 | GitHub 仓库 | 可见性 | 本地路径 | 本地状态 | 下次动作 |
 |---|---|---|---|---|
 | `wlyaaaaa/github-local-index` | PUBLIC | `E:\GitHub总索引` | `main` 已同步，`0/0` | 持续维护总索引 |
+| `wlyaaaaa/TURZX-SideScreen` | PUBLIC | `E:\TURZX-SideScreen` | `main` 已同步，`0/0` | 新增远端已关联本地 clone；正常维护 |
 | `wlyaaaaa/.agents` | PRIVATE | `E:\.agents` | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 保持私有能力库同步 |
 | `wlyaaaaa/ProxyClean` | PUBLIC | `C:\Users\10979\ProxyTools` | `codex/cleanup-duplicate-scripts` 已同步，`0/0` | 需要时继续 PR/清理 |
 | `wlyaaaaa/codex-app-power-user-playbook` | PUBLIC | `E:\.agents-public-release` | `master` 已同步，`0/0` | 正常维护 |
@@ -40,3 +41,5 @@
 | 完成 | `rtx5090d-ollama-agent-bundle` | 已推送 public benchmark summary，原始日志已忽略 |
 | 完成 | `md-triple-tactics-talent-solver` | 已推送 3.0 canonical 产物整理 |
 | 完成 | `TimeAudit` | 已推送运行态说明与忽略规则 |
+| 完成 | `codex-app-power-user-playbook` | 已复查本地 `master` 与远端同步，无需推送 |
+| 完成 | `TURZX-SideScreen` | 已补齐本地路径并复查 `main` 与远端同步，无需推送 |

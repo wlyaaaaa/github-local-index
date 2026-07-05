@@ -11,3 +11,5 @@
 | `wlyaaaaa/human-alignment-dataset-001` | 暂未发现 clone |
 
 说明：`Key` 仓库内容不得复制到本公开索引；如果需要备份或恢复，应只在私有仓库和本地私有目录中处理。
+
+复查说明：`wlyaaaaa/TURZX-SideScreen` 已在 `E:\TURZX-SideScreen` 找到本地 clone，不属于未发现本地 clone。

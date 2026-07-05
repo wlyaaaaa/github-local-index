@@ -393,6 +393,30 @@ function Get-RepositoryTaskRecommendation {
         }
     }
 
+    if ($ExistingTaskHints.Count -gt 0) {
+        $risk = '继续复查现有任务返回码即可'
+        if ($name -eq 'wlyaaaaa/github-local-index') {
+            $risk = '只读刷新已覆盖；提交推送仍保留人工/Codex 审查。'
+        }
+        elseif ($name -eq 'wlyaaaaa/steam-millennium-config-backup') {
+            $risk = '继续保持 allowlist 快照和公开敏感扫描，避免 Steam 账号、缓存或日志入库。'
+        }
+        elseif ($name -match 'rtx5090d-ollama-agent-bundle') {
+            $risk = '健康检查只允许无监听时启动；不得强杀 Ollama 或打断长推理。'
+        }
+        elseif ($name -eq 'wlyaaaaa/sunshine-remote-streaming') {
+            $risk = '当前非提升权限无法创建登录触发，已降级为每日轻量验证；修复脚本仍需人工触发。'
+        }
+
+        return [pscustomobject]@{
+            Decision  = '已有任务覆盖'
+            Frequency = '不新增'
+            Purpose   = '已有计划任务与该仓库或路径有关'
+            Reason    = "现有任务线索：$hintText"
+            Risk      = $risk
+        }
+    }
+
     if ($name -eq 'wlyaaaaa/github-local-index') {
         return [pscustomobject]@{
             Decision  = '建议新增'
@@ -440,16 +464,6 @@ function Get-RepositoryTaskRecommendation {
             Purpose   = '远程串流服务修复/验证'
             Reason    = '如果远程串流是刚需，登录后自愈能降低 Sunshine/Tailscale 配置漂移影响。'
             Risk      = '修复脚本可能重启服务并短暂断流；日志不能记录敏感网络配置。'
-        }
-    }
-
-    if ($ExistingTaskHints.Count -gt 0) {
-        return [pscustomobject]@{
-            Decision  = '已有任务覆盖'
-            Frequency = '不新增'
-            Purpose   = '已有计划任务与该仓库或路径有关'
-            Reason    = "现有任务线索：$hintText"
-            Risk      = '继续复查现有任务返回码即可'
         }
     }
 

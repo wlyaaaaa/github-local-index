@@ -138,6 +138,10 @@ $memoryRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaa
 $publicRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/md-triple-tactics-talent-solver' -LocalPath 'E:\Pictures\三战之才' -Visibility 'PUBLIC' -ExistingTaskHints @()
 $agentsRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/.agents' -LocalPath 'E:\.agents' -Visibility 'PRIVATE' -ExistingTaskHints @()
 $steamRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/steam-millennium-config-backup' -LocalPath 'E:\steam-millennium-config-backup' -Visibility 'PUBLIC' -ExistingTaskHints @()
+$steamCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/steam-millennium-config-backup' -LocalPath 'E:\steam-millennium-config-backup' -Visibility 'PUBLIC' -ExistingTaskHints @('SteamMillenniumConfigSnapshot')
+$indexCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/github-local-index' -LocalPath 'E:\GitHub总索引' -Visibility 'PUBLIC' -ExistingTaskHints @('GitHubLocalIndex Refresh')
+$indexRefreshScriptPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1'
+$indexRegisterScriptPath = Join-Path $repoRoot 'tools/Register-GitHubLocalIndexRefreshTask.ps1'
 
 Assert-True (Test-IsUserAutomationTask -Task $userTask) 'classifies user-owned backup task'
 Assert-True (-not (Test-IsUserAutomationTask -Task $systemTask)) 'excludes common software updater task'
@@ -150,6 +154,25 @@ Assert-Equal '已有任务覆盖' $memoryRecommendation.Decision 'recognizes exi
 Assert-Equal '不建议新增' $publicRecommendation.Decision 'does not auto-schedule public content repository'
 Assert-Equal '不建议新增' $agentsRecommendation.Decision 'does not auto-schedule private rules source repository'
 Assert-Equal '建议新增' $steamRecommendation.Decision 'recommends low-frequency steam millennium config snapshot'
+Assert-Equal '已有任务覆盖' $steamCoveredRecommendation.Decision 'recognizes steam snapshot task coverage'
+Assert-Equal '已有任务覆盖' $indexCoveredRecommendation.Decision 'recognizes github index refresh task coverage'
+Assert-True (Test-Path -LiteralPath $indexRefreshScriptPath) 'has github local index refresh wrapper'
+if (Test-Path -LiteralPath $indexRefreshScriptPath) {
+    $indexRefreshScript = Get-Content -LiteralPath $indexRefreshScriptPath -Raw
+    Assert-True ($indexRefreshScript -match 'Update-GitHubIndex\.ps1') 'refresh wrapper updates github index'
+    Assert-True ($indexRefreshScript -match '-SkipFetch') 'refresh wrapper avoids fetching other repositories'
+    Assert-True ($indexRefreshScript -match 'Update-ScheduledTaskHealth\.ps1') 'refresh wrapper updates task health'
+    Assert-True ($indexRefreshScript -match 'Update-UserAutomationMap\.ps1') 'refresh wrapper updates user automation map'
+    Assert-True (-not ($indexRefreshScript -match 'git\s+(commit|push)')) 'refresh wrapper does not auto commit or push'
+    Assert-True ($indexRefreshScript -match 'E:\\Scoop\\shims') 'refresh wrapper adds Scoop shims for scheduled task PATH'
+    Assert-True ($indexRefreshScript -match 'FAILED') 'refresh wrapper logs failed refresh steps'
+}
+
+Assert-True (Test-Path -LiteralPath $indexRegisterScriptPath) 'has github local index task registration script'
+if (Test-Path -LiteralPath $indexRegisterScriptPath) {
+    $indexRegisterScript = Get-Content -LiteralPath $indexRegisterScriptPath -Raw
+    Assert-True ($indexRegisterScript -match 'pwsh') 'refresh task registration prefers PowerShell 7 for UTF-8 scripts'
+}
 
 if ($script:Failures -gt 0) {
     throw "$script:Failures test(s) failed"

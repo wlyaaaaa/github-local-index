@@ -26,7 +26,7 @@
 | wlyaaaaa/steam-millennium-config-backup | E:\steam-millennium-config-backup | `master` 已同步，`0/0` |
 | wlyaaaaa/sunshine-remote-streaming | E:\SunshineRemote | `main` 已同步，`0/0` |
 | wlyaaaaa/TimeAudit | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` |
-| wlyaaaaa/TURZX-SideScreen | E:\TURZX-SideScreen | `main` 已同步，`0/0` |
+| wlyaaaaa/TURZX-SideScreen | E:\TURZX-SideScreen | `main` 已同步，`0/0`，脏工作区 15 项 |
 | wlyaaaaa/vault-tool | E:\Vault | `main` 已同步，`0/0` |
 | wlyaaaaa/video-scaffold | E:\video | `main` 已同步，`0/0` |
 | wlyaaaaa/WeFlowBridge | E:\WeFlowBridge | `master` 已同步，`0/0` |

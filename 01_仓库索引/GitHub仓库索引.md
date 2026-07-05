@@ -6,13 +6,13 @@
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
-| wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-coach | PRIVATE | main | G:\ai-coach | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | E:\SunshineRemote | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\.agents-public-release | `master` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/TURZX-SideScreen | PUBLIC | main | E:\TURZX-SideScreen | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/TURZX-SideScreen | PUBLIC | main | E:\TURZX-SideScreen | `main` 已同步，`0/0`，脏工作区 15 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/TimeAudit | PUBLIC | main | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/md-triple-tactics-talent-solver | PUBLIC | main | E:\Pictures\三战之才 | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | PUBLIC | main | G:\ollama\RTX5080_to_RTX5090D_Ollama_Agent_Bundle-1(1)\rtx5090d_ollama_agent_bundle | `codex/public-config-backup` 已同步，`0/0` | 正常维护 |

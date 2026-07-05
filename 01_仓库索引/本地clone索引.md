@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` |
 | wlyaaaaa/ai-coach | G:\ai-coach | `main` 已同步，`0/0` |
-| wlyaaaaa/ai-llm-job-prep | G:\AI大模型 | `master` 已同步，`0/0` |
+| wlyaaaaa/ai-llm-job-prep | G:\AI大模型 | `master` ahead/behind `1/0` |
 | wlyaaaaa/claude-memory | E:\ClaudeMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/codex-app-power-user-playbook | E:\.agents-public-release | `master` 已同步，`0/0` |
 | wlyaaaaa/codex-memory | E:\CodexMemoryBackup | `main` 已同步，`0/0` |

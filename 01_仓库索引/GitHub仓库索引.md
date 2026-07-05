@@ -6,9 +6,9 @@
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
-| wlyaaaaa/ai-coach | PRIVATE | main | G:\ai-coach | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | E:\SunshineRemote | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/ai-coach | PRIVATE | main | G:\ai-coach | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\.agents-public-release | `master` 已同步，`0/0` | 正常维护 |
@@ -18,7 +18,7 @@
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | PUBLIC | main | G:\ollama\RTX5080_to_RTX5090D_Ollama_Agent_Bundle-1(1)\rtx5090d_ollama_agent_bundle | `codex/public-config-backup` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/OpenClawGateway | PUBLIC | main | E:\OpenClawGateway | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\OpenClawBackup | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\AI大模型 | `master` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\AI大模型 | `master` ahead/behind `1/0` | 私有备份策略放行，可推送 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\CodexMemoryBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ProxyClean | PUBLIC | master | C:\Users\10979\ProxyTools | `codex/cleanup-duplicate-scripts` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\GeminiMemoryBackup | `main` 已同步，`0/0` | 正常维护 |

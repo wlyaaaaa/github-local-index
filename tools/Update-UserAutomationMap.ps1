@@ -442,6 +442,16 @@ function Get-RepositoryTaskRecommendation {
         }
     }
 
+    if ($name -eq 'wlyaaaaa/ai-coach') {
+        return [pscustomobject]@{
+            Decision  = '不建议新增'
+            Frequency = '按需手动'
+            Purpose   = '学习记录/复盘/审计仓库'
+            Reason    = '该仓库保存学习状态、checkpoint 和面试教练材料，应该由学习会话显式更新，不适合后台定时改动。'
+            Risk      = '自动任务可能把未确认进度、草稿回答或临时 checkpoint 当成正式学习记录。'
+        }
+    }
+
     if ($name -eq 'wlyaaaaa/steam-millennium-config-backup') {
         return [pscustomobject]@{
             Decision  = '建议新增'

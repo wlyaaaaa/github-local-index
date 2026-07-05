@@ -139,6 +139,7 @@ $purpose = Get-TaskPurposeInference -TaskName 'WeFlow Watchdog' -ActionSummary '
 $memoryRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/codex-memory' -LocalPath 'E:\CodexMemoryBackup' -Visibility 'PRIVATE' -ExistingTaskHints @('Codex Memory Backup')
 $publicRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/md-triple-tactics-talent-solver' -LocalPath 'E:\Pictures\三战之才' -Visibility 'PUBLIC' -ExistingTaskHints @()
 $agentsRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/.agents' -LocalPath 'E:\.agents' -Visibility 'PRIVATE' -ExistingTaskHints @()
+$aiCoachRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/ai-coach' -LocalPath 'G:\ai-coach' -Visibility 'PRIVATE' -ExistingTaskHints @()
 $steamRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/steam-millennium-config-backup' -LocalPath 'E:\steam-millennium-config-backup' -Visibility 'PUBLIC' -ExistingTaskHints @()
 $steamCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/steam-millennium-config-backup' -LocalPath 'E:\steam-millennium-config-backup' -Visibility 'PUBLIC' -ExistingTaskHints @('SteamMillenniumConfigSnapshot')
 $indexCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/github-local-index' -LocalPath 'E:\GitHub总索引' -Visibility 'PUBLIC' -ExistingTaskHints @('GitHubLocalIndex Refresh')
@@ -155,6 +156,8 @@ Assert-True ($purpose.Purpose -match '看门狗|心跳') 'infers watchdog purpos
 Assert-Equal '已有任务覆盖' $memoryRecommendation.Decision 'recognizes existing private backup task coverage'
 Assert-Equal '不建议新增' $publicRecommendation.Decision 'does not auto-schedule public content repository'
 Assert-Equal '不建议新增' $agentsRecommendation.Decision 'does not auto-schedule private rules source repository'
+Assert-Equal '不建议新增' $aiCoachRecommendation.Decision 'does not auto-schedule ai coach learning audit repository'
+Assert-True ($aiCoachRecommendation.Purpose -match '学习|复盘|审计') 'classifies ai coach as learning audit repository'
 Assert-Equal '建议新增' $steamRecommendation.Decision 'recommends low-frequency steam millennium config snapshot'
 Assert-Equal '已有任务覆盖' $steamCoveredRecommendation.Decision 'recognizes steam snapshot task coverage'
 Assert-Equal '已有任务覆盖' $indexCoveredRecommendation.Decision 'recognizes github index refresh task coverage'

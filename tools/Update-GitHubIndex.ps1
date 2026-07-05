@@ -215,11 +215,19 @@ function Get-GitConfigPaths {
         return @()
     }
 
+    $rootConfigs = foreach ($root in $existingRoots) {
+        $configPath = Join-Path $root '.git\config'
+        if (Test-Path -LiteralPath $configPath) {
+            $configPath
+        }
+    }
+
     if (Get-Command rg -ErrorAction SilentlyContinue) {
         $args = @('--files', '--hidden', '--no-ignore')
         $args += $existingRoots
         $args += @('-g', '**/.git/config', '-g', '!**/node_modules/**', '-g', '!**/.cache/**')
-        return @(& rg @args 2>$null | Where-Object { -not (Test-IsTransientGitConfigPath $_) } | Sort-Object -Unique)
+        $rgConfigs = @(& rg @args 2>$null)
+        return @(@($rootConfigs) + $rgConfigs | Where-Object { -not (Test-IsTransientGitConfigPath $_) } | Sort-Object -Unique)
     }
 
     $paths = foreach ($root in $existingRoots) {
@@ -228,7 +236,7 @@ function Get-GitConfigPaths {
             Select-Object -ExpandProperty FullName
     }
 
-    return @($paths | Sort-Object -Unique)
+    return @(@($rootConfigs) + @($paths) | Sort-Object -Unique)
 }
 
 function Test-IsTransientGitConfigPath {

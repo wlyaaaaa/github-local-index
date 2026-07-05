@@ -46,6 +46,20 @@ Assert-Equal 'wlyaaaaa/TURZX-SideScreen' (Normalize-GitHubRepoSlug 'https://gith
 Assert-Equal 'wlyaaaaa/Key' (Normalize-GitHubRepoSlug 'git@github.com:wlyaaaaa/Key.git') 'normalizes SSH remotes'
 Assert-Equal 'wlyaaaaa/ai-llm-job-prep' (Normalize-GitHubRepoSlug 'ssh://git@github.com/wlyaaaaa/ai-llm-job-prep.git') 'normalizes ssh:// remotes'
 
+$tempRepo = Join-Path $repoRoot ('99_private\unit-test-root-repo-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path (Join-Path $tempRepo '.git') | Out-Null
+Set-Content -LiteralPath (Join-Path $tempRepo '.git/config') -Value @'
+[remote "origin"]
+    url = https://github.com/wlyaaaaa/TURZX-SideScreen.git
+'@ -Encoding UTF8
+try {
+    $rootConfigPaths = @(Get-GitConfigPaths -Roots @($tempRepo))
+    Assert-Equal (Join-Path $tempRepo '.git\config') $rootConfigPaths[0] 'discovers git config when scan root is repository'
+}
+finally {
+    Remove-Item -LiteralPath $tempRepo -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $repos = @(
     [pscustomobject]@{
         nameWithOwner    = 'wlyaaaaa/TURZX-SideScreen'

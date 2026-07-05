@@ -7,8 +7,8 @@
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
 | wlyaaaaa/TURZX-SideScreen | PUBLIC | main | E:\TURZX-SideScreen | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/ai-coach | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/.agents | PRIVATE | master | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |

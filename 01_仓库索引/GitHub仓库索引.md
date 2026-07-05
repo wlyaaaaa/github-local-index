@@ -6,11 +6,11 @@
 
 | GitHub 仓库 | 可见性 | 本地路径 | 本地状态 | 下次动作 |
 |---|---|---|---|---|
-| `wlyaaaaa/github-local-index` | PUBLIC | `E:\GitHub总索引` | `main` 已同步，`0/0` | 持续维护总索引 |
+| `wlyaaaaa/github-local-index` | PUBLIC | `E:\GitHub总索引` | `main` 本轮新增自动刷新入口 | 提交并推送本轮索引更新 |
 | `wlyaaaaa/TURZX-SideScreen` | PUBLIC | `E:\TURZX-SideScreen` | `main` 已同步，`0/0` | 新增远端已关联本地 clone；正常维护 |
-| `wlyaaaaa/.agents` | PRIVATE | `E:\.agents` | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 保持私有能力库同步 |
+| `wlyaaaaa/.agents` | PRIVATE | `E:\.agents` | `codex/consolidate-personal-capabilities` 已同步，最新 `68364cc` | 已加入默认 Git 联动提示词 |
 | `wlyaaaaa/ProxyClean` | PUBLIC | `C:\Users\10979\ProxyTools` | `codex/cleanup-duplicate-scripts` 已同步，`0/0` | 需要时继续 PR/清理 |
-| `wlyaaaaa/codex-app-power-user-playbook` | PUBLIC | `E:\.agents-public-release` | `master` 已同步，`0/0` | 正常维护 |
+| `wlyaaaaa/codex-app-power-user-playbook` | PUBLIC | `E:\.agents-public-release` | `master` 已同步，最新 `845d315` | 已发布 durable state public-safe 更新 |
 | `wlyaaaaa/rtx5090d-ollama-agent-bundle` | PUBLIC | `G:\ollama\RTX5080_to_RTX5090D_Ollama_Agent_Bundle-1(1)\rtx5090d_ollama_agent_bundle` | `codex/public-config-backup` 已同步，`0/0` | 已提交 public summary；raw evidence 本地忽略 |
 | `wlyaaaaa/TimeAudit` | PUBLIC | `E:\TimeAudit` | `codex/full-audit-hardening-docs` 已同步，`0/0` | `tmp/` 已忽略，`LibreHardwareMonitor.config` 本机 skip-worktree |
 | `wlyaaaaa/openclaw-backup` | PRIVATE | `E:\OpenClawBackup` | `main` 已同步，`0/0` | 私有备份仓库，允许密钥/配置快照 |

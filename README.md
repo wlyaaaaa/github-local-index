@@ -30,3 +30,14 @@
 - [当前同步看板](00_总览/当前同步看板.md)
 - [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)
 - [2026-07-05 历史审计](90_历史审计/2026/2026-07-05-GitHub仓库与计划任务审计.md)
+
+## 自动刷新入口
+
+- `.\tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读干跑，检查 GitHub 远端仓库、本地 clone、ahead/behind 和脏工作区映射。
+- `.\tools\Update-GitHubIndex.ps1`：刷新 `00_总览/`、`01_仓库索引/`、`02_同步诊断/` 下的公开 Markdown 摘要。
+- `.\tools\Update-ScheduledTaskHealth.ps1`：刷新 `04_计划任务/` 下的计划任务健康摘要和异常清单。
+- `.\tests\Run-UnitTests.ps1`：运行轻量 PowerShell 自测，覆盖 remote URL 解析、clone 映射和计划任务返回码分类。
+
+## Codex 默认联动
+
+今后 Codex 只要实际修改了任意 Git 工作区，默认流程是：验证目标仓库、显式 stage、提交并推送目标仓库，然后回到本仓库记录本轮同步结论，再提交并推送 `wlyaaaaa/github-local-index`。用户明确说“只本地”“不提交”或“不推送”时，按用户本轮要求优先。

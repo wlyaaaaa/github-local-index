@@ -511,7 +511,7 @@ function Write-GitHubIndexDocuments {
     )
 
     $Rows = @(ConvertTo-DocumentRows -Rows $Rows -Owner $Owner)
-    $date = Get-Date -Format 'yyyy-MM-dd'
+    $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
     $total = $Rows.Count
     $localRows = @($Rows | Where-Object { $_.HasLocalClone } | Sort-Object NameWithOwner)
     $missingRows = @($Rows | Where-Object { -not $_.HasLocalClone } | Sort-Object NameWithOwner)
@@ -627,6 +627,12 @@ function Write-GitHubIndexDocuments {
             Visibility    = '-'
             LocalState    = "$($queueRows.Count) 个需处理项"
             NextAction    = if ($queueRows.Count -gt 0) { '逐项审查' } else { '无需处理' }
+        },
+        [pscustomobject]@{
+            NameWithOwner = 'Codex 默认联动'
+            Visibility    = '规则'
+            LocalState    = '实际修改任意 Git 工作区后，默认提交/推送目标仓库并同步本索引'
+            NextAction    = '用户明确要求只本地、不提交或不推送时跳过'
         }
     )
     $dashboardLines = @(
@@ -639,9 +645,10 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += ''
     $dashboardLines += '## 下一步优先级'
     $dashboardLines += ''
-    $dashboardLines += '1. 对未推送队列中的公开仓库先做暴露面审查。'
-    $dashboardLines += '2. 对未发现 clone 的仓库决定是否 clone 到固定目录或标记远端存档。'
-    $dashboardLines += '3. 若私有仓库可见性发生变化，立即重新审计密钥备份策略。'
+    $dashboardLines += '1. Codex 实际修改任意 Git 工作区后，默认同步目标仓库，再同步本索引。'
+    $dashboardLines += '2. 对未推送队列中的公开仓库先做暴露面审查。'
+    $dashboardLines += '3. 对未发现 clone 的仓库决定是否 clone 到固定目录或标记远端存档。'
+    $dashboardLines += '4. 若私有仓库可见性发生变化，立即重新审计密钥备份策略。'
     Set-TextFile -Path (Join-Path $RepoRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }
 

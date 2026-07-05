@@ -194,7 +194,7 @@ function Write-ScheduledTaskDocuments {
         [object[]] $Rows
     )
 
-    $date = Get-Date -Format 'yyyy-MM-dd'
+    $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
     $normalRows = @($Rows | Where-Object { $_.Severity -eq '正常' })
     $warningRows = @($Rows | Where-Object { $_.Severity -eq '警告' })
     $errorRows = @($Rows | Where-Object { $_.Severity -eq '异常' })

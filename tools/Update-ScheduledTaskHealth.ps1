@@ -81,7 +81,7 @@ function ConvertTo-PublicTaskRow {
     }
 
     $lastRun = if ($Info.LastRunTime) { ([datetime] $Info.LastRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
-    $nextRun = if ($Info.NextRunTime) { ([datetime] $Info.NextRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
+    $nextRun = if ([string] $Task.State -eq 'Disabled') { '' } elseif ($Info.NextRunTime) { ([datetime] $Info.NextRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
 
     return [pscustomobject]@{
         TaskName       = [string] $Task.TaskName

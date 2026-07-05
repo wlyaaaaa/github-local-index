@@ -92,11 +92,16 @@ $normalTask = ConvertTo-TaskResultAssessment -LastTaskResult 0
 $normalTaskRow = ConvertTo-PublicTaskRow `
     -Task ([pscustomobject]@{ TaskName = 'Demo Backup'; TaskPath = '\'; State = 'Ready' }) `
     -Info ([pscustomobject]@{ LastTaskResult = 0; LastRunTime = '2026-07-05T00:00:00'; NextRunTime = '2026-07-05T12:00:00' })
+$disabledTaskRow = ConvertTo-PublicTaskRow `
+    -Task ([pscustomobject]@{ TaskName = 'Disabled Backup'; TaskPath = '\'; State = 'Disabled' }) `
+    -Info ([pscustomobject]@{ LastTaskResult = 267011; LastRunTime = '1999-11-30T00:00:00'; NextRunTime = '2026-07-05T13:00:00' })
 $interruptedUnsigned = ConvertTo-TaskResultAssessment -LastTaskResult 3221225786
 $interruptedSigned = ConvertTo-TaskResultAssessment -LastTaskResult -1073741510
 
 Assert-Equal '正常' $normalTask.Severity 'classifies zero task result'
 Assert-Equal '0 / 0x00000000' $normalTaskRow.LastTaskResult 'keeps zero task result visible'
+Assert-Equal '信息' $disabledTaskRow.Severity 'marks disabled task warning as informational'
+Assert-Equal '' $disabledTaskRow.NextRunTime 'omits volatile next run time for disabled tasks'
 Assert-Equal '异常' $interruptedUnsigned.Severity 'classifies unsigned interrupted task result'
 Assert-Equal '异常' $interruptedSigned.Severity 'classifies signed interrupted task result'
 Assert-True ($interruptedUnsigned.Summary -match '中断') 'explains interrupted task result'

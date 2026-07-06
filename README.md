@@ -40,7 +40,7 @@
 - `.\tools\Update-UserAutomationMap.ps1`：刷新 `04_计划任务/用户自动化任务地图.md` 和 `04_计划任务/仓库计划任务建议.md`，记录用户自动化任务用途推测和仓库计划任务缺口。
 - `.\tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：只读一致性检查，临时生成摘要后对比 tracked Markdown；默认只把 GitHub/同步诊断类稳定文档漂移视为失败，计划任务文档漂移作为易变警告。加 `-Strict` 可做全量强一致检查。
 - `.\tools\Refresh-GitHubLocalIndex.ps1 -CheckOnly`：通过现有刷新包装器执行只读一致性检查，不写公开 Markdown。
-- `.\tools\Register-GitHubLocalIndexRefreshTask.ps1 -CheckOnly`：注册 `GitHubLocalIndex Consistency Check` 计划任务，只定期检查一致性，不自动提交或推送。
+- `.\tools\Register-GitHubLocalIndexRefreshTask.ps1 -CheckOnly`：注册 `GitHubLocalIndex Consistency Check` 计划任务，只定期检查一致性，不自动提交或推送；计划任务入口使用 `wscript.exe` 调用 `tools\Refresh-GitHubLocalIndex-Hidden.vbs`，避免 PowerShell 窗口闪现并保留退出码。
 - `pwsh .\tests\Run-UnitTests.ps1`：运行轻量 PowerShell 7 自测，覆盖 remote URL 解析、clone 映射、计划任务返回码分类、用户自动化识别和仓库任务建议。
 
 ## Codex 默认联动

@@ -191,6 +191,7 @@ $steamRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa
 $steamCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/steam-millennium-config-backup' -LocalPath 'E:\steam-millennium-config-backup' -Visibility 'PUBLIC' -ExistingTaskHints @('SteamMillenniumConfigSnapshot')
 $indexCoveredRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/github-local-index' -LocalPath 'E:\GitHub总索引' -Visibility 'PUBLIC' -ExistingTaskHints @('GitHubLocalIndex Refresh')
 $indexRefreshScriptPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1'
+$indexRefreshHiddenLauncherPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex-Hidden.vbs'
 $indexRegisterScriptPath = Join-Path $repoRoot 'tools/Register-GitHubLocalIndexRefreshTask.ps1'
 $taskHealthScriptPath = Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1'
 
@@ -223,10 +224,20 @@ if (Test-Path -LiteralPath $indexRefreshScriptPath) {
     Assert-True ($indexRefreshScript -match 'FAILED') 'refresh wrapper logs failed refresh steps'
 }
 
+Assert-True (Test-Path -LiteralPath $indexRefreshHiddenLauncherPath) 'has github local index zero-flash launcher'
+if (Test-Path -LiteralPath $indexRefreshHiddenLauncherPath) {
+    $indexRefreshHiddenLauncher = Get-Content -LiteralPath $indexRefreshHiddenLauncherPath -Raw
+    Assert-True ($indexRefreshHiddenLauncher -match 'shell\.Run\(command, 0, True\)') 'zero-flash launcher waits hidden and preserves exit code'
+    Assert-True ($indexRefreshHiddenLauncher -match 'pwsh\.exe') 'zero-flash launcher prefers PowerShell 7 for UTF-8 scripts'
+    Assert-True ($indexRefreshHiddenLauncher -match 'powershell\.exe') 'zero-flash launcher falls back to Windows PowerShell'
+    Assert-True ($indexRefreshHiddenLauncher -match 'CheckOnly') 'zero-flash launcher supports check-only consistency mode'
+}
+
 Assert-True (Test-Path -LiteralPath $indexRegisterScriptPath) 'has github local index task registration script'
 if (Test-Path -LiteralPath $indexRegisterScriptPath) {
     $indexRegisterScript = Get-Content -LiteralPath $indexRegisterScriptPath -Raw
-    Assert-True ($indexRegisterScript -match 'pwsh') 'refresh task registration prefers PowerShell 7 for UTF-8 scripts'
+    Assert-True ($indexRegisterScript -match 'wscript\.exe') 'refresh task registration uses zero-flash launcher'
+    Assert-True ($indexRegisterScript -match 'Refresh-GitHubLocalIndex-Hidden\.vbs') 'refresh task registration points at hidden VBS launcher'
     Assert-True ($indexRegisterScript -match 'CheckOnly') 'refresh task registration supports check-only consistency task'
     Assert-True ($indexRegisterScript -match 'GitHubLocalIndex Consistency Check') 'refresh task registration has consistency task default name'
 }

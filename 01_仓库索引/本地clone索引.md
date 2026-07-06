@@ -11,10 +11,10 @@
 | wlyaaaaa/ai-llm-job-prep | G:\AI大模型 | `master` 已同步，`0/0` |
 | wlyaaaaa/claude-memory | E:\ClaudeMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/codex-app-power-user-playbook | E:\.agents-public-release | `master` 已同步，`0/0` |
-| wlyaaaaa/codex-memory | E:\CodexMemoryBackup | `main` ahead/behind `1/0` |
+| wlyaaaaa/codex-memory | E:\CodexMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\GeminiMemoryBackup | `main` 已同步，`0/0` |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |
 | wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0` |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Pictures\三战之才 | `main` 已同步，`0/0` |
 | wlyaaaaa/openclaw-backup | E:\OpenClawBackup | `main` 已同步，`0/0` |

@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $scriptPath = Join-Path $PSScriptRoot 'Refresh-GitHubLocalIndex.ps1'
+$wrapperPath = Join-Path $PSScriptRoot 'Refresh-GitHubLocalIndex-Hidden.vbs'
 
 if ([string]::IsNullOrWhiteSpace($TaskName)) {
     $TaskName = if ($CheckOnly) { 'GitHubLocalIndex Consistency Check' } else { 'GitHubLocalIndex Refresh' }
@@ -16,18 +17,14 @@ if ([string]::IsNullOrWhiteSpace($TaskName)) {
 if (-not (Test-Path -LiteralPath $scriptPath)) {
     throw "Refresh script not found: $scriptPath"
 }
+if (-not (Test-Path -LiteralPath $wrapperPath)) {
+    throw "Hidden launcher not found: $wrapperPath"
+}
 
 $modeArgument = if ($CheckOnly) { ' -CheckOnly' } else { '' }
 
-$pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
-if ($pwsh) {
-    $execute = $pwsh.Source
-    $argument = '-NoProfile -WindowStyle Hidden -File "{0}"{1}' -f $scriptPath, $modeArgument
-}
-else {
-    $execute = 'powershell.exe'
-    $argument = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"{1}' -f $scriptPath, $modeArgument
-}
+$execute = Join-Path $env:WINDIR 'System32\wscript.exe'
+$argument = '"{0}"{1}' -f $wrapperPath, $modeArgument
 
 $action = New-ScheduledTaskAction -Execute $execute -Argument $argument -WorkingDirectory $repoRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At $At

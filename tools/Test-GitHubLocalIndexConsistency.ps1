@@ -57,6 +57,60 @@ function Get-ConsistencyLineCount {
     return @(Get-Content -LiteralPath $Path).Count
 }
 
+function ConvertTo-ConsistencyComparableLine {
+    param(
+        [string] $Line,
+        [string] $RelativePath
+    )
+
+    if ($Line -notmatch '\|\s*wlyaaaaa/github-local-index\s*\|') {
+        return $Line
+    }
+
+    $cells = [regex]::Split($Line, '\|')
+    switch ($RelativePath) {
+        '01_仓库索引\GitHub仓库索引.md' {
+            if ($cells.Count -ge 8) {
+                $cells[5] = ' __SELF_INDEX_STATE__ '
+                $cells[6] = ' __SELF_INDEX_ACTION__ '
+                return ($cells -join '|')
+            }
+        }
+        { $_ -in @('01_仓库索引\本地clone索引.md', '02_同步诊断\分支与远端诊断.md') } {
+            if ($cells.Count -ge 5) {
+                $cells[3] = ' __SELF_INDEX_STATE__ '
+                return ($cells -join '|')
+            }
+        }
+    }
+
+    return $Line
+}
+
+function Get-ConsistencyComparableHash {
+    param(
+        [string] $Path,
+        [string] $RelativePath
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ''
+    }
+
+    $lines = @(Get-Content -LiteralPath $Path | ForEach-Object {
+        ConvertTo-ConsistencyComparableLine -Line $_ -RelativePath $RelativePath
+    })
+    $text = $lines -join "`n"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return (($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
 function Compare-GitHubLocalIndexDocuments {
     param(
         [Parameter(Mandatory = $true)] [string] $RepoRoot,
@@ -69,8 +123,8 @@ function Compare-GitHubLocalIndexDocuments {
         $generatedPath = Join-Path $GeneratedRoot $relativePath
         $currentExists = Test-Path -LiteralPath $currentPath
         $generatedExists = Test-Path -LiteralPath $generatedPath
-        $currentHash = Get-ConsistencyFileHash -Path $currentPath
-        $generatedHash = Get-ConsistencyFileHash -Path $generatedPath
+        $currentHash = Get-ConsistencyComparableHash -Path $currentPath -RelativePath $relativePath
+        $generatedHash = Get-ConsistencyComparableHash -Path $generatedPath -RelativePath $relativePath
 
         [pscustomobject]@{
             File           = $relativePath

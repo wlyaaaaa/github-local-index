@@ -261,18 +261,39 @@ if (Test-Path -LiteralPath $consistencyScriptPath) {
         Set-Content -LiteralPath (Join-Path $currentRoot 'different.md') -Value "old`n" -Encoding UTF8 -NoNewline
         Set-Content -LiteralPath (Join-Path $generatedRoot 'different.md') -Value "new`nextra`n" -Encoding UTF8 -NoNewline
         Set-Content -LiteralPath (Join-Path $generatedRoot 'missing-current.md') -Value "generated only`n" -Encoding UTF8 -NoNewline
+        New-Item -ItemType Directory -Force -Path `
+            (Join-Path $currentRoot '01_仓库索引'), `
+            (Join-Path $currentRoot '02_同步诊断'), `
+            (Join-Path $generatedRoot '01_仓库索引'), `
+            (Join-Path $generatedRoot '02_同步诊断') | Out-Null
 
-        $comparisonRows = @(Compare-GitHubLocalIndexDocuments -RepoRoot $currentRoot -GeneratedRoot $generatedRoot -RelativePaths @('same.md', 'different.md', 'missing-current.md'))
+        $selfIndexPath = '01_仓库索引\GitHub仓库索引.md'
+        $selfClonePath = '01_仓库索引\本地clone索引.md'
+        $selfBranchPath = '02_同步诊断\分支与远端诊断.md'
+        Set-Content -LiteralPath (Join-Path $currentRoot $selfIndexPath) -Value '| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $generatedRoot $selfIndexPath) -Value '| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $currentRoot $selfClonePath) -Value '| wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $generatedRoot $selfClonePath) -Value '| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $currentRoot $selfBranchPath) -Value '| wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |' -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $generatedRoot $selfBranchPath) -Value '| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |' -Encoding UTF8
+
+        $comparisonRows = @(Compare-GitHubLocalIndexDocuments -RepoRoot $currentRoot -GeneratedRoot $generatedRoot -RelativePaths @('same.md', 'different.md', 'missing-current.md', $selfIndexPath, $selfClonePath, $selfBranchPath))
         $sameRow = $comparisonRows | Where-Object { $_.File -eq 'same.md' }
         $differentRow = $comparisonRows | Where-Object { $_.File -eq 'different.md' }
         $missingCurrentRow = $comparisonRows | Where-Object { $_.File -eq 'missing-current.md' }
+        $selfIndexRow = $comparisonRows | Where-Object { $_.File -eq $selfIndexPath }
+        $selfCloneRow = $comparisonRows | Where-Object { $_.File -eq $selfClonePath }
+        $selfBranchRow = $comparisonRows | Where-Object { $_.File -eq $selfBranchPath }
 
-        Assert-Equal 3 $comparisonRows.Count 'compares requested consistency document set'
+        Assert-Equal 6 $comparisonRows.Count 'compares requested consistency document set'
         Assert-True $sameRow.Same 'marks identical generated documents consistent'
         Assert-True (-not $differentRow.Same) 'marks changed generated documents inconsistent'
         Assert-Equal 1 $differentRow.CurrentLines 'counts current document lines'
         Assert-Equal 2 $differentRow.GeneratedLines 'counts generated document lines'
         Assert-True (-not $missingCurrentRow.CurrentExists) 'records missing current document'
+        Assert-True $selfIndexRow.Same 'ignores self-index placeholder drift in repository index'
+        Assert-True $selfCloneRow.Same 'ignores self-index placeholder drift in clone index'
+        Assert-True $selfBranchRow.Same 'ignores self-index placeholder drift in branch diagnostics'
     }
     finally {
         Remove-Item -LiteralPath $compareRoot -Recurse -Force -ErrorAction SilentlyContinue

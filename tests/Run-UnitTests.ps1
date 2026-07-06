@@ -46,6 +46,32 @@ Assert-Equal 'wlyaaaaa/TURZX-SideScreen' (Normalize-GitHubRepoSlug 'https://gith
 Assert-Equal 'wlyaaaaa/Key' (Normalize-GitHubRepoSlug 'git@github.com:wlyaaaaa/Key.git') 'normalizes SSH remotes'
 Assert-Equal 'wlyaaaaa/ai-llm-job-prep' (Normalize-GitHubRepoSlug 'ssh://git@github.com/wlyaaaaa/ai-llm-job-prep.git') 'normalizes ssh:// remotes'
 
+$script:RetryAttempts = 0
+$retryResult = Invoke-ExternalCommandWithRetry -Operation 'unit retry success' -MaxAttempts 3 -DelaySeconds 0 -Command {
+    $script:RetryAttempts++
+    if ($script:RetryAttempts -lt 3) {
+        throw 'temporary failure'
+    }
+
+    return 'ok'
+}
+Assert-Equal 3 $script:RetryAttempts 'retries transient external command failures'
+Assert-Equal 'ok' ($retryResult -join '') 'returns successful retry output'
+
+$script:RetryFailureAttempts = 0
+$retryFailureThrown = $false
+try {
+    Invoke-ExternalCommandWithRetry -Operation 'unit retry failure' -MaxAttempts 2 -DelaySeconds 0 -Command {
+        $script:RetryFailureAttempts++
+        throw 'still failing'
+    } | Out-Null
+}
+catch {
+    $retryFailureThrown = $_.Exception.Message -match 'unit retry failure'
+}
+Assert-Equal 2 $script:RetryFailureAttempts 'stops retrying after max attempts'
+Assert-True $retryFailureThrown 'retry failure includes operation name'
+
 $tempRepo = Join-Path $repoRoot ('99_private\unit-test-root-repo-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path (Join-Path $tempRepo '.git') | Out-Null
 Set-Content -LiteralPath (Join-Path $tempRepo '.git/config') -Value @'
@@ -99,6 +125,10 @@ $cloneMap = @{
 $rows = @(ConvertTo-GitHubIndexRows -Repositories $repos -CloneMap $cloneMap)
 $turzx = $rows | Where-Object { $_.NameWithOwner -eq 'wlyaaaaa/TURZX-SideScreen' }
 $key = $rows | Where-Object { $_.NameWithOwner -eq 'wlyaaaaa/Key' }
+$sortedRows = @(Sort-GitHubIndexRows @(
+    [pscustomobject]@{ NameWithOwner = 'wlyaaaaa/zeta' },
+    [pscustomobject]@{ NameWithOwner = 'wlyaaaaa/alpha' }
+))
 
 Assert-Equal 'E:\TURZX-SideScreen' $turzx.LocalPath 'marks discovered clone path'
 Assert-Equal '`main` 已同步，`0/0`' $turzx.LocalState 'uses clone sync state'
@@ -106,6 +136,7 @@ Assert-Equal '未发现本地 clone' $key.LocalPath 'marks missing clone path'
 Assert-True ($key.NextAction -match '确认本机没有 clone') 'keeps Key as confirmed missing clone'
 Assert-True ($key.NextAction -match '严格禁止克隆') 'keeps Key as do-not-clone repository'
 Assert-True (-not ($key.NextAction -match 'clone 到')) 'does not suggest cloning Key'
+Assert-Equal 'wlyaaaaa/alpha' $sortedRows[0].NameWithOwner 'sorts github index rows deterministically'
 
 $normalTask = ConvertTo-TaskResultAssessment -LastTaskResult 0
 $normalTaskRow = ConvertTo-PublicTaskRow `
@@ -185,6 +216,8 @@ if (Test-Path -LiteralPath $indexRefreshScriptPath) {
     Assert-True ($indexRefreshScript -match '-SkipFetch') 'refresh wrapper avoids fetching other repositories'
     Assert-True ($indexRefreshScript -match 'Update-ScheduledTaskHealth\.ps1') 'refresh wrapper updates task health'
     Assert-True ($indexRefreshScript -match 'Update-UserAutomationMap\.ps1') 'refresh wrapper updates user automation map'
+    Assert-True ($indexRefreshScript -match 'Test-GitHubLocalIndexConsistency\.ps1') 'refresh wrapper can run consistency check'
+    Assert-True ($indexRefreshScript -match 'CheckOnly') 'refresh wrapper supports check-only consistency mode'
     Assert-True (-not ($indexRefreshScript -match 'git\s+(commit|push)')) 'refresh wrapper does not auto commit or push'
     Assert-True ($indexRefreshScript -match 'E:\\Scoop\\shims') 'refresh wrapper adds Scoop shims for scheduled task PATH'
     Assert-True ($indexRefreshScript -match 'FAILED') 'refresh wrapper logs failed refresh steps'
@@ -194,6 +227,8 @@ Assert-True (Test-Path -LiteralPath $indexRegisterScriptPath) 'has github local 
 if (Test-Path -LiteralPath $indexRegisterScriptPath) {
     $indexRegisterScript = Get-Content -LiteralPath $indexRegisterScriptPath -Raw
     Assert-True ($indexRegisterScript -match 'pwsh') 'refresh task registration prefers PowerShell 7 for UTF-8 scripts'
+    Assert-True ($indexRegisterScript -match 'CheckOnly') 'refresh task registration supports check-only consistency task'
+    Assert-True ($indexRegisterScript -match 'GitHubLocalIndex Consistency Check') 'refresh task registration has consistency task default name'
 }
 
 Assert-True (Test-Path -LiteralPath $taskHealthScriptPath) 'has scheduled task health script'
@@ -201,6 +236,47 @@ if (Test-Path -LiteralPath $taskHealthScriptPath) {
     $taskHealthScript = Get-Content -LiteralPath $taskHealthScriptPath -Raw
     Assert-True ($taskHealthScript -match '\*GitHubLocalIndex\*') 'health summary tracks github local index task'
     Assert-True ($taskHealthScript -match '\*SteamMillennium\*') 'health summary tracks steam millennium task'
+}
+
+$consistencyScriptPath = Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1'
+Assert-True (Test-Path -LiteralPath $consistencyScriptPath) 'has github local index consistency check script'
+if (Test-Path -LiteralPath $consistencyScriptPath) {
+    . $consistencyScriptPath
+
+    $generatedDocPaths = @(Get-GitHubLocalIndexGeneratedDocumentPaths)
+    Assert-True ($generatedDocPaths -contains '00_总览\当前同步看板.md') 'consistency check covers dashboard'
+    Assert-True ($generatedDocPaths -contains '02_同步诊断\未推送队列.md') 'consistency check covers queue'
+    Assert-True ($generatedDocPaths -contains '04_计划任务\用户自动化任务地图.md') 'consistency check covers automation map'
+    $stableDocPaths = @(Get-GitHubLocalIndexStableDocumentPaths)
+    Assert-True ($stableDocPaths -contains '02_同步诊断\未推送队列.md') 'consistency check treats queue as stable'
+    Assert-True (-not ($stableDocPaths -contains '04_计划任务\计划任务健康摘要.md')) 'consistency check treats task health as volatile'
+
+    $compareRoot = Join-Path $repoRoot ('99_private\unit-test-consistency-' + [guid]::NewGuid().ToString('N'))
+    $currentRoot = Join-Path $compareRoot 'current'
+    $generatedRoot = Join-Path $compareRoot 'generated'
+    try {
+        New-Item -ItemType Directory -Force -Path $currentRoot, $generatedRoot | Out-Null
+        Set-Content -LiteralPath (Join-Path $currentRoot 'same.md') -Value "same`n" -Encoding UTF8 -NoNewline
+        Set-Content -LiteralPath (Join-Path $generatedRoot 'same.md') -Value "same`n" -Encoding UTF8 -NoNewline
+        Set-Content -LiteralPath (Join-Path $currentRoot 'different.md') -Value "old`n" -Encoding UTF8 -NoNewline
+        Set-Content -LiteralPath (Join-Path $generatedRoot 'different.md') -Value "new`nextra`n" -Encoding UTF8 -NoNewline
+        Set-Content -LiteralPath (Join-Path $generatedRoot 'missing-current.md') -Value "generated only`n" -Encoding UTF8 -NoNewline
+
+        $comparisonRows = @(Compare-GitHubLocalIndexDocuments -RepoRoot $currentRoot -GeneratedRoot $generatedRoot -RelativePaths @('same.md', 'different.md', 'missing-current.md'))
+        $sameRow = $comparisonRows | Where-Object { $_.File -eq 'same.md' }
+        $differentRow = $comparisonRows | Where-Object { $_.File -eq 'different.md' }
+        $missingCurrentRow = $comparisonRows | Where-Object { $_.File -eq 'missing-current.md' }
+
+        Assert-Equal 3 $comparisonRows.Count 'compares requested consistency document set'
+        Assert-True $sameRow.Same 'marks identical generated documents consistent'
+        Assert-True (-not $differentRow.Same) 'marks changed generated documents inconsistent'
+        Assert-Equal 1 $differentRow.CurrentLines 'counts current document lines'
+        Assert-Equal 2 $differentRow.GeneratedLines 'counts generated document lines'
+        Assert-True (-not $missingCurrentRow.CurrentExists) 'records missing current document'
+    }
+    finally {
+        Remove-Item -LiteralPath $compareRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 if ($script:Failures -gt 0) {

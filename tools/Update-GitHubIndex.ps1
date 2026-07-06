@@ -62,6 +62,57 @@ function New-MarkdownTable {
     return $lines
 }
 
+function Invoke-ExternalCommandWithRetry {
+    param(
+        [Parameter(Mandatory = $true)] [scriptblock] $Command,
+        [string] $Operation = 'external command',
+        [int] $MaxAttempts = 3,
+        [int] $DelaySeconds = 2
+    )
+
+    if ($MaxAttempts -lt 1) {
+        throw 'MaxAttempts must be at least 1.'
+    }
+
+    $lastExitCode = $null
+    $lastOutput = @()
+    $lastError = $null
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $global:LASTEXITCODE = 0
+        try {
+            $output = @(& $Command 2>&1)
+            $exitCode = $LASTEXITCODE
+            if ($null -eq $exitCode) {
+                $exitCode = 0
+            }
+        }
+        catch {
+            $output = @($_.Exception.Message)
+            $exitCode = if ($LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
+            $lastError = $_
+        }
+
+        $lastExitCode = $exitCode
+        $lastOutput = $output
+
+        if ($exitCode -eq 0) {
+            return $output
+        }
+
+        if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    $summary = ($lastOutput | Select-Object -First 3) -join ' '
+    if ([string]::IsNullOrWhiteSpace($summary) -and $lastError) {
+        $summary = $lastError.Exception.Message
+    }
+
+    throw "$Operation failed after $MaxAttempts attempt(s). Last exit code: $lastExitCode. $summary"
+}
+
 function Get-DefaultBranchName {
     param([object] $Repository)
 
@@ -123,6 +174,12 @@ function Get-RepoNextAction {
     }
 
     return '正常维护'
+}
+
+function Sort-GitHubIndexRows {
+    param([object[]] $Rows)
+
+    return @($Rows | Sort-Object NameWithOwner)
 }
 
 function Get-RepoStateText {
@@ -452,14 +509,12 @@ function Get-GitHubRepositories {
         throw 'GitHub CLI gh is required before refreshing the index.'
     }
 
-    & gh auth status *> $null
-    if ($LASTEXITCODE -ne 0) {
-        throw 'GitHub CLI is not authenticated. Run gh auth login first.'
-    }
+    Invoke-ExternalCommandWithRetry -Operation 'GitHub CLI auth status' -Command {
+        & gh auth status *> $null
+    } | Out-Null
 
-    $json = & gh repo list $Owner --limit 200 --json nameWithOwner,visibility,url,defaultBranchRef,pushedAt,updatedAt
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Failed to read repository list from GitHub.'
+    $json = Invoke-ExternalCommandWithRetry -Operation 'read repository list from GitHub' -Command {
+        & gh repo list $Owner --limit 200 --json nameWithOwner,visibility,url,defaultBranchRef,pushedAt,updatedAt
     }
 
     return @($json | ConvertFrom-Json)
@@ -518,7 +573,7 @@ function Write-GitHubIndexDocuments {
         [object[]] $Rows
     )
 
-    $Rows = @(ConvertTo-DocumentRows -Rows $Rows -Owner $Owner)
+    $Rows = @(Sort-GitHubIndexRows (ConvertTo-DocumentRows -Rows $Rows -Owner $Owner))
     $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
     $total = $Rows.Count
     $localRows = @($Rows | Where-Object { $_.HasLocalClone } | Sort-Object NameWithOwner)
@@ -672,7 +727,7 @@ function Invoke-UpdateGitHubIndex {
     $repositories = @(Get-GitHubRepositories -Owner $Owner)
     $cloneMap = Get-LocalCloneMap -Roots $ScanRoots -SkipFetch:$SkipFetch
     Resolve-CloneStatuses -CloneMap $cloneMap -Repositories $repositories -SkipFetch:$SkipFetch
-    $rows = @(ConvertTo-GitHubIndexRows -Repositories $repositories -CloneMap $cloneMap)
+    $rows = @(Sort-GitHubIndexRows (ConvertTo-GitHubIndexRows -Repositories $repositories -CloneMap $cloneMap))
 
     if (-not $NoWrite) {
         Write-GitHubIndexDocuments -RepoRoot $RepoRoot -Owner $Owner -Rows $rows

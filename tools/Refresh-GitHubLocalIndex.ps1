@@ -1,5 +1,6 @@
 param(
-    [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot)
+    [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [switch] $CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,12 +46,33 @@ function Invoke-RefreshStep {
     }
 }
 
+function Invoke-ConsistencyCheck {
+    param([string] $Name)
+
+    Invoke-RefreshStep $Name {
+        . (Join-Path $RepoRoot 'tools\Test-GitHubLocalIndexConsistency.ps1')
+        $result = Invoke-GitHubLocalIndexConsistencyCheck -RepoRoot $RepoRoot -SkipFetch
+        Write-RefreshLog "CONSISTENCY compared=$($result.Compared) drift=$($result.DriftCount) stable=$($result.StableDriftCount) volatile=$($result.VolatileDriftCount)"
+        if (-not $result.IsConsistent) {
+            $files = ($result.DriftFiles | Select-Object -First 10) -join '; '
+            Write-RefreshLog "CONSISTENCY drift files: $files"
+            throw "GitHub local index drift detected in $($result.DriftCount) generated document(s)."
+        }
+    }
+}
+
 try {
     Add-PathIfExists 'E:\Scoop\shims'
     Add-PathIfExists (Join-Path $env:USERPROFILE 'scoop\shims')
     Add-PathIfExists 'C:\Program Files\Git\cmd'
 
     Write-RefreshLog 'GitHub local index refresh started'
+
+    if ($CheckOnly) {
+        Invoke-ConsistencyCheck 'consistency check only'
+        Write-RefreshLog 'GitHub local index consistency check finished'
+        exit 0
+    }
 
     Invoke-RefreshStep 'GitHub repository index' {
         & (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot $RepoRoot -SkipFetch | Out-Null

@@ -39,4 +39,5 @@
 
 - 不用 `git add .` 盲目提交混合工作区；优先显式 stage 文件。
 - 每次审计后更新 `00_总览/当前同步看板.md`、`02_同步诊断/` 和 `03_推送决策/`；优先使用 `tools/Update-GitHubIndex.ps1` 和 `tools/Update-ScheduledTaskHealth.ps1` 生成公开摘要。
+- 检查本仓库是否与当前本机/GitHub 状态一致时，优先运行 `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch` 或 `tools/Refresh-GitHubLocalIndex.ps1 -CheckOnly`；默认只把 GitHub/同步诊断类稳定文档漂移视为失败，计划任务文档因时间戳和运行态高频变化只作为易变漂移提示。不要为了“强一致性”自动提交或推送公开摘要。
 - 计划任务只记录状态和异常，不在本仓库保存任务导出的完整敏感 XML。

@@ -410,7 +410,7 @@ function Get-RepositoryTaskRecommendation {
             $risk = '健康检查只允许无监听时启动；不得强杀 Ollama 或打断长推理。'
         }
         elseif ($name -eq 'wlyaaaaa/sunshine-remote-streaming') {
-            $risk = '当前非提升权限无法创建登录触发，已降级为每日轻量验证；修复脚本仍需人工触发。'
+            $risk = '每日轻量验证已覆盖；脚本已适配计划任务上下文，最近手动触发返回 0。'
         }
 
         return [pscustomobject]@{

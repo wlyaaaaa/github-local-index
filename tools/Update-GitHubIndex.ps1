@@ -692,6 +692,18 @@ function Write-GitHubIndexDocuments {
             NextAction    = if ($queueRows.Count -gt 0) { '逐项审查' } else { '无需处理' }
         },
         [pscustomobject]@{
+            NameWithOwner = '项目完善度'
+            Visibility    = '公开索引'
+            LocalState    = '仓库干净，单测通过，稳定一致性漂移为 0；只剩计划任务运行时间类易变漂移'
+            NextAction    = '进入长期维护态'
+        },
+        [pscustomobject]@{
+            NameWithOwner = '计划任务治理'
+            Visibility    = '本机自动化'
+            LocalState    = '坏路径、调度器拒绝运行和后台窗口策略已收口；`0xC000013A` 按人为中断/关机注销优先观察'
+            NextAction    = '定期检查，不继续大改'
+        },
+        [pscustomobject]@{
             NameWithOwner = 'Codex 默认联动'
             Visibility    = '规则'
             LocalState    = '实际修改任意 Git 工作区后，默认提交/推送目标仓库并同步本索引'
@@ -708,10 +720,11 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += ''
     $dashboardLines += '## 下一步优先级'
     $dashboardLines += ''
-    $dashboardLines += '1. Codex 实际修改任意 Git 工作区后，默认同步目标仓库，再同步本索引。'
-    $dashboardLines += '2. 对未推送队列中的公开仓库先做暴露面审查。'
-    $dashboardLines += '3. 对未发现 clone 的仓库决定是否 clone 到固定目录或标记远端存档。'
-    $dashboardLines += '4. 若私有仓库可见性发生变化，立即重新审计密钥备份策略。'
+    $dashboardLines += '1. 定期运行 `tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`；稳定漂移为 0 时不为了计划任务时间戳自动提交。'
+    $dashboardLines += '2. Codex 实际修改任意 Git 工作区后，默认同步目标仓库，再同步本索引。'
+    $dashboardLines += '3. 对未推送队列中的公开仓库先做暴露面审查。'
+    $dashboardLines += '4. 对未发现 clone 的仓库决定是否 clone 到固定目录或标记远端存档。'
+    $dashboardLines += '5. 若私有仓库可见性发生变化，立即重新审计密钥备份策略。'
     Set-TextFile -Path (Join-Path $RepoRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }
 

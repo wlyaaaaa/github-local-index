@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- | --- |
 | wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-coach | PRIVATE | main | G:\ai-coach | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\AI大模型 | `master` ahead/behind `5/0`，脏工作区 10 项 | 私有仓库按备份需求确认后提交 |
+| wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\AI大模型 | `master` ahead/behind `5/0`，脏工作区 7 项 | 私有仓库按备份需求确认后提交 |
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\ClaudeMemoryBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\.agents-public-release | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\CodexMemoryBackup | `main` ahead/behind `1/0` | 私有备份策略放行，可推送 |

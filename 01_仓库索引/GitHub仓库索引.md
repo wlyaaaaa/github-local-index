@@ -7,9 +7,9 @@
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
 | wlyaaaaa/TURZX-SideScreen | PUBLIC | main | E:\TURZX-SideScreen | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\OpenClawBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-coach | PRIVATE | main | G:\ai-coach | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/LocalOCR | PUBLIC | main | E:\LocalOCR | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |

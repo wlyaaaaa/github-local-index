@@ -105,7 +105,7 @@ function Test-IsCommonSoftwareTask {
         return $true
     }
 
-    $knownUserPattern = 'AIModelsBackup|AutoDigitalBackupToH|CleanupOrphanedMillennium|Codex Memory|DevConfigBackup|Gemini Memory|LibreHardwareMonitor|OllamaStable|OpenClaw|PinDefaultAudio|RAMDisk_Code_Backup|Scripts_AutoPush|TimeAudit|TURZX|WeChat AutoStart|WeChatBackup|WeFlow'
+    $knownUserPattern = 'AIModelsBackup|AutoDigitalBackupToH|CleanupOrphanedMillennium|Codex Memory|DevConfigBackup|Gemini Memory|HealthLongevity|LibreHardwareMonitor|OllamaStable|OpenClaw|PinDefaultAudio|RAMDisk_Code_Backup|Scripts_AutoPush|TimeAudit|TURZX|WeChat AutoStart|WeChatBackup|WeFlow'
     if ("$path $name $actionText" -match $knownUserPattern) {
         return $false
     }
@@ -242,6 +242,7 @@ function Get-RelatedPathHint {
     if ($combined -match 'Gemini Memory') { return 'E:\GeminiMemoryBackup' }
     if ($combined -match 'OpenClaw') { return 'E:\OpenClawGateway' }
     if ($combined -match 'WeFlow') { return 'E:\WeFlowBridge' }
+    if ($combined -match 'HealthLongevity') { return 'E:\HealthLongevity' }
     if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\TimeAudit' }
     if ($combined -match 'TURZX') { return 'E:\TURZX-SideScreen' }
     if ($combined -match 'Millennium') { return 'E:\steam-millennium-config-backup' }
@@ -253,6 +254,7 @@ function Get-RelatedPathHint {
         'E:\OpenClawGateway',
         'E:\OpenClawBackup',
         'E:\WeFlowBridge',
+        'E:\HealthLongevity',
         'E:\TimeAudit',
         'E:\DevConfigBackup',
         'E:\Scripts',

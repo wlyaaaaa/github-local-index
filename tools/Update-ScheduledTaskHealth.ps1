@@ -1,6 +1,6 @@
 param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-    [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*SteamMillennium*', '*GitHubLocalIndex*', '*LibreHardwareMonitor*'),
+    [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*HealthLongevity*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*SteamMillennium*', '*GitHubLocalIndex*', '*LibreHardwareMonitor*'),
     [switch] $NoWrite
 )
 

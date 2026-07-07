@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 7 项 |
+| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 6 项 |
 | wlyaaaaa/ai-coach | G:\ai-coach | `main` 已同步，`0/0` |
 | wlyaaaaa/ai-llm-job-prep | G:\AI大模型 | `master` 已同步，`0/0` |
 | wlyaaaaa/claude-memory | E:\ClaudeMemoryBackup | `main` 已同步，`0/0` |
@@ -15,7 +15,7 @@
 | wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\GeminiMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |
-| wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0`，脏工作区 25 项 |
+| wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0` |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Pictures\三战之才 | `main` 已同步，`0/0` |
 | wlyaaaaa/openclaw-backup | E:\OpenClawBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/OpenClawGateway | E:\OpenClawGateway | `main` 已同步，`0/0` |

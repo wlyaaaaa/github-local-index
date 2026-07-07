@@ -15,7 +15,7 @@
 | wlyaaaaa/codex-memory | E:\CodexMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\GeminiMemoryBackup | `main` 已同步，`0/0` |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |
 | wlyaaaaa/HealthLongevity | E:\HealthLongevity | `main` 已同步，`0/0` |
 | wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0` |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Pictures\三战之才 | `main` 已同步，`0/0` |
@@ -27,7 +27,7 @@
 | wlyaaaaa/Scripts | E:\Scripts | `main` 已同步，`0/0` |
 | wlyaaaaa/steam-millennium-config-backup | E:\steam-millennium-config-backup | `master` 已同步，`0/0` |
 | wlyaaaaa/sunshine-remote-streaming | E:\SunshineRemote | `main` 已同步，`0/0` |
-| wlyaaaaa/TimeAudit | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0`，脏工作区 2 项 |
+| wlyaaaaa/TimeAudit | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` |
 | wlyaaaaa/TURZX-SideScreen | E:\TURZX-SideScreen | `main` 已同步，`0/0` |
 | wlyaaaaa/vault-tool | E:\Vault | `main` 已同步，`0/0` |
 | wlyaaaaa/video-scaffold | E:\video | `main` 已同步，`0/0` |

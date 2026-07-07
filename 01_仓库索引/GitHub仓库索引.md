@@ -16,7 +16,7 @@
 | wlyaaaaa/devconfig-backup | PUBLIC | main | E:\DevConfigBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/EGO | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\GeminiMemoryBackup | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/HealthLongevity | PRIVATE | main | E:\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
@@ -30,7 +30,7 @@
 | wlyaaaaa/Scripts | PUBLIC | main | E:\Scripts | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | E:\SunshineRemote | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/TimeAudit | PUBLIC | main | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0`，脏工作区 2 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/TimeAudit | PUBLIC | main | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/TURZX-SideScreen | PUBLIC | main | E:\TURZX-SideScreen | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/vault-tool | PUBLIC | main | E:\Vault | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/video-scaffold | PUBLIC | main | E:\video | `main` 已同步，`0/0` | 正常维护 |

@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
-| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 7 项 | 私有仓库按备份需求确认后提交 |
+| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 6 项 | 私有仓库按备份需求确认后提交 |
 | wlyaaaaa/ai-coach | PRIVATE | main | G:\ai-coach | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\AI大模型 | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\ChineseASR | `main` 已同步，`0/0` | 正常维护 |

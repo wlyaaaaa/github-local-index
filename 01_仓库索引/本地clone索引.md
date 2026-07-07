@@ -16,7 +16,7 @@
 | wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\GeminiMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |
-| wlyaaaaa/HealthLongevity | E:\HealthLongevity | `main` 已同步，`0/0` |
+| wlyaaaaa/HealthLongevity | E:\HealthLongevity | `main` ahead/behind `1/0` |
 | wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0` |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Pictures\三战之才 | `main` 已同步，`0/0` |
 | wlyaaaaa/openclaw-backup | E:\OpenClawBackup | `main` 已同步，`0/0` |

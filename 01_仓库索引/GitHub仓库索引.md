@@ -18,7 +18,7 @@
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
-| wlyaaaaa/LocalOCR | PUBLIC | main | E:\LocalOCR | `main` 已同步，`0/0`，脏工作区 18 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/LocalOCR | PUBLIC | main | E:\LocalOCR | `main` 已同步，`0/0`，脏工作区 25 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/md-triple-tactics-talent-solver | PUBLIC | main | E:\Pictures\三战之才 | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\OpenClawBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/OpenClawGateway | PUBLIC | main | E:\OpenClawGateway | `main` 已同步，`0/0` | 正常维护 |

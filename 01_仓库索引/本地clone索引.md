@@ -9,13 +9,14 @@
 | wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 6 项 |
 | wlyaaaaa/ai-coach | G:\ai-coach | `main` 已同步，`0/0` |
 | wlyaaaaa/ai-llm-job-prep | G:\AI大模型 | `master` 已同步，`0/0` |
+| wlyaaaaa/ChineseASR | E:\ChineseASR | `main` 已同步，`0/0` |
 | wlyaaaaa/claude-memory | E:\ClaudeMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/codex-app-power-user-playbook | E:\.agents-public-release | `master` 已同步，`0/0` |
 | wlyaaaaa/codex-memory | E:\CodexMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\GeminiMemoryBackup | `main` 已同步，`0/0` |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |
-| wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0` |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |
+| wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0`，脏工作区 14 项 |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Pictures\三战之才 | `main` 已同步，`0/0` |
 | wlyaaaaa/openclaw-backup | E:\OpenClawBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/OpenClawGateway | E:\OpenClawGateway | `main` 已同步，`0/0` |

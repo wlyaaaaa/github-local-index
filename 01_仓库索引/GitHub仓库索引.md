@@ -17,7 +17,7 @@
 | wlyaaaaa/EGO | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\GeminiMemoryBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/HealthLongevity | PRIVATE | main | E:\HealthLongevity | `main` ahead/behind `1/0` | 私有备份策略放行，可推送 |
+| wlyaaaaa/HealthLongevity | PRIVATE | main | E:\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
 | wlyaaaaa/LocalOCR | PUBLIC | main | E:\LocalOCR | `main` 已同步，`0/0` | 正常维护 |

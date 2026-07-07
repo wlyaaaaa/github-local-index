@@ -1,12 +1,12 @@
 # 本地 Clone 索引
 
-更新时间：2026-07-06
+更新时间：2026-07-07
 
 ## 已确认本地位置
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` |
+| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 7 项 |
 | wlyaaaaa/ai-coach | G:\ai-coach | `main` 已同步，`0/0` |
 | wlyaaaaa/ai-llm-job-prep | G:\AI大模型 | `master` 已同步，`0/0` |
 | wlyaaaaa/claude-memory | E:\ClaudeMemoryBackup | `main` 已同步，`0/0` |

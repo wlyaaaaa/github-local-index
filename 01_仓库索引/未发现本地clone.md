@@ -6,7 +6,6 @@
 
 | GitHub 仓库 | 可见性 | 当前决策 |
 | --- | --- | --- |
-| wlyaaaaa/EGO | PRIVATE | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
 

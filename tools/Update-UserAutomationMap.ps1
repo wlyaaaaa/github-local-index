@@ -243,7 +243,7 @@ function Get-RelatedPathHint {
     if ($combined -match 'OpenClaw') { return 'E:\OpenClawGateway' }
     if ($combined -match 'WeFlow') { return 'E:\Projects\Tools\WeFlowBridge' }
     if ($combined -match 'HealthLongevity') { return 'E:\Projects\Decisions\HealthLongevity' }
-    if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\TimeAudit' }
+    if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\Projects\Tools\TimeAudit' }
     if ($combined -match 'TURZX') { return 'E:\Projects\Tools\TURZX-SideScreen' }
     if ($combined -match 'Millennium') { return 'E:\Projects\Tools\steam-millennium-config-backup' }
     if ($combined -match 'DownloadsToUSB|Sync-DownloadsToH|03_下载与安装包|下载与安装包') { return 'E:\Downloads -> H:\03_下载与安装包' }
@@ -256,7 +256,7 @@ function Get-RelatedPathHint {
         'E:\Projects\Backups\openclaw-backup',
         'E:\Projects\Tools\WeFlowBridge',
         'E:\Projects\Decisions\HealthLongevity',
-        'E:\TimeAudit',
+        'E:\Projects\Tools\TimeAudit',
         'E:\DevConfigBackup',
         'E:\Projects\Tools\Scripts',
         'E:\Projects\Tools\RamdiskGuardian',

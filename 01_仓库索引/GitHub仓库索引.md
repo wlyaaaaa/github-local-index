@@ -6,16 +6,16 @@
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
-| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` ahead/behind `1/0` | 私有备份策略放行，可推送 |
 | wlyaaaaa/ai-coach | PRIVATE | main | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\20_Projects\github\ai-llm-job-prep | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/codex-memory | PRIVATE | main | E:\CodexMemoryBackup | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/devconfig-backup | PUBLIC | main | E:\DevConfigBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/HealthLongevity | PRIVATE | main | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |

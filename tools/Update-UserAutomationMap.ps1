@@ -258,7 +258,7 @@ function Get-RelatedPathHint {
         'E:\Projects\Decisions\HealthLongevity',
         'E:\TimeAudit',
         'E:\DevConfigBackup',
-        'E:\Scripts',
+        'E:\Projects\Tools\Scripts',
         'E:\Projects\Tools\RamdiskGuardian',
         'E:\Projects\Tools\sunshine-remote-streaming',
         'G:\20_Projects\github\ai-llm-job-prep',

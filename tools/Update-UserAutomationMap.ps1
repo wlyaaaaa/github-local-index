@@ -239,28 +239,28 @@ function Get-RelatedPathHint {
     )
 
     $combined = "$TaskName $ActionSummary"
-    if ($combined -match 'Gemini Memory') { return 'E:\GeminiMemoryBackup' }
+    if ($combined -match 'Gemini Memory') { return 'E:\Projects\Backups\gemini-memory' }
     if ($combined -match 'OpenClaw') { return 'E:\OpenClawGateway' }
     if ($combined -match 'WeFlow') { return 'E:\WeFlowBridge' }
-    if ($combined -match 'HealthLongevity') { return 'E:\HealthLongevity' }
+    if ($combined -match 'HealthLongevity') { return 'E:\Projects\Decisions\HealthLongevity' }
     if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\TimeAudit' }
     if ($combined -match 'TURZX') { return 'E:\TURZX-SideScreen' }
-    if ($combined -match 'Millennium') { return 'E:\steam-millennium-config-backup' }
+    if ($combined -match 'Millennium') { return 'E:\Projects\Tools\steam-millennium-config-backup' }
     if ($combined -match 'DownloadsToUSB|Sync-DownloadsToH|03_下载与安装包|下载与安装包') { return 'E:\Downloads -> H:\03_下载与安装包' }
 
     $knownRoots = @(
         'E:\CodexMemoryBackup',
-        'E:\GeminiMemoryBackup',
-        'E:\ClaudeMemoryBackup',
+        'E:\Projects\Backups\gemini-memory',
+        'E:\Projects\Backups\claude-memory',
         'E:\OpenClawGateway',
-        'E:\OpenClawBackup',
+        'E:\Projects\Backups\openclaw-backup',
         'E:\WeFlowBridge',
-        'E:\HealthLongevity',
+        'E:\Projects\Decisions\HealthLongevity',
         'E:\TimeAudit',
         'E:\DevConfigBackup',
         'E:\Scripts',
-        'E:\RamdiskGuardian',
-        'E:\SunshineRemote',
+        'E:\Projects\Tools\RamdiskGuardian',
+        'E:\Projects\Tools\sunshine-remote-streaming',
         'G:\20_Projects\github\ai-llm-job-prep',
         'C:\Users\10979\ProxyTools'
     )

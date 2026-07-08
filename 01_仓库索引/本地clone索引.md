@@ -24,7 +24,7 @@
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0` |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0` |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0` |
-| wlyaaaaa/Scripts | E:\Scripts | `main` 已同步，`0/0` |
+| wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`，脏工作区 5 项 |
 | wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0` |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0` |
 | wlyaaaaa/TimeAudit | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` |

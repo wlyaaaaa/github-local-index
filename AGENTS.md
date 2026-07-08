@@ -48,6 +48,7 @@
 
 - 不用 `git add .` 盲目提交混合工作区；优先显式 stage 文件。
 - 每次记录推送，必须统一调用 `tools/Add-PushRecord.ps1` 命令行脚本安全追加 `03_推送决策/已推送记录.md`，严禁 LLM 直接手工读写该大日志，防范文件冲突和 Token 浪费。
+- **原地语义重构与行数限制契约**：禁止盲目在文件末尾追加补丁。更新规则时必须定位最相关条目进行“原地语义合并与重写”，保持高内聚。本仓库及具体项目 `AGENTS.md` 长度强控在 **400 行** 内。
 - 本地必须通过运行 `tools/Install-GitHook.ps1` 部署 Git pre-commit 拦截 Hook。Hook 采用无 BOM 的 UTF-8 编码和纯英文注释以兼容 Git Bash。
 - 当 Hook 或扫描函数检测到 staged 或 untracked 列表中包含 `99_private/`, `secrets/`, `private_key` 等敏感字，或者内容包含 `-----BEGIN PRIVATE KEY-----` 和 `ghp_` 等敏感私钥 Token 时，无条件强行拦截提交（返回 Exit 1）。
 - 每次审计后更新 `00_总览/当前同步看板.md`、`02_同步诊断/` 和 `03_推送决策/`；优先使用 `tools/Update-GitHubIndex.ps1` 和 `tools/Update-ScheduledTaskHealth.ps1` 生成公开摘要。

@@ -13,7 +13,7 @@
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/devconfig-backup | PUBLIC | main | E:\DevConfigBackup | `main` 已同步，`0/0`，脏工作区 2 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/HealthLongevity | PRIVATE | main | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |
@@ -26,7 +26,7 @@
 | wlyaaaaa/ProxyClean | PUBLIC | master | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/RamdiskGuardian | PUBLIC | main | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | PUBLIC | main | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/Scripts | PUBLIC | main | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`，脏工作区 1 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/Scripts | PUBLIC | main | E:\Projects\Tools\Scripts | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/TimeAudit | PUBLIC | main | E:\Projects\Tools\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` | 正常维护 |

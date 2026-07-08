@@ -13,7 +13,7 @@
 | wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0` |
 | wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0` |
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0` |
-| wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0`，脏工作区 2 项 |
+| wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` |
 | wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |
 | wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` |
@@ -24,7 +24,7 @@
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0` |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0` |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0` |
-| wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`，脏工作区 1 项 |
+| wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0` |
 | wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0` |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0` |
 | wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` |

@@ -180,9 +180,20 @@ $softwareAutostartTask = [pscustomobject]@{
         Arguments = ''
     })
 }
+$downloadsSyncTask = [pscustomobject]@{
+    TaskName = 'DownloadsToUSB-Daily'
+    TaskPath = '\'
+    Actions = @([pscustomobject]@{
+        Execute = 'wscript.exe'
+        Arguments = '"E:\Scripts\Sync-DownloadsToH-Hidden.vbs"'
+    })
+}
 
 $actionSummary = Get-PublicActionSummary -Task $userTask
 $purpose = Get-TaskPurposeInference -TaskName 'WeFlow Watchdog' -ActionSummary 'powershell.exe -> E:\WeFlowBridge\weflow_heartbeat.ps1'
+$downloadsActionSummary = Get-PublicActionSummary -Task $downloadsSyncTask
+$downloadsPurpose = Get-TaskPurposeInference -TaskName 'DownloadsToUSB-Daily' -ActionSummary $downloadsActionSummary
+$downloadsRelatedPath = Get-RelatedPathHint -TaskName 'DownloadsToUSB-Daily' -ActionSummary $downloadsActionSummary
 $memoryRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/codex-memory' -LocalPath 'E:\CodexMemoryBackup' -Visibility 'PRIVATE' -ExistingTaskHints @('Codex Memory Backup')
 $publicRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/md-triple-tactics-talent-solver' -LocalPath 'E:\Pictures\三战之才' -Visibility 'PUBLIC' -ExistingTaskHints @()
 $agentsRecommendation = Get-RepositoryTaskRecommendation -NameWithOwner 'wlyaaaaa/.agents' -LocalPath 'E:\.agents' -Visibility 'PRIVATE' -ExistingTaskHints @()
@@ -202,6 +213,9 @@ Assert-True ($actionSummary -match 'wscript.exe') 'keeps executable name in publ
 Assert-True ($actionSummary -match 'E:\\CodexMemoryBackup\\tools\\codex_memory_backup_hidden.vbs') 'keeps sanitized script path in public action summary'
 Assert-True (-not ($actionSummary -match 'secret')) 'redacts action arguments after known script path'
 Assert-True ($purpose.Purpose -match '看门狗|心跳') 'infers watchdog purpose'
+Assert-Equal 'E:\Downloads -> H:\03_下载与安装包' $downloadsRelatedPath 'maps downloads usb sync to source and target paths'
+Assert-True ($downloadsPurpose.Purpose -match '下载目录同步') 'infers downloads usb sync purpose'
+Assert-True ($downloadsPurpose.Risk -match '不删除') 'documents downloads sync no-delete risk control'
 Assert-Equal '已有任务覆盖' $memoryRecommendation.Decision 'recognizes existing private backup task coverage'
 Assert-Equal '不建议新增' $publicRecommendation.Decision 'does not auto-schedule public content repository'
 Assert-Equal '不建议新增' $agentsRecommendation.Decision 'does not auto-schedule private rules source repository'

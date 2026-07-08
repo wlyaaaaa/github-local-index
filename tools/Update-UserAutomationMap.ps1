@@ -246,6 +246,7 @@ function Get-RelatedPathHint {
     if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\TimeAudit' }
     if ($combined -match 'TURZX') { return 'E:\TURZX-SideScreen' }
     if ($combined -match 'Millennium') { return 'E:\steam-millennium-config-backup' }
+    if ($combined -match 'DownloadsToUSB|Sync-DownloadsToH|03_下载与安装包|下载与安装包') { return 'E:\Downloads -> H:\03_下载与安装包' }
 
     $knownRoots = @(
         'E:\CodexMemoryBackup',
@@ -310,6 +311,14 @@ function Get-TaskPurposeInference {
             Purpose = '配置/组件清理维护'
             Why     = '清理孤立组件或过期配置，减少本地环境漂移和残留文件。'
             Risk    = '高频清理任务需确认不会误删仍在使用的配置。'
+        }
+    }
+
+    if ($combined -match 'DownloadsToUSB|Sync-DownloadsToH|03_下载与安装包|下载与安装包') {
+        return [pscustomobject]@{
+            Purpose = '下载目录同步到 U 盘'
+            Why     = '把 Windows 当前下载目录同步到 U 盘下载与安装包区，减少手工拷贝和路径分叉。'
+            Risk    = '脚本只复制/更新，不删除 H 盘旧文件；首次运行可能复制较多，需要关注耗时、U 盘 CRC 错误和可用空间。'
         }
     }
 

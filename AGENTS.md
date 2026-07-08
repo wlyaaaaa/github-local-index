@@ -47,6 +47,9 @@
 ## 维护习惯
 
 - 不用 `git add .` 盲目提交混合工作区；优先显式 stage 文件。
+- 每次记录推送，必须统一调用 `tools/Add-PushRecord.ps1` 命令行脚本安全追加 `03_推送决策/已推送记录.md`，严禁 LLM 直接手工读写该大日志，防范文件冲突和 Token 浪费。
+- 本地必须通过运行 `tools/Install-GitHook.ps1` 部署 Git pre-commit 拦截 Hook。Hook 采用无 BOM 的 UTF-8 编码和纯英文注释以兼容 Git Bash。
+- 当 Hook 或扫描函数检测到 staged 或 untracked 列表中包含 `99_private/`, `secrets/`, `private_key` 等敏感字，或者内容包含 `-----BEGIN PRIVATE KEY-----` 和 `ghp_` 等敏感私钥 Token 时，无条件强行拦截提交（返回 Exit 1）。
 - 每次审计后更新 `00_总览/当前同步看板.md`、`02_同步诊断/` 和 `03_推送决策/`；优先使用 `tools/Update-GitHubIndex.ps1` 和 `tools/Update-ScheduledTaskHealth.ps1` 生成公开摘要。
 - 检查本仓库是否与当前本机/GitHub 状态一致时，优先运行 `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch` 或 `tools/Refresh-GitHubLocalIndex.ps1 -CheckOnly`；默认只把 GitHub/同步诊断类稳定文档漂移视为失败，计划任务文档因时间戳和运行态高频变化只作为易变漂移提示。不要为了“强一致性”自动提交或推送公开摘要。
-- 计划任务只记录状态和异常，不在本仓库保存任务导出的完整敏感 XML。
+- 计划任务只记录状态 and 异常，不在本仓库保存任务导出的完整敏感 XML。

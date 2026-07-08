@@ -261,7 +261,7 @@ function Get-RelatedPathHint {
         'E:\Scripts',
         'E:\RamdiskGuardian',
         'E:\SunshineRemote',
-        'G:\AI大模型',
+        'G:\20_Projects\github\ai-llm-job-prep',
         'C:\Users\10979\ProxyTools'
     )
 

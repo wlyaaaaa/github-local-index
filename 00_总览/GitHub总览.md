@@ -16,7 +16,7 @@
 - `E:\GitHub总索引` 是长期总索引目录，不是临时报告目录。
 - `wlyaaaaa/ai-coach` 本地位于 `G:\20_Projects\github\ai-coach`，`main` 与 `origin/main` 已同步；作为学习记录/复盘/审计仓库，不建议新增后台计划任务。
 - `wlyaaaaa/codex-app-power-user-playbook` 本地位于 `E:\.agents-public-release`，`master` 与 `origin/master` 已同步，当前无需推送。
-- `wlyaaaaa/TURZX-SideScreen` 本地位于 `E:\TURZX-SideScreen`，`main` 与 `origin/main` 已同步，当前无需推送。
+- `wlyaaaaa/TURZX-SideScreen` 本地位于 `E:\Projects\Tools\TURZX-SideScreen`，`main` 与 `origin/main` 已同步，当前无需推送。
 - `wlyaaaaa/openclaw-backup` 为私有备份仓库，已按用户需求允许推送密钥/配置快照。
 - `wlyaaaaa/ai-llm-job-prep` 为私有知识库仓库，参考资料和课程产物按私有备份策略处理。
 - 公开仓库仍执行脱敏和暴露面审查。

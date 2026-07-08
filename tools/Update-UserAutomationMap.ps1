@@ -244,7 +244,7 @@ function Get-RelatedPathHint {
     if ($combined -match 'WeFlow') { return 'E:\Projects\Tools\WeFlowBridge' }
     if ($combined -match 'HealthLongevity') { return 'E:\Projects\Decisions\HealthLongevity' }
     if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\TimeAudit' }
-    if ($combined -match 'TURZX') { return 'E:\TURZX-SideScreen' }
+    if ($combined -match 'TURZX') { return 'E:\Projects\Tools\TURZX-SideScreen' }
     if ($combined -match 'Millennium') { return 'E:\Projects\Tools\steam-millennium-config-backup' }
     if ($combined -match 'DownloadsToUSB|Sync-DownloadsToH|03_下载与安装包|下载与安装包') { return 'E:\Downloads -> H:\03_下载与安装包' }
 

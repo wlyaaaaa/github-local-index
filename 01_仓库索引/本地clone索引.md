@@ -28,7 +28,7 @@
 | wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0` |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0` |
 | wlyaaaaa/TimeAudit | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` |
-| wlyaaaaa/TURZX-SideScreen | E:\TURZX-SideScreen | `main` 已同步，`0/0` |
+| wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0` |
 | wlyaaaaa/vault-tool | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0` |
 | wlyaaaaa/video-scaffold | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0` |
 | wlyaaaaa/WeFlowBridge | E:\Projects\Tools\WeFlowBridge | `master` 已同步，`0/0` |

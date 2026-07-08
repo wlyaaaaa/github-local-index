@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
-| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` ahead/behind `2/0` | 私有备份策略放行，可推送 |
+| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-coach | PRIVATE | main | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\20_Projects\github\ai-llm-job-prep | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0` | 正常维护 |
@@ -24,13 +24,13 @@
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/OpenClawGateway | PUBLIC | main | E:\OpenClawGateway | `main` 已同步，`0/0`，脏工作区 3 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/ProxyClean | PUBLIC | master | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/RamdiskGuardian | PUBLIC | main | E:\RamdiskGuardian | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/RamdiskGuardian | PUBLIC | main | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`，脏工作区 5 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | PUBLIC | main | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/Scripts | PUBLIC | main | E:\Scripts | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\steam-millennium-config-backup | `master` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | E:\SunshineRemote | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/steam-millennium-config-backup | PUBLIC | master | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`，脏工作区 1 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/sunshine-remote-streaming | PRIVATE | main | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`，脏工作区 3 项 | 私有仓库按备份需求确认后提交 |
 | wlyaaaaa/TimeAudit | PUBLIC | main | E:\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/TURZX-SideScreen | PUBLIC | main | E:\TURZX-SideScreen | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/vault-tool | PUBLIC | main | E:\Projects\Tools\vault-tool | `main` ahead/behind `1/0` | 公开仓库完成脱敏审查后推送 |
+| wlyaaaaa/vault-tool | PUBLIC | main | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/video-scaffold | PUBLIC | main | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/WeFlowBridge | PUBLIC | master | E:\WeFlowBridge | `master` 已同步，`0/0` | 正常维护 |

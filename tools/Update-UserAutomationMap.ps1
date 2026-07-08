@@ -241,7 +241,7 @@ function Get-RelatedPathHint {
     $combined = "$TaskName $ActionSummary"
     if ($combined -match 'Gemini Memory') { return 'E:\Projects\Backups\gemini-memory' }
     if ($combined -match 'OpenClaw') { return 'E:\OpenClawGateway' }
-    if ($combined -match 'WeFlow') { return 'E:\WeFlowBridge' }
+    if ($combined -match 'WeFlow') { return 'E:\Projects\Tools\WeFlowBridge' }
     if ($combined -match 'HealthLongevity') { return 'E:\Projects\Decisions\HealthLongevity' }
     if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\TimeAudit' }
     if ($combined -match 'TURZX') { return 'E:\TURZX-SideScreen' }
@@ -254,7 +254,7 @@ function Get-RelatedPathHint {
         'E:\Projects\Backups\claude-memory',
         'E:\OpenClawGateway',
         'E:\Projects\Backups\openclaw-backup',
-        'E:\WeFlowBridge',
+        'E:\Projects\Tools\WeFlowBridge',
         'E:\Projects\Decisions\HealthLongevity',
         'E:\TimeAudit',
         'E:\DevConfigBackup',

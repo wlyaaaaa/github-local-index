@@ -27,10 +27,10 @@ blacklist_paths="99_private/|secrets/|private_key|client_secret|\.env$|\.pem$|\.
 
 for file in $staged_files; do
     # Skip whitelist files
-    if [ "$file" = ".gitignore" ] || [ "$file" = "AGENTS.md" ] || [ "$file" = "README.md" ] || [ "$file" = "03_推送决策/已推送记录.md" ] || [ "$file" = "tools/Add-PushRecord.ps1" ] || [ "$file" = "tools/Install-GitHook.ps1" ]; then
+    if [ "$file" = ".gitignore" ] || [ "$file" = "AGENTS.md" ] || [ "$file" = "README.md" ] || [ "$file" = "03_推送决策/已推送记录.md" ] || [ "$file" = "03_推送决策/已推送记录_2026_归档.md" ] || [ "$file" = "tools/Add-PushRecord.ps1" ] || [ "$file" = "tools/Install-GitHook.ps1" ]; then
         continue
     fi
-    
+
     # 1. Check path blacklist
     if echo "$file" | grep -Ei "$blacklist_paths" > /dev/null; then
         echo "❌ [Security Alert] Blocked staged file path: $file"

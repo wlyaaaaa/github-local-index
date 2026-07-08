@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
-| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 5 项 | 私有仓库按备份需求确认后提交 |
 | wlyaaaaa/ai-coach | PRIVATE | main | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-llm-job-prep | PRIVATE | master | G:\20_Projects\github\ai-llm-job-prep | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0` | 正常维护 |
@@ -15,11 +15,11 @@
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\CodexMemoryBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/devconfig-backup | PUBLIC | main | E:\DevConfigBackup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` ahead/behind `2/0` | 公开仓库完成脱敏审查后推送 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 | 提交并推送本索引刷新结果 |
 | wlyaaaaa/HealthLongevity | PRIVATE | main | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
-| wlyaaaaa/LocalOCR | PUBLIC | main | E:\LocalOCR | `main` 已同步，`0/0` | 正常维护 |
+| wlyaaaaa/LocalOCR | PUBLIC | main | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`，脏工作区 14 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/md-triple-tactics-talent-solver | PUBLIC | main | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/OpenClawGateway | PUBLIC | main | E:\OpenClawGateway | `main` 已同步，`0/0`，脏工作区 3 项 | 公开仓库先做暴露面审查，再按显式路径提交 |

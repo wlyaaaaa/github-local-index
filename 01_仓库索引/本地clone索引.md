@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` |
+| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 5 项 |
 | wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0` |
 | wlyaaaaa/ai-llm-job-prep | G:\20_Projects\github\ai-llm-job-prep | `master` 已同步，`0/0` |
 | wlyaaaaa/ChineseASR | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0` |
@@ -15,9 +15,9 @@
 | wlyaaaaa/codex-memory | E:\CodexMemoryBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/devconfig-backup | E:\DevConfigBackup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` ahead/behind `2/0` |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | 本次刷新目标仓库；提交推送后复查 |
 | wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` |
-| wlyaaaaa/LocalOCR | E:\LocalOCR | `main` 已同步，`0/0` |
+| wlyaaaaa/LocalOCR | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`，脏工作区 14 项 |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0` |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0` |
 | wlyaaaaa/OpenClawGateway | E:\OpenClawGateway | `main` 已同步，`0/0`，脏工作区 3 项 |

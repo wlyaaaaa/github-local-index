@@ -706,8 +706,8 @@ function Write-GitHubIndexDocuments {
         [pscustomobject]@{
             NameWithOwner = 'PCConfig v0.1'
             Visibility    = '本机配置'
-            LocalState    = '机器配置、路径事实、迁移门禁和第一批 7 张项目卡已验收；不是完整换机恢复中心'
-            NextAction    = '停止扩张，按具体恢复或迁移需求再进入 v0.2'
+            LocalState    = '机器配置、路径事实、迁移门禁和第一批 7 张项目卡已验收；GitHub 项目迁移 Phase 1 已完成 11 个低依赖仓库归位'
+            NextAction    = 'Phase 2 只处理服务/计划任务/路径依赖项目'
         },
         [pscustomobject]@{
             NameWithOwner = 'Codex 默认联动'
@@ -732,6 +732,7 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += '4. 对未发现 clone 的仓库决定是否 clone 到固定目录或标记远端存档。'
     $dashboardLines += '5. 若私有仓库可见性发生变化，立即重新审计密钥备份策略。'
     $dashboardLines += '6. PCConfig 已达到 v0.1；不要为视觉完整继续扩项目卡。'
+    $dashboardLines += '7. GitHub-indexed 项目迁移下一步是 Phase 2：移动前必须同步更新计划任务、启动脚本和绝对路径引用。'
     Set-TextFile -Path (Join-Path $RepoRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }
 

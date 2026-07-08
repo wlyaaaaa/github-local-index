@@ -261,7 +261,7 @@ function Get-RelatedPathHint {
         'E:\Projects\Tools\Scripts',
         'E:\Projects\Tools\RamdiskGuardian',
         'E:\Projects\Tools\sunshine-remote-streaming',
-        'G:\20_Projects\github\ai-llm-job-prep',
+        'E:\Projects\Tools\ai-llm-job-prep',
         'C:\Users\10979\ProxyTools'
     )
 

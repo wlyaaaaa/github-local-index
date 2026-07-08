@@ -249,7 +249,7 @@ function Get-RelatedPathHint {
     if ($combined -match 'DownloadsToUSB|Sync-DownloadsToH|03_下载与安装包|下载与安装包') { return 'E:\Downloads -> H:\03_下载与安装包' }
 
     $knownRoots = @(
-        'E:\CodexMemoryBackup',
+        'E:\Projects\Backups\codex-memory',
         'E:\Projects\Backups\gemini-memory',
         'E:\Projects\Backups\claude-memory',
         'E:\OpenClawGateway',

@@ -240,7 +240,9 @@ function Get-RelatedPathHint {
 
     $combined = "$TaskName $ActionSummary"
     if ($combined -match 'Gemini Memory') { return 'E:\Projects\Backups\gemini-memory' }
-    if ($combined -match 'OpenClaw') { return 'E:\OpenClawGateway' }
+    if ($combined -match 'node_modules\\openclaw|node_modules/openclaw') { return 'C:\Users\10979\AppData\Roaming\npm\node_modules\openclaw' }
+    if ($combined -match 'OpenClaw') { return 'E:\Projects\Tools\OpenClawGateway' }
+    if ($combined -match 'DevConfig|WeChatBackup|WeChatDrive') { return 'E:\Projects\Backups\devconfig-backup' }
     if ($combined -match 'WeFlow') { return 'E:\Projects\Tools\WeFlowBridge' }
     if ($combined -match 'HealthLongevity') { return 'E:\Projects\Decisions\HealthLongevity' }
     if ($combined -match 'TimeAudit|LibreHardwareMonitor') { return 'E:\Projects\Tools\TimeAudit' }
@@ -252,12 +254,12 @@ function Get-RelatedPathHint {
         'E:\Projects\Backups\codex-memory',
         'E:\Projects\Backups\gemini-memory',
         'E:\Projects\Backups\claude-memory',
-        'E:\OpenClawGateway',
+        'E:\Projects\Tools\OpenClawGateway',
         'E:\Projects\Backups\openclaw-backup',
         'E:\Projects\Tools\WeFlowBridge',
         'E:\Projects\Decisions\HealthLongevity',
         'E:\Projects\Tools\TimeAudit',
-        'E:\DevConfigBackup',
+        'E:\Projects\Backups\devconfig-backup',
         'E:\Projects\Tools\Scripts',
         'E:\Projects\Tools\RamdiskGuardian',
         'E:\Projects\Tools\sunshine-remote-streaming',

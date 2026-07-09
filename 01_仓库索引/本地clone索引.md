@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0`，脏工作区 6 项 |
+| wlyaaaaa/.agents | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` |
 | wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0` |
 | wlyaaaaa/ai-llm-job-prep | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0` |
 | wlyaaaaa/ChineseASR | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0` |
@@ -21,7 +21,7 @@
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0` |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0` |
 | wlyaaaaa/OpenClawGateway | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0` |
-| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`，脏工作区 3 项 |
+| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0` |
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0` |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0` |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0` |

@@ -1,8 +1,25 @@
 param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*HealthLongevity*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*SteamMillennium*', '*GitHubLocalIndex*', '*LibreHardwareMonitor*'),
+    [string] $PurposeCatalogPath = 'E:\PCConfig\registries\task_purpose_catalog.json',
     [switch] $NoWrite
 )
+
+$script:NormalRunningTaskNames = @{}
+
+if (Test-Path -LiteralPath $PurposeCatalogPath -PathType Leaf) {
+    try {
+        $purposeCatalog = Get-Content -Raw -LiteralPath $PurposeCatalogPath | ConvertFrom-Json
+        foreach ($entry in @($purposeCatalog.entries)) {
+            if ([string] $entry.normal_state -eq 'Running' -and -not [string]::IsNullOrWhiteSpace([string] $entry.task_name)) {
+                $script:NormalRunningTaskNames[[string] $entry.task_name] = $true
+            }
+        }
+    }
+    catch {
+        Write-Warning "Could not read PCConfig scheduled task purpose catalog: $PurposeCatalogPath"
+    }
+}
 
 function ConvertTo-TaskResultAssessment {
     param([AllowNull()] [object] $LastTaskResult)
@@ -77,6 +94,14 @@ function ConvertTo-PublicTaskRow {
             HexCode  = $assessment.HexCode
             Severity = '信息'
             Summary  = '任务已禁用，未参与自动运行'
+        }
+    }
+    elseif ([string] $Task.State -eq 'Running' -and $assessment.Code -eq 267009 -and $script:NormalRunningTaskNames.ContainsKey([string] $Task.TaskName)) {
+        $assessment = [pscustomobject]@{
+            Code     = $assessment.Code
+            HexCode  = $assessment.HexCode
+            Severity = '正常'
+            Summary  = '任务常驻运行，符合 PCConfig normal_state'
         }
     }
 

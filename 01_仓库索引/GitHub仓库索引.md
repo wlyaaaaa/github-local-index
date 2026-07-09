@@ -8,12 +8,12 @@
 | --- | --- | --- | --- | --- | --- |
 | wlyaaaaa/.agents | PRIVATE | master | E:\.agents | `codex/consolidate-personal-capabilities` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ai-coach | PRIVATE | main | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/ai-llm-job-prep | PRIVATE | master | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`，脏工作区 156 项 | 私有仓库按备份需求确认后提交 |
+| wlyaaaaa/ai-llm-job-prep | PRIVATE | master | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`，脏工作区 3 项 | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` ahead/behind `1/0` | 公开仓库完成脱敏审查后推送 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/HealthLongevity | PRIVATE | main | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |

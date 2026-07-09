@@ -16,6 +16,10 @@ param(
     [switch]$PushIndex
 )
 
+# Enforce UTF-8 encoding for external subprocesses and console IO to prevent Chinese path Mojibake
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # 1. 自动计算中国时间 (UTC+8)
 $utcNow = [DateTime]::UtcNow
 $chinaTime = $utcNow.AddHours(8)

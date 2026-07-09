@@ -1,6 +1,6 @@
 # GitHub 总览
 
-更新时间：2026-07-08
+更新时间：2026-07-09
 
 本机 GitHub 工作区当前按三类管理：
 
@@ -12,10 +12,10 @@
 
 ## 当前关键结论
 
-- 当前 `wlyaaaaa` 账号共有 27 个仓库：原审计 24 个，加上公开总索引仓库 `github-local-index`、新增公开仓库 `TURZX-SideScreen` 和新增私有仓库 `ai-coach`。
+- 当前 `wlyaaaaa` 账号共有 28 个仓库；当前仓库索引记录 26 个已发现本地 clone，2 个未发现 clone。
 - `E:\GitHub总索引` 是长期总索引目录，不是临时报告目录。
-- `wlyaaaaa/ai-coach` 本地位于 `G:\20_Projects\github\ai-coach`，`main` 与 `origin/main` 已同步；作为学习记录/复盘/审计仓库，不建议新增后台计划任务。
-- `wlyaaaaa/codex-app-power-user-playbook` 本地位于 `E:\.agents-public-release`，`master` 与 `origin/master` 已同步，当前无需推送。
+- `wlyaaaaa/ai-coach` 本地位于 `E:\Projects\Tools\ai-coach`，`main` 与 `origin/main` 已同步；作为学习记录/复盘/审计仓库，不建议新增后台计划任务。
+- `wlyaaaaa/codex-app-power-user-playbook` 本地位于 `E:\Projects\Archives\codex-app-power-user-playbook`，`master` 与 `origin/master` 已同步，当前无需推送。
 - `wlyaaaaa/TURZX-SideScreen` 本地位于 `E:\Projects\Tools\TURZX-SideScreen`，`main` 与 `origin/main` 已同步，当前无需推送。
 - `wlyaaaaa/openclaw-backup` 为私有备份仓库，已按用户需求允许推送密钥/配置快照。
 - `wlyaaaaa/ai-llm-job-prep` 为私有知识库仓库，参考资料和课程产物按私有备份策略处理。

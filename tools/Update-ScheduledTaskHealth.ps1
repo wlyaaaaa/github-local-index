@@ -232,6 +232,8 @@ function Write-ScheduledTaskDocuments {
         '',
         "本文件由 ``tools/Update-ScheduledTaskHealth.ps1`` 只读刷新。脚本只记录任务名、状态、运行时间和返回码摘要，不保存完整任务 XML 或完整 Action 命令。",
         '',
+        '口径说明：本文件是公开安全健康摘要，不等同于 Windows Task Scheduler 全量扫描，也不等同于 PCConfig 的人工 purpose catalog。全量机器事实以 `E:\PCConfig\registries\tasks.json` 为准；任务目的、归属、正常态和审计说明以 `E:\PCConfig\registries\task_purpose_catalog.json` 为准。',
+        '',
         '## 当前统计',
         '',
         "| 总数 | 正常 | 警告 | 异常 |",

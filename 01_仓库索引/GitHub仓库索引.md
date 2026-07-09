@@ -13,7 +13,7 @@
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0` | 正常维护 |
-| wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` ahead/behind `1/0` | 公开仓库完成脱敏审查后推送 |
+| wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0` | 正常维护 |
 | wlyaaaaa/HealthLongevity | PRIVATE | main | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` | 正常维护 |

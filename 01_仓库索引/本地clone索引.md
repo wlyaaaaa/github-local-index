@@ -13,7 +13,7 @@
 | wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0` |
 | wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0` |
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0` |
-| wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` ahead/behind `1/0` |
+| wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0` |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0` |
 | wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0` |
 | wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0` |

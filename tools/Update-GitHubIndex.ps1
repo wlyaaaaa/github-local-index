@@ -1,34 +1,19 @@
-param(
+﻿param(
     [string] $Owner = 'wlyaaaaa',
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-    [string[]] $ScanRoots = @('C:\Users\10979', 'E:\', 'G:\'),
+    [string[]] $ScanRoots = @(),
     [switch] $SkipFetch,
     [switch] $NoWrite
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
+
 function Normalize-GitHubRepoSlug {
     param([AllowNull()] [string] $RemoteUrl)
 
-    if ([string]::IsNullOrWhiteSpace($RemoteUrl)) {
-        return $null
-    }
-
-    $value = $RemoteUrl.Trim() -replace '\\', '/'
-    $patterns = @(
-        '^https://github\.com/(?<owner>[^/]+)/(?<repo>[^/#?]+?)(?:\.git)?/?$',
-        '^git@github\.com:(?<owner>[^/]+)/(?<repo>[^/#?]+?)(?:\.git)?$',
-        '^ssh://git@github\.com/(?<owner>[^/]+)/(?<repo>[^/#?]+?)(?:\.git)?/?$'
-    )
-
-    foreach ($pattern in $patterns) {
-        $match = [regex]::Match($value, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-        if ($match.Success) {
-            $repo = $match.Groups['repo'].Value -replace '\.git$', ''
-            return "$($match.Groups['owner'].Value)/$repo"
-        }
-    }
-
-    return $null
+    ConvertTo-GitHubRepoSlug $RemoteUrl
 }
 
 function ConvertTo-MarkdownCell {
@@ -214,56 +199,6 @@ function Get-RepoStateText {
     return $state
 }
 
-function Get-LocalRepoStatus {
-    param(
-        [string] $Path,
-        [string] $Visibility,
-        [switch] $SkipFetch
-    )
-
-    if (-not $SkipFetch) {
-        & git -C $Path fetch --prune origin *> $null
-    }
-
-    $branch = (& git -C $Path branch --show-current 2>$null)
-    if ($null -eq $branch) { $branch = '' }
-    $branch = ([string] $branch).Trim()
-
-    $upstream = (& git -C $Path rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null)
-    $hasUpstream = $LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($upstream)
-
-    $ahead = 0
-    $behind = 0
-    if ($hasUpstream) {
-        $counts = (& git -C $Path rev-list --left-right --count 'HEAD...@{u}' 2>$null)
-        if ($LASTEXITCODE -eq 0 -and $counts) {
-            $parts = ([string] $counts).Trim() -split '\s+'
-            if ($parts.Count -ge 2) {
-                $ahead = [int] $parts[0]
-                $behind = [int] $parts[1]
-            }
-        }
-    }
-
-    $dirtyLines = @(& git -C $Path status --porcelain=v1 --untracked-files=normal 2>$null)
-    $dirtyCount = $dirtyLines.Count
-    $state = Get-RepoStateText -Branch $branch -HasUpstream:$hasUpstream -Ahead $ahead -Behind $behind -DirtyCount $dirtyCount
-    $nextAction = Get-RepoNextAction -Visibility $Visibility -HasUpstream:$hasUpstream -Ahead $ahead -Behind $behind -DirtyCount $dirtyCount
-
-    return [pscustomobject]@{
-        Path        = $Path
-        Branch      = $branch
-        Upstream    = if ($hasUpstream) { ([string] $upstream).Trim() } else { '' }
-        Ahead       = $ahead
-        Behind      = $behind
-        DirtyCount  = $dirtyCount
-        State       = $state
-        NextAction  = $nextAction
-        IsDirty     = $dirtyCount -gt 0
-        NeedsReview = (-not $hasUpstream) -or $ahead -gt 0 -or $behind -gt 0 -or $dirtyCount -gt 0
-    }
-}
-
 function Get-GitConfigPaths {
     param([string[]] $Roots)
 
@@ -283,8 +218,8 @@ function Get-GitConfigPaths {
         $args = @('--files', '--hidden', '--no-ignore')
         $args += $existingRoots
         $args += @('-g', '**/.git/config', '-g', '!**/node_modules/**', '-g', '!**/.cache/**')
-        $rgConfigs = @(& rg @args 2>$null)
-        return @(@($rootConfigs) + $rgConfigs | Where-Object { -not (Test-IsTransientGitConfigPath $_) } | Sort-Object -Unique)
+        $rgConfigs = @(& rg @args 2>$null | Where-Object { -not (Test-IsTransientGitConfigPath $_) })
+        return @(@($rootConfigs) + $rgConfigs | Sort-Object -Unique)
     }
 
     $paths = foreach ($root in $existingRoots) {
@@ -340,6 +275,89 @@ function Get-RepoPathFromConfigPath {
     return Split-Path -Parent $gitDir
 }
 
+function Get-GitRepositorySeedPaths {
+    param([string[]] $Roots)
+
+    $existingRoots = @($Roots | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+    if ($existingRoots.Count -eq 0) {
+        return @()
+    }
+
+    $seeds = [System.Collections.Generic.List[string]]::new()
+    $rootsToScan = [System.Collections.Generic.List[string]]::new()
+    foreach ($root in $existingRoots) {
+        $resolvedRoot = [System.IO.Path]::GetFullPath($root)
+        $insideResult = Invoke-GitCommandResult -Path $resolvedRoot -Arguments @('rev-parse', '--is-inside-work-tree')
+        if ($insideResult.exit_code -eq 0 -and $insideResult.stdout -eq 'true') {
+            $seeds.Add($resolvedRoot)
+        }
+        else {
+            $rootsToScan.Add($resolvedRoot)
+        }
+    }
+
+    if ($rootsToScan.Count -gt 0) {
+        if (Get-Command rg -ErrorAction SilentlyContinue) {
+            $arguments = @('--files', '--hidden', '--no-ignore') + @($rootsToScan) + @(
+                '-g', '**/.git',
+                '-g', '**/.git/config',
+                '-g', '!**/node_modules/**',
+                '-g', '!**/.cache/**'
+            )
+            $gitMarkers = @(& rg @arguments 2>$null)
+        }
+        else {
+            $gitMarkers = @(foreach ($root in $rootsToScan) {
+                Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -eq '.git' -or $_.FullName -match '\\.git\\config$' } |
+                    Select-Object -ExpandProperty FullName
+            })
+        }
+
+        foreach ($marker in $gitMarkers) {
+            $normalized = ([string] $marker) -replace '/', '\'
+            $seed = if ($normalized -match '\\.git\\config$') {
+                Split-Path -Parent (Split-Path -Parent $normalized)
+            }
+            elseif ($normalized -match '\\.git$') {
+                Split-Path -Parent $normalized
+            }
+            else {
+                $null
+            }
+            if ($seed -and -not (Test-IsTransientClonePath -Path $seed)) {
+                $seeds.Add([System.IO.Path]::GetFullPath($seed))
+            }
+        }
+    }
+
+    return @($seeds | Sort-Object -Unique)
+}
+
+function Get-IndexedCloneScanRoots {
+    param([Parameter(Mandatory = $true)] [string] $RepoRoot)
+
+    $indexPath = Join-Path $RepoRoot '01_仓库索引/本地clone索引.md'
+    $roots = [System.Collections.Generic.List[string]]::new()
+    if (Test-Path -LiteralPath $indexPath -PathType Leaf) {
+        foreach ($line in Get-Content -LiteralPath $indexPath -Encoding utf8) {
+            if ($line -notmatch '^\|\s*[^|]+/[^|]+\|\s*(?<paths>[^|]+?)\s*\|') {
+                continue
+            }
+            foreach ($candidate in @($matches['paths'] -split '<br>')) {
+                $path = $candidate.Trim(' ', '`')
+                if ($path -and $path -ne '未发现本地 clone' -and (Test-Path -LiteralPath $path -PathType Container)) {
+                    $roots.Add([System.IO.Path]::GetFullPath($path))
+                }
+            }
+        }
+    }
+    if (Test-Path -LiteralPath $RepoRoot -PathType Container) {
+        $roots.Add([System.IO.Path]::GetFullPath($RepoRoot))
+    }
+    return @($roots | Sort-Object -Unique)
+}
+
 function Test-IsTransientClonePath {
     param([string] $Path)
 
@@ -365,30 +383,32 @@ function Get-LocalCloneMap {
     )
 
     $map = @{}
-    foreach ($config in Get-GitConfigPaths -Roots $Roots) {
-        $repoPath = Get-RepoPathFromConfigPath -ConfigPath $config
+    $seenCommonDirs = @{}
+    foreach ($repoPath in Get-GitRepositorySeedPaths -Roots $Roots) {
         if (Test-IsTransientClonePath -Path $repoPath) {
             continue
         }
 
-        foreach ($slug in Get-GitConfigRemoteSlugs -ConfigPath $config) {
-            if (-not $map.ContainsKey($slug)) {
-                $map[$slug] = @()
-            }
-
-            $map[$slug] += [pscustomobject]@{
-                Path        = $repoPath
-                Branch      = ''
-                Upstream    = ''
-                Ahead       = 0
-                Behind      = 0
-                DirtyCount  = 0
-                State       = '待检查'
-                NextAction  = '待检查'
-                IsDirty     = $false
-                NeedsReview = $true
-            }
+        $commonResult = Invoke-GitCommandResult -Path $repoPath -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir')
+        if ($commonResult.exit_code -ne 0) {
+            continue
         }
+        $commonKey = ([System.IO.Path]::GetFullPath($commonResult.stdout)).ToLowerInvariant()
+        if ($seenCommonDirs.ContainsKey($commonKey)) {
+            continue
+        }
+
+        $remoteResult = Invoke-GitCommandResult -Path $repoPath -Arguments @('config', '--get', 'remote.origin.url')
+        $slug = if ($remoteResult.exit_code -eq 0) { Normalize-GitHubRepoSlug $remoteResult.stdout } else { $null }
+        if (-not $slug) {
+            continue
+        }
+
+        $seenCommonDirs[$commonKey] = $true
+        if (-not $map.ContainsKey($slug)) {
+            $map[$slug] = @()
+        }
+        $map[$slug] += [pscustomobject]@{ Path = $repoPath; CommonDir = $commonResult.stdout }
     }
 
     return $map
@@ -445,7 +465,12 @@ function ConvertTo-GitHubIndexRows {
             if ($ahead -gt 0) { $reasons += "ahead $ahead" }
             if ($behind -gt 0) { $reasons += "behind $behind" }
             if ($dirtyCount -gt 0) { $reasons += "脏工作区 $dirtyCount 项" }
-            if ([string]::IsNullOrWhiteSpace($primary.Upstream)) { $reasons += '无 upstream' }
+            if (@($clones | Where-Object { [string]::IsNullOrWhiteSpace([string] $_.Upstream) }).Count -gt 0) { $reasons += '无 upstream' }
+            foreach ($cloneReason in @($clones | ForEach-Object { @($_.QueueReasons) })) {
+                if (-not [string]::IsNullOrWhiteSpace([string] $cloneReason)) {
+                    $reasons += [string] $cloneReason
+                }
+            }
             $queueReason = ($reasons | Sort-Object -Unique) -join '；'
         }
 
@@ -475,31 +500,7 @@ function ConvertTo-DocumentRows {
         [string] $Owner
     )
 
-    $indexRepoName = "$Owner/github-local-index"
-    foreach ($row in $Rows) {
-        if ($row.NameWithOwner -eq $indexRepoName -and $row.DirtyCount -gt 0) {
-            [pscustomobject]@{
-                NameWithOwner = $row.NameWithOwner
-                Visibility    = $row.Visibility
-                DefaultBranch = $row.DefaultBranch
-                LocalPath     = $row.LocalPath
-                LocalState    = '本次刷新目标仓库；提交推送后复查'
-                NextAction    = '提交并推送本索引刷新结果'
-                HasLocalClone = $row.HasLocalClone
-                NeedsReview   = $false
-                Ahead         = 0
-                Behind        = 0
-                DirtyCount    = 0
-                QueueReason   = ''
-                PushedAt      = $row.PushedAt
-                UpdatedAt     = $row.UpdatedAt
-                Url           = $row.Url
-            }
-            continue
-        }
-
-        $row
-    }
+    return @($Rows)
 }
 
 function Get-GitHubRepositories {
@@ -534,7 +535,60 @@ function Resolve-CloneStatuses {
         }
 
         $resolved = foreach ($clone in @($CloneMap[$name])) {
-            Get-LocalRepoStatus -Path $clone.Path -Visibility ([string] $repo.visibility) -SkipFetch:$SkipFetch
+            $metadataJson = $repo | ConvertTo-Json -Depth 6 -Compress
+            $metadataInvoker = { param($slug) [pscustomobject]@{ exit_code = 0; stdout = $metadataJson; stderr = '' } }.GetNewClosure()
+            $admission = Get-ProjectAdmissionRecord `
+                -Repo $name `
+                -RepoPath $clone.Path `
+                -Visibility ([string] $repo.visibility) `
+                -DefaultBranch (Get-DefaultBranchName -Repository $repo) `
+                -Fetch:(-not $SkipFetch) `
+                -GitHubInvoker $metadataInvoker
+
+            $repoErrorReasons = @($admission.errors | ForEach-Object { [string] $_.category })
+            foreach ($worktree in @($admission.worktrees)) {
+                $ahead = if ($null -eq $worktree.ahead) { 0 } else { [int] $worktree.ahead }
+                $behind = if ($null -eq $worktree.behind) { 0 } else { [int] $worktree.behind }
+                $dirtyCount = if ($null -eq $worktree.dirty_count) { 0 } else { [int] $worktree.dirty_count }
+                $hasUpstream = -not [string]::IsNullOrWhiteSpace([string] $worktree.upstream)
+                $state = if (-not $worktree.exists -or $worktree.prunable) {
+                    'prunable worktree（路径缺失）'
+                }
+                else {
+                    Get-RepoStateText -Branch ([string] $worktree.branch) -HasUpstream:$hasUpstream -Ahead $ahead -Behind $behind -DirtyCount $dirtyCount
+                }
+                $state += "（$($admission.remote_mode)）"
+
+                $queueReasons = [System.Collections.Generic.List[string]]::new()
+                if ($worktree.prunable) { $queueReasons.Add('prunable worktree') }
+                if ($worktree.detached) { $queueReasons.Add('detached worktree') }
+                if ($admission.remote_mode -eq 'cached') { $queueReasons.Add('cached 远端引用') }
+                foreach ($errorReason in $repoErrorReasons) { $queueReasons.Add($errorReason) }
+                $nextAction = if ($repoErrorReasons.Count -gt 0) {
+                    '远端观察失败；当前仅使用 cached 引用，需人工复查'
+                }
+                elseif ($worktree.prunable) {
+                    '清理或恢复 prunable worktree 元数据'
+                }
+                else {
+                    Get-RepoNextAction -Visibility ([string] $repo.visibility) -HasUpstream:$hasUpstream -Ahead $ahead -Behind $behind -DirtyCount $dirtyCount
+                }
+
+                [pscustomobject]@{
+                    Path = $worktree.path
+                    Branch = [string] $worktree.branch
+                    Upstream = [string] $worktree.upstream
+                    Ahead = $ahead
+                    Behind = $behind
+                    DirtyCount = $dirtyCount
+                    State = $state
+                    NextAction = $nextAction
+                    IsDirty = $dirtyCount -gt 0
+                    NeedsReview = $repoErrorReasons.Count -gt 0 -or $worktree.prunable -or (-not $hasUpstream) -or $ahead -gt 0 -or $behind -gt 0 -or $dirtyCount -gt 0
+                    QueueReasons = @($queueReasons)
+                    RemoteMode = $admission.remote_mode
+                }
+            }
         }
 
         $CloneMap[$name] = @($resolved)
@@ -574,13 +628,38 @@ function Write-GitHubIndexDocuments {
     )
 
     $Rows = @(Sort-GitHubIndexRows (ConvertTo-DocumentRows -Rows $Rows -Owner $Owner))
-    $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+    $date = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
     $total = $Rows.Count
     $localRows = @($Rows | Where-Object { $_.HasLocalClone } | Sort-Object NameWithOwner)
     $missingRows = @($Rows | Where-Object { -not $_.HasLocalClone } | Sort-Object NameWithOwner)
     $queueRows = @($Rows | Where-Object { $_.HasLocalClone -and $_.NeedsReview } | Sort-Object NameWithOwner)
     $syncedRows = @($Rows | Where-Object { $_.HasLocalClone -and -not $_.NeedsReview } | Sort-Object NameWithOwner)
     $dirtyRows = @($Rows | Where-Object { $_.DirtyCount -gt 0 } | Sort-Object NameWithOwner)
+
+    $overviewLines = @(
+        '# GitHub 总览',
+        '',
+        "更新时间：$date",
+        '',
+        '本机 GitHub 工作区按公开索引、私有备份仓库和公开业务仓库三类管理。详细事实来自同一组仓库行，不在总览中维护第二份项目清单。',
+        '',
+        '## 当前计数',
+        '',
+        '| GitHub 仓库 | 已发现本地 clone | 未发现 clone | 当前审核队列 |',
+        '|---|---|---|---|',
+        "| $total | $($localRows.Count) | $($missingRows.Count) | $($queueRows.Count) |",
+        '',
+        '## 发布边界',
+        '',
+        '- 私有备份仓库可按用户恢复需求保存敏感恢复材料；本公开索引只记录公开安全结论。',
+        '- 公开仓库在提交前执行暴露面审查，不记录 secret 值、原始日志、任务 XML 或私有 payload。',
+        '- Git 与 GitHub 事实由本仓库维护；机器路径、计划任务配置和恢复事实由 PCConfig 维护。',
+        '',
+        '## 历史审计',
+        '',
+        '- [2026-07-05 GitHub 仓库与计划任务审计](../90_历史审计/2026/2026-07-05-GitHub仓库与计划任务审计.md)'
+    )
+    Set-TextFile -Path (Join-Path $RepoRoot '00_总览/GitHub总览.md') -Lines $overviewLines
 
     $indexLines = @(
         '# GitHub 仓库索引',
@@ -692,28 +771,16 @@ function Write-GitHubIndexDocuments {
             NextAction    = if ($queueRows.Count -gt 0) { '逐项审查' } else { '无需处理' }
         },
         [pscustomobject]@{
-            NameWithOwner = '项目完善度'
+            NameWithOwner = '工作区脏状态'
             Visibility    = '公开索引'
-            LocalState    = '仓库干净，单测通过，稳定一致性漂移为 0；只剩计划任务运行时间类易变漂移'
-            NextAction    = '进入长期维护态'
+            LocalState    = "$($dirtyRows.Count) 个仓库存在脏 worktree"
+            NextAction    = if ($dirtyRows.Count -gt 0) { '逐项审查暴露面和提交边界' } else { '无需处理' }
         },
         [pscustomobject]@{
-            NameWithOwner = '计划任务治理'
-            Visibility    = '本机自动化'
-            LocalState    = '坏路径、调度器拒绝运行和后台窗口策略已收口；`0xC000013A` 按人为中断/关机注销优先观察'
-            NextAction    = '定期检查，不继续大改'
-        },
-        [pscustomobject]@{
-            NameWithOwner = 'PCConfig v0.1'
-            Visibility    = '本机配置'
-            LocalState    = '机器配置、路径事实、迁移门禁和第一批 7 张项目卡已验收；GitHub-indexed 项目迁移当前无剩余可执行候选'
-            NextAction    = '后续只在具体路径、任务、恢复或运行态变化时增量更新'
-        },
-        [pscustomobject]@{
-            NameWithOwner = 'Codex 默认联动'
-            Visibility    = '规则'
-            LocalState    = '实际修改任意 Git 工作区后，默认提交/推送目标仓库并同步本索引'
-            NextAction    = '用户明确要求只本地、不提交或不推送时跳过'
+            NameWithOwner = '公开发布门禁'
+            Visibility    = 'PUBLIC'
+            LocalState    = '公开仓库只接收代码、文档和脱敏后的 Git 状态摘要'
+            NextAction    = '发现 secret、原始日志或私有 payload 时阻止发布'
         }
     )
     $dashboardLines = @(
@@ -726,13 +793,11 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += ''
     $dashboardLines += '## 下一步优先级'
     $dashboardLines += ''
-    $dashboardLines += '1. 定期运行 `tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`；稳定漂移为 0 时不为了计划任务时间戳自动提交。'
-    $dashboardLines += '2. Codex 实际修改任意 Git 工作区后，默认同步目标仓库，再同步本索引。'
+    $dashboardLines += '1. 用 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json` 获取单仓库 admission 结论。'
+    $dashboardLines += '2. 定期运行 `tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`；只读检查不得提交或推送。'
     $dashboardLines += '3. 对未推送队列中的公开仓库先做暴露面审查。'
-    $dashboardLines += '4. 对未发现 clone 的仓库决定是否 clone 到固定目录或标记远端存档。'
-    $dashboardLines += '5. 若私有仓库可见性发生变化，立即重新审计密钥备份策略。'
-    $dashboardLines += '6. PCConfig 已达到 v0.1；不要为视觉完整继续扩项目卡。'
-    $dashboardLines += '7. GitHub-indexed 项目迁移队列当前完成；未来若新增迁移，移动前必须同步更新计划任务、启动脚本和绝对路径引用。'
+    $dashboardLines += '4. 对未发现 clone 的仓库决定是否进入统一目录或标记远端存档；`wlyaaaaa/Key` 始终禁止克隆。'
+    $dashboardLines += '5. 只有明确里程碑或索引事实变化时才记录 push milestone；普通推送不制造索引提交。'
     Set-TextFile -Path (Join-Path $RepoRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }
 
@@ -740,13 +805,20 @@ function Invoke-UpdateGitHubIndex {
     param(
         [string] $Owner = 'wlyaaaaa',
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-        [string[]] $ScanRoots = @('C:\Users\10979', 'E:\', 'G:\'),
+        [string[]] $ScanRoots = @(),
         [switch] $SkipFetch,
         [switch] $NoWrite
     )
 
     $repositories = @(Get-GitHubRepositories -Owner $Owner)
-    $cloneMap = Get-LocalCloneMap -Roots $ScanRoots -SkipFetch:$SkipFetch
+    $effectiveScanRoots = @($ScanRoots)
+    if ($effectiveScanRoots.Count -eq 0) {
+        $effectiveScanRoots = @(Get-IndexedCloneScanRoots -RepoRoot $RepoRoot)
+    }
+    if ($effectiveScanRoots.Count -eq 0) {
+        throw 'No Git scan roots are available. Pass -ScanRoots for bootstrap discovery.'
+    }
+    $cloneMap = Get-LocalCloneMap -Roots $effectiveScanRoots -SkipFetch:$SkipFetch
     Resolve-CloneStatuses -CloneMap $cloneMap -Repositories $repositories -SkipFetch:$SkipFetch
     $rows = @(Sort-GitHubIndexRows (ConvertTo-GitHubIndexRows -Repositories $repositories -CloneMap $cloneMap))
 

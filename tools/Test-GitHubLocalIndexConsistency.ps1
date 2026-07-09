@@ -1,16 +1,19 @@
-param(
+﻿param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [string] $Owner = 'wlyaaaaa',
-    [string[]] $ScanRoots = @('C:\Users\10979', 'E:\', 'G:\'),
+    [string[]] $ScanRoots = @(),
     [switch] $SkipFetch,
     [switch] $Strict,
     [switch] $KeepGenerated
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 function Get-GitHubLocalIndexGeneratedDocumentPaths {
     return @(
+        '00_总览\GitHub总览.md',
         '00_总览\当前同步看板.md',
         '01_仓库索引\GitHub仓库索引.md',
         '01_仓库索引\本地clone索引.md',
@@ -27,6 +30,7 @@ function Get-GitHubLocalIndexGeneratedDocumentPaths {
 
 function Get-GitHubLocalIndexStableDocumentPaths {
     return @(
+        '00_总览\GitHub总览.md',
         '00_总览\当前同步看板.md',
         '01_仓库索引\GitHub仓库索引.md',
         '01_仓库索引\本地clone索引.md',
@@ -71,15 +75,24 @@ function ConvertTo-ConsistencyComparableLine {
     switch ($RelativePath) {
         '01_仓库索引\GitHub仓库索引.md' {
             if ($cells.Count -ge 8) {
-                $cells[5] = ' __SELF_INDEX_STATE__ '
-                $cells[6] = ' __SELF_INDEX_ACTION__ '
-                return ($cells -join '|')
+                $state = $cells[5].Trim()
+                $action = $cells[6].Trim()
+                $knownState = $state -eq '本次刷新目标仓库；提交推送后复查' -or $state -match '^`[^`]+` 已同步，`0/0`(?:（(?:cached|live)）)?$'
+                $knownAction = $action -in @('提交并推送本索引刷新结果', '正常维护')
+                if ($knownState -and $knownAction) {
+                    $cells[5] = ' __SELF_INDEX_STATE__ '
+                    $cells[6] = ' __SELF_INDEX_ACTION__ '
+                    return ($cells -join '|')
+                }
             }
         }
         { $_ -in @('01_仓库索引\本地clone索引.md', '02_同步诊断\分支与远端诊断.md') } {
             if ($cells.Count -ge 5) {
-                $cells[3] = ' __SELF_INDEX_STATE__ '
-                return ($cells -join '|')
+                $state = $cells[3].Trim()
+                if ($state -eq '本次刷新目标仓库；提交推送后复查' -or $state -match '^`[^`]+` 已同步，`0/0`(?:（(?:cached|live)）)?$') {
+                    $cells[3] = ' __SELF_INDEX_STATE__ '
+                    return ($cells -join '|')
+                }
             }
         }
     }
@@ -173,7 +186,7 @@ function Invoke-GitHubLocalIndexConsistencyCheck {
     param(
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
         [string] $Owner = 'wlyaaaaa',
-        [string[]] $ScanRoots = @('C:\Users\10979', 'E:\', 'G:\'),
+        [string[]] $ScanRoots = @(),
         [switch] $SkipFetch,
         [switch] $Strict,
         [switch] $KeepGenerated
@@ -187,7 +200,11 @@ function Invoke-GitHubLocalIndexConsistencyCheck {
         . (Join-Path $RepoRoot 'tools\Update-ScheduledTaskHealth.ps1')
         . (Join-Path $RepoRoot 'tools\Update-UserAutomationMap.ps1')
 
-        Invoke-UpdateGitHubIndex -Owner $Owner -RepoRoot $generatedRoot -ScanRoots $ScanRoots -SkipFetch:$SkipFetch | Out-Null
+        $effectiveScanRoots = @($ScanRoots)
+        if ($effectiveScanRoots.Count -eq 0) {
+            $effectiveScanRoots = @(Get-IndexedCloneScanRoots -RepoRoot $RepoRoot)
+        }
+        Invoke-UpdateGitHubIndex -Owner $Owner -RepoRoot $generatedRoot -ScanRoots $effectiveScanRoots -SkipFetch:$SkipFetch | Out-Null
         Invoke-UpdateScheduledTaskHealth -RepoRoot $generatedRoot | Out-Null
         Invoke-UpdateUserAutomationMap -RepoRoot $generatedRoot | Out-Null
 

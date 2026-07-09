@@ -1,245 +1,247 @@
-﻿[CmdletBinding()]
+﻿#requires -Version 7.0
+
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)]
-    [string]$Repo,
-
-    [Parameter(Mandatory=$true)]
-    [string]$Branch,
-
-    [Parameter(Mandatory=$true)]
-    [string]$Commit,
-
-    [Parameter(Mandatory=$true)]
-    [string]$Reason,
-
-    [Parameter(Mandatory=$false)]
-    [switch]$PushIndex
+    [Parameter(Mandatory = $true)] [string] $Repo,
+    [Parameter(Mandatory = $true)] [string] $Branch,
+    [Parameter(Mandatory = $true)] [string] $Commit,
+    [Parameter(Mandatory = $true)] [string] $Reason,
+    [string] $LogPath = (Join-Path $PSScriptRoot '..\03_推送决策\已推送记录.md'),
+    [switch] $Json
 )
 
-# Enforce UTF-8 encoding for external subprocesses and console IO to prevent Chinese path Mojibake
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
 
-# 1. 自动计算中国时间 (UTC+8)
-$utcNow = [DateTime]::UtcNow
-$chinaTime = $utcNow.AddHours(8)
-$timeStr = $chinaTime.ToString("yyyy-MM-dd HH:mm:ss") + " +08:00"
+function ConvertTo-PushRecordMarkdownCell {
+    param([Parameter(Mandatory = $true)] [string] $Value)
 
-# 2. 定位日志文件绝对路径
-$logPath = Join-Path $PSScriptRoot "..\03_推送决策\已推送记录.md"
-$logPath = [System.IO.Path]::GetFullPath($logPath)
-
-if (-not (Test-Path -Path $logPath)) {
-    Write-Error "❌ Target log file does not exist at: $logPath"
-    exit 1
+    $escaped = $Value.Replace('|', '\|')
+    $escaped = $escaped.Replace('`', '\`')
+    return $escaped -replace "(`r`n|`n|`r)", '<br>'
 }
 
-# 3. 读取现有日志内容并 Prepend 插入 (引入全局 Mutex 锁防止并发争用)
-$mutexName = "Global\GitHubLocalIndexMutex"
-$createdNew = $false
-$mutex = New-Object System.Threading.Mutex($false, $mutexName, [ref]$createdNew)
+function ConvertFrom-PushRecordMarkdownCell {
+    param([Parameter(Mandatory = $true)] [string] $Value)
 
-Write-Host "Acquiring file write lock..." -ForegroundColor Gray
-$hasLock = $mutex.WaitOne(15000) # 最多等待 15 秒
-
-if (-not $hasLock) {
-    Write-Error "❌ Timeout waiting for another Agent to finish writing the log file."
-    $mutex.Dispose()
-    exit 1
+    return $Value.Replace('\|', '|').Replace('\`', '`').Replace('<br>', "`n")
 }
 
-try {
-    Write-Host "Reading log file: $logPath" -ForegroundColor Gray
-    $contentLines = Get-Content -Path $logPath -Encoding utf8
+function Get-PushRecordCells {
+    param([Parameter(Mandatory = $true)] [AllowEmptyString()] [string] $Line)
 
-    $newRow = "| $timeStr | ``$Repo`` | ``$Branch`` | $Reason |"
-    $newLines = [System.Collections.Generic.List[string]]::new()
-    $updatedTimestamp = $false
-    $insertedRow = $false
-
-    foreach ($line in $contentLines) {
-        if ($line -like "更新时间：*") {
-            $newLines.Add("更新时间：$timeStr")
-            $updatedTimestamp = $true
-        } elseif ($line -eq "|---|---|---|---|") {
-            $newLines.Add($line)
-            $newLines.Add($newRow)
-            $insertedRow = $true
-        } else {
-            $newLines.Add($line)
-        }
+    if (-not $Line.StartsWith('|') -or -not $Line.EndsWith('|')) {
+        return @()
     }
+    $inner = $Line.Substring(1, $Line.Length - 2)
+    return @([regex]::Split($inner, '(?<!\\)\|') | ForEach-Object {
+        ConvertFrom-PushRecordMarkdownCell $_.Trim()
+    })
+}
 
-    if (-not $updatedTimestamp) {
-        Write-Warning "⚠️ Could not find '更新时间：' line to update."
-    }
-    if (-not $insertedRow) {
-        Write-Warning "⚠️ Could not find table separator '|---|---|---|---|' to prepend row."
-    }
+function Get-PushRecordMutexName {
+    param([Parameter(Mandatory = $true)] [string] $Path)
 
-    # 4. Safe-Save 防丢保存规程
-    $tmpPath = $logPath + ".tmp"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Path.ToLowerInvariant())
+    $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
-        # 强制写入临时文件 (使用 UTF-8)
-        $newLines | Set-Content -Path $tmpPath -Encoding utf8
+        $hash = (($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+        return "Global\GitHubLocalIndexPushRecord_$($hash.Substring(0, 24))"
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
 
-        # 门禁验证大小 (由于是 Slimmed 日志，文件必须大于 50 字节且大于或等于原文件大小扣除少许偏差)
-        $originalSize = (Get-Item -Path $logPath).Length
-        $tmpSize = (Get-Item -Path $tmpPath).Length
+function Test-PushRecordReasonSafety {
+    param([Parameter(Mandatory = $true)] [string] $Value)
 
-        if ($tmpSize -ge ($originalSize - 100) -and $tmpSize -gt 50) {
-            # 原子性覆盖
-            Move-Item -Path $tmpPath -Destination $logPath -Force
-            Write-Host "✅ Log successfully prepended and verified: $logPath" -ForegroundColor Green
-        } else {
-            throw "Validation failed: Temp file size ($tmpSize) is abnormally smaller than original ($originalSize)."
+    if ($Value.Length -gt 1000) {
+        throw 'Reason must be at most 1000 characters.'
+    }
+    if (@($Value -split "`r?`n").Count -gt 20) {
+        throw 'Reason must be a concise summary, not a raw log.'
+    }
+    $secretPatterns = @(
+        '-----BEGIN[ A-Z]+PRIVATE KEY-----',
+        'ghp_[A-Za-z0-9]{36,}',
+        'github_pat_[A-Za-z0-9_]{20,}',
+        'xox[baprs]-[A-Za-z0-9-]{20,}',
+        'sk-[A-Za-z0-9]{20,}'
+    )
+    foreach ($pattern in $secretPatterns) {
+        if ($Value -match $pattern) {
+            throw 'Reason contains material that resembles a secret.'
         }
+    }
+}
+
+function Test-PushRecordDocument {
+    param(
+        [Parameter(Mandatory = $true)] [AllowEmptyString()] [AllowEmptyCollection()] [string[]] $Lines,
+        [string] $ExpectedRepo,
+        [string] $ExpectedBranch,
+        [string] $ExpectedCommit
+    )
+
+    $header = '| 时间 | 仓库 | 分支 | Commit | 决策理由 |'
+    $separator = '|---|---|---|---|---|'
+    if ($Lines -notcontains $header -or $Lines -notcontains $separator) {
+        throw 'Push record document must use the five-column schema.'
+    }
+    if (@($Lines | Where-Object { $_ -like '更新时间：*' }).Count -ne 1) {
+        throw 'Push record document must contain exactly one update timestamp.'
+    }
+
+    if ($ExpectedRepo) {
+        $matches = 0
+        foreach ($line in $Lines) {
+            $cells = @(Get-PushRecordCells -Line $line)
+            if ($cells.Count -ne 5) { continue }
+            if ($cells[1] -ieq $ExpectedRepo -and $cells[2] -ceq $ExpectedBranch -and $cells[3] -ieq $ExpectedCommit) {
+                $matches++
+            }
+        }
+        if ($matches -ne 1) {
+            throw 'Push record validation did not find exactly one idempotency key.'
+        }
+    }
+}
+
+function Add-PushRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Repo,
+        [Parameter(Mandatory = $true)] [string] $Branch,
+        [Parameter(Mandatory = $true)] [string] $Commit,
+        [Parameter(Mandatory = $true)] [string] $Reason,
+        [Parameter(Mandatory = $true)] [string] $LogPath
+    )
+
+    if ($Repo -notmatch '^(?<owner>[A-Za-z0-9_.-]+)/(?<name>[A-Za-z0-9_.-]+)$') {
+        throw 'Repo must be a normalized owner/name slug.'
+    }
+    $normalizedRepo = "$($matches['owner'].ToLowerInvariant())/$($matches['name'].ToLowerInvariant())"
+    if ([string]::IsNullOrWhiteSpace($Branch) -or $Branch.Length -gt 255) {
+        throw 'Branch must be nonempty and at most 255 characters.'
+    }
+    if ($Commit -notmatch '^[0-9a-fA-F]{7,64}$') {
+        throw 'Commit must be a 7-64 character hexadecimal identifier.'
+    }
+    $normalizedCommit = $Commit.ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($Reason)) {
+        throw 'Reason must be nonempty.'
+    }
+    Test-PushRecordReasonSafety -Value $Reason
+
+    $resolvedLogPath = [System.IO.Path]::GetFullPath($LogPath)
+    if (-not (Test-Path -LiteralPath $resolvedLogPath -PathType Leaf)) {
+        throw 'Push record document does not exist.'
+    }
+
+    $mutex = [System.Threading.Mutex]::new($false, (Get-PushRecordMutexName -Path $resolvedLogPath))
+    $hasLock = $false
+    try {
+        try {
+            $hasLock = $mutex.WaitOne([timespan]::FromSeconds(15))
+        }
+        catch [System.Threading.AbandonedMutexException] {
+            $hasLock = $true
+        }
+        if (-not $hasLock) {
+            throw 'Timed out waiting for the push record file lock.'
+        }
+
+        $lines = @(Get-Content -LiteralPath $resolvedLogPath -Encoding utf8)
+        Test-PushRecordDocument -Lines $lines
+        foreach ($line in $lines) {
+            $cells = @(Get-PushRecordCells -Line $line)
+            if ($cells.Count -ne 5) { continue }
+            if ($cells[1] -ieq $normalizedRepo -and $cells[2] -ceq $Branch -and $cells[3] -ieq $normalizedCommit) {
+                return [pscustomobject][ordered]@{
+                    changed = $false
+                    repo = $normalizedRepo
+                    branch = $Branch
+                    commit = $normalizedCommit
+                }
+            }
+        }
+
+        $time = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd HH:mm:ss') + ' +08:00'
+        $newRow = '| {0} | {1} | {2} | {3} | {4} |' -f `
+            $time,
+            (ConvertTo-PushRecordMarkdownCell $normalizedRepo),
+            (ConvertTo-PushRecordMarkdownCell $Branch),
+            $normalizedCommit,
+            (ConvertTo-PushRecordMarkdownCell $Reason)
+
+        $newLines = [System.Collections.Generic.List[string]]::new()
+        $inserted = $false
+        foreach ($line in $lines) {
+            if ($line -like '更新时间：*') {
+                $newLines.Add("更新时间：$time")
+            }
+            else {
+                $newLines.Add($line)
+                if (-not $inserted -and $line -eq '|---|---|---|---|---|') {
+                    $newLines.Add($newRow)
+                    $inserted = $true
+                }
+            }
+        }
+        if (-not $inserted) {
+            throw 'Could not locate the push record table separator.'
+        }
+
+        $text = ($newLines -join [Environment]::NewLine) + [Environment]::NewLine
+        $directory = Split-Path -Parent $resolvedLogPath
+        $temporaryPath = Join-Path $directory ('.push-record-{0}-{1}.tmp' -f $PID, [guid]::NewGuid().ToString('N'))
+        $backupPath = Join-Path $directory ('.push-record-{0}-{1}.bak' -f $PID, [guid]::NewGuid().ToString('N'))
+        try {
+            [System.IO.File]::WriteAllText($temporaryPath, $text, [System.Text.UTF8Encoding]::new($false))
+            $writtenLines = @(Get-Content -LiteralPath $temporaryPath -Encoding utf8)
+            Test-PushRecordDocument -Lines $writtenLines -ExpectedRepo $normalizedRepo -ExpectedBranch $Branch -ExpectedCommit $normalizedCommit
+            [System.IO.File]::Replace($temporaryPath, $resolvedLogPath, $backupPath, $true)
+            Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
+        }
+        finally {
+            Remove-Item -LiteralPath $temporaryPath, $backupPath -Force -ErrorAction SilentlyContinue
+        }
+
+        return [pscustomobject][ordered]@{
+            changed = $true
+            repo = $normalizedRepo
+            branch = $Branch
+            commit = $normalizedCommit
+        }
+    }
+    finally {
+        if ($hasLock) {
+            [void] $mutex.ReleaseMutex()
+        }
+        $mutex.Dispose()
+    }
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+    try {
+        $result = Add-PushRecord -Repo $Repo -Branch $Branch -Commit $Commit -Reason $Reason -LogPath $LogPath
+        if ($Json) {
+            $result | ConvertTo-Json -Compress
+        }
+        else {
+            $result
+        }
+        exit 0
     }
     catch {
-        if (Test-Path -Path $tmpPath) {
-            Remove-Item -Path $tmpPath -Force
+        if ($Json) {
+            [Console]::Error.WriteLine(([pscustomobject]@{ changed = $false; error = 'push_record_rejected' } | ConvertTo-Json -Compress))
         }
-        throw $_
-    }
-}
-finally {
-    # 释放互斥锁
-    $mutex.ReleaseMutex()
-    $mutex.Dispose()
-}
-
-# 5. Git 本地 Commit 与按需 Push
-$indexRoot = Join-Path $PSScriptRoot ".."
-$indexRoot = [System.IO.Path]::GetFullPath($indexRoot)
-
-function Test-SecretsLeak {
-    # 获取暂存和未跟踪的文件（排除已被 gitignore 的）
-    $gitFiles = git status --porcelain | ForEach-Object {
-        if ($_ -match '^[AM\?\s]{2}\s+(.+)$') {
-            $Matches[1].Trim('"')
+        else {
+            Write-Error $_.Exception.Message
         }
-    }
-
-    if (-not $gitFiles) { return $true }
-
-    # 敏感文件名/路径黑名单模式
-    $blacklistedPaths = @(
-        "99_private/",
-        "secrets/",
-        "private_key",
-        "client_secret",
-        "\.env$",
-        "\.pem$",
-        "\.key$"
-    )
-
-    # 敏感内容正则表达式模式
-    $blacklistedContentPatterns = @(
-        "-----BEGIN[ A-Z]+PRIVATE KEY-----",
-        "ghp_[a-zA-Z0-9]{36}",
-        "xox[bapr]-[0-9]+-[0-9]+-[a-zA-Z0-9]+" # Slack token
-    )
-
-    # 排除白名单文件（这些文件允许包含常规索引词）
-    $whitelistFiles = @(
-        ".gitignore",
-        "AGENTS.md",
-        "README.md",
-        "03_推送决策/已推送记录.md",
-        "03_推送决策/已推送记录_2026_归档.md",
-        "tools/Add-PushRecord.ps1",
-        "tools/Install-GitHook.ps1"
-    )
-
-    foreach ($file in $gitFiles) {
-        # 排除白名单
-        if ($file -in $whitelistFiles -or $file -match "tools/Add-PushRecord.ps1" -or $file -match "tools/Install-GitHook.ps1") { continue }
-
-        # 1. 校验路径是否触网
-        foreach ($pattern in $blacklistedPaths) {
-            if ($file -match $pattern) {
-                Write-Host "❌ [Security Alert] Blocked file path matching pattern '$pattern': $file" -ForegroundColor Red
-                return $false
-            }
-        }
-
-        # 2. 校验文件内容是否触网 (只扫描文本文件)
-        $fullPath = Join-Path $indexRoot $file
-        $fullPath = [System.IO.Path]::GetFullPath($fullPath)
-
-        if (Test-Path -Path $fullPath -PathType Leaf) {
-            $fileItem = Get-Item -Path $fullPath
-            if ($fileItem.Length -gt 5MB) { continue }
-
-            try {
-                $content = Get-Content -Path $fullPath -Raw -Encoding utf8
-                foreach ($pattern in $blacklistedContentPatterns) {
-                    if ($content -match $pattern) {
-                        Write-Host "❌ [Security Alert] Blocked file '$file' contains sensitive pattern '$pattern'" -ForegroundColor Red
-                        return $false
-                    }
-                }
-            }
-            catch {
-                # 忽略读取失败（可能是二进制文件）
-            }
-        }
-    }
-
-    return $true
-}
-
-Push-Location $indexRoot
-try {
-    Write-Host "Running pre-commit security scan..." -ForegroundColor Gray
-    if (-not (Test-SecretsLeak)) {
-        Write-Error "❌ Git commit aborted due to security policy violations."
         exit 1
     }
-
-    Write-Host "Staging and committing index changes..." -ForegroundColor Gray
-    git add "03_推送决策/已推送记录.md" "03_推送决策/已推送记录_2026_归档.md"
-
-    $commitMsg = "docs: log push of $Repo ($Commit)"
-    git commit -m $commitMsg
-
-    if ($PushIndex) {
-        $maxRetries = 3
-        $retryCount = 0
-        $pushed = $false
-
-        while (-not $pushed -and $retryCount -lt $maxRetries) {
-            $retryCount++
-            Write-Host "🚀 Pushing index repository (Attempt $retryCount/$maxRetries)..." -ForegroundColor Cyan
-            git push
-
-            if ($LASTEXITCODE -eq 0) {
-                $pushed = $true
-                Write-Host "✅ Push succeeded!" -ForegroundColor Green
-            } else {
-                if ($retryCount -lt $maxRetries) {
-                    Write-Warning "⚠️ Git push rejected. Attempting to pull and rebase..."
-                    git pull --rebase origin main
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Error "❌ Git pull --rebase failed. Manual conflict resolution required."
-                        exit 1
-                    }
-                }
-            }
-        }
-
-        if (-not $pushed) {
-            Write-Error "❌ Failed to push index repository after $maxRetries attempts."
-            exit 1
-        }
-    } else {
-        Write-Host "💡 Tier 1 Closeout: Commit finalized locally. Remote push deferred." -ForegroundColor Yellow
-    }
-}
-catch {
-    Write-Error "❌ Git operation encountered an error: $_"
-    exit 1
-}
-finally {
-    Pop-Location
 }

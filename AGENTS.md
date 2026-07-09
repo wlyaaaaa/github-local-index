@@ -42,7 +42,7 @@
 - 公开索引仓库：只推文档、规则、摘要和脱敏结论。
 - 公开业务仓库：按仓库自己的 `AGENTS.md` 和本轮用户目标判断；含截图、临时帧、原始日志、绝对路径、进程列表或未整理产物时，优先否决原样提交。
 - 多仓库批处理时，分别记录“已推送 / 否决 / 需人工确认”的原因。
-- Codex 今后只要实际修改了任意 Git 工作区，默认验证、提交并推送目标仓库；总索引按收尾范围门禁处理：小任务收尾只调用 `tools/Add-PushRecord.ps1` 记录公开摘要，不刷新或推送本仓库；项目收尾优先走 `tools/Refresh-GitHubLocalIndex.ps1 -Fast -Repo <owner/name>`；今天收尾、全局收尾、全量同步或生成文档确需重建时，才完整刷新、提交并推送 `wlyaaaaa/github-local-index`。只有用户本轮明确说“只本地”“不提交”或“不推送”，或公开暴露面/安全策略阻止时，才跳过默认推送。
+- 目标项目的提交/推送由目标项目 closeout 决定。本索引不因每个小任务或普通 push 自动写日志或制造 commit；仓库身份、路径、可见性、公开门禁、worktree 口径发生变化，或用户明确要求记录里程碑时，才更新本索引。`tools/Add-PushRecord.ps1` 只做纯文件幂等写入，Git stage/commit/pull/rebase/push 必须由外层流程显式执行。
 
 ## 项目入口门禁
 
@@ -57,10 +57,10 @@
 ## 维护习惯
 
 - 不用 `git add .` 盲目提交混合工作区；优先显式 stage 文件。
-- 每次记录推送，必须统一调用 `tools/Add-PushRecord.ps1` 命令行脚本安全追加 `03_推送决策/已推送记录.md`，严禁 LLM 直接手工读写该大日志，防范文件冲突和 Token 浪费。
+- 只有明确里程碑需要记录时，才调用 `tools/Add-PushRecord.ps1 -Repo <owner/name> -Branch <branch> -Commit <hash> -Reason <summary>`；以 `repo|branch|commit` 幂等，禁止 LLM 手工改大日志，也禁止该 helper 自行执行任何 Git 事务。
 - **原地语义重构与行数限制契约**：禁止盲目在文件末尾追加补丁。更新规则时必须定位最相关条目进行“原地语义合并与重写”，保持高内聚。本仓库及具体项目 `AGENTS.md` 长度强控在 **400 行** 内。
 - 本地必须通过运行 `tools/Install-GitHook.ps1` 部署 Git pre-commit 拦截 Hook。Hook 采用无 BOM 的 UTF-8 编码和纯英文注释以兼容 Git Bash。
 - 当 Hook 或扫描函数检测到 staged 或 untracked 列表中包含 `99_private/`, `secrets/`, `private_key` 等敏感字，或者内容包含 `-----BEGIN PRIVATE KEY-----` 和 `ghp_` 等敏感私钥 Token 时，无条件强行拦截提交（返回 Exit 1）。
-- 每次审计后按范围更新公开摘要：小任务只记录推送；项目收尾优先使用 `tools/Refresh-GitHubLocalIndex.ps1 -Fast -Repo <owner/name>` 做单仓库状态快查；今天收尾、全局收尾或生成文档重建时，才更新 `00_总览/当前同步看板.md`、`02_同步诊断/` 和 `03_推送决策/`，并优先使用 `tools/Update-GitHubIndex.ps1` 和 `tools/Update-ScheduledTaskHealth.ps1` 生成公开摘要。
+- 项目入口优先使用 `tools/Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`；项目收尾可用 `tools/Refresh-GitHubLocalIndex.ps1 -Fast -Repo <owner/name> -Json` 做同 schema 快查。只有索引事实或明确里程碑变化时才重建 `00_总览/`、`01_仓库索引/`、`02_同步诊断/` 或写 `03_推送决策/`。
 - 检查本仓库是否与当前本机/GitHub 状态一致时，优先运行 `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch` 或 `tools/Refresh-GitHubLocalIndex.ps1 -CheckOnly`；默认只把 GitHub/同步诊断类稳定文档漂移视为失败，计划任务文档因时间戳和运行态高频变化只作为易变漂移提示。不要为了“强一致性”自动提交或推送公开摘要。
-- 计划任务只记录状态 and 异常，不在本仓库保存任务导出的完整敏感 XML。
+- 计划任务只记录公开安全的运行状态和异常，不在本仓库保存完整 Action、触发器、恢复事实或敏感 XML。`Register-GitHubLocalIndexRefreshTask.ps1 -CheckOnly` 必须保持纯 dry-run；live `-Apply`、legacy task pre-image、禁用和回滚均由 root/PCConfig 流程处理。

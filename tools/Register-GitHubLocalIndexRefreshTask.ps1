@@ -1,32 +1,55 @@
+#requires -Version 7.0
+
+[CmdletBinding()]
 param(
-    [string] $TaskName = '',
+    [string] $TaskName = 'GitHubLocalIndex Consistency Check',
     [datetime] $At = ([datetime]::Today.AddHours(23).AddMinutes(10)),
-    [switch] $CheckOnly
+    [switch] $CheckOnly,
+    [switch] $Apply,
+    [switch] $Json
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$scriptPath = Join-Path $PSScriptRoot 'Refresh-GitHubLocalIndex.ps1'
 $wrapperPath = Join-Path $PSScriptRoot 'Refresh-GitHubLocalIndex-Hidden.vbs'
 
-if ([string]::IsNullOrWhiteSpace($TaskName)) {
-    $TaskName = if ($CheckOnly) { 'GitHubLocalIndex Consistency Check' } else { 'GitHubLocalIndex Refresh' }
+function Get-GitHubLocalIndexTaskDefinition {
+    if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+        throw 'Hidden consistency launcher was not found.'
+    }
+    [pscustomobject][ordered]@{
+        task_name = $TaskName
+        schedule = [pscustomobject]@{ frequency = 'daily'; at = $At.ToString('HH:mm:ss') }
+        action = [pscustomobject]@{
+            execute = (Join-Path $env:WINDIR 'System32\wscript.exe')
+            arguments = '"{0}" CheckOnly' -f $wrapperPath
+            working_directory = $repoRoot
+        }
+        description = 'Runs a read-only GitHub local index consistency check. It does not refresh Markdown, commit, or push.'
+        mutation = 'none'
+    }
 }
 
-if (-not (Test-Path -LiteralPath $scriptPath)) {
-    throw "Refresh script not found: $scriptPath"
+if ($CheckOnly -and $Apply) {
+    throw 'Use either -CheckOnly or -Apply, not both.'
 }
-if (-not (Test-Path -LiteralPath $wrapperPath)) {
-    throw "Hidden launcher not found: $wrapperPath"
+if (-not $CheckOnly -and -not $Apply) {
+    throw 'Use -CheckOnly for a dry-run or -Apply for an explicitly authorized live registration.'
 }
 
-$modeArgument = if ($CheckOnly) { ' -CheckOnly' } else { '' }
+$definition = Get-GitHubLocalIndexTaskDefinition
+if ($CheckOnly) {
+    if ($Json) { $definition | ConvertTo-Json -Depth 6 } else { $definition }
+    exit 0
+}
 
-$execute = Join-Path $env:WINDIR 'System32\wscript.exe'
-$argument = '"{0}"{1}' -f $wrapperPath, $modeArgument
-
-$action = New-ScheduledTaskAction -Execute $execute -Argument $argument -WorkingDirectory $repoRoot
+$action = New-ScheduledTaskAction `
+    -Execute $definition.action.execute `
+    -Argument $definition.action.arguments `
+    -WorkingDirectory $definition.action.working_directory
 $trigger = New-ScheduledTaskTrigger -Daily -At $At
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet `
@@ -36,11 +59,5 @@ $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
 
-$description = if ($CheckOnly) {
-    'Checks whether public GitHub index Markdown matches regenerated local/GitHub/Task Scheduler state. Does not write Markdown, git commit, or git push.'
-}
-else {
-    'Refreshes local public GitHub index Markdown from local/GitHub/Task Scheduler state. Does not git commit or git push.'
-}
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $description -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description $definition.description -Force | Out-Null
 Get-ScheduledTask -TaskName $TaskName

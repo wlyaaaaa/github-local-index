@@ -1,0 +1,539 @@
+Set-StrictMode -Version Latest
+
+$script:AdmissionSchema = 'github-local-index.project-admission.v1'
+
+function Invoke-ExternalCommandResult {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $FilePath,
+        [string[]] $ArgumentList = @(),
+        [string] $WorkingDirectory
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $FilePath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+        $startInfo.WorkingDirectory = $WorkingDirectory
+    }
+    foreach ($argument in $ArgumentList) {
+        [void] $startInfo.ArgumentList.Add([string] $argument)
+    }
+
+    $process = $null
+    try {
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        [void] $process.Start()
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            exit_code = [int] $process.ExitCode
+            stdout = $stdout.TrimEnd("`r", "`n")
+            stderr = $stderr.TrimEnd("`r", "`n")
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            exit_code = 127
+            stdout = ''
+            stderr = "Unable to start external command '$FilePath'."
+        }
+    }
+    finally {
+        if ($process) {
+            $process.Dispose()
+        }
+    }
+}
+
+function Invoke-GitCommandResult {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [Parameter(Mandatory = $true)] [string[]] $Arguments
+    )
+
+    $gitArguments = @('-C', $Path) + @($Arguments)
+    Invoke-ExternalCommandResult -FilePath 'git.exe' -ArgumentList $gitArguments
+}
+
+function ConvertTo-GitHubRepoSlug {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    $text = $Value.Trim() -replace '\\', '/'
+    if ($text -match '^git@github\.com:(?<owner>[^/]+)/(?<repo>[^/#?]+?)(?:\.git)?$') {
+        return "$($matches['owner'])/$($matches['repo'])"
+    }
+
+    if ($text -match '^ssh://(?:[^/@]+@)?github\.com/(?<owner>[^/]+)/(?<repo>[^/#?]+?)(?:\.git)?/?$') {
+        return "$($matches['owner'])/$($matches['repo'])"
+    }
+
+    if ($text -match '^(?<owner>[A-Za-z0-9_.-]+)/(?<repo>[A-Za-z0-9_.-]+?)(?:\.git)?$') {
+        return "$($matches['owner'])/$($matches['repo'])"
+    }
+
+    try {
+        $uri = [uri] $text
+        if ($uri.IsAbsoluteUri -and $uri.Host -ieq 'github.com') {
+            $parts = @($uri.AbsolutePath.Trim('/') -split '/')
+            if ($parts.Count -eq 2) {
+                $repo = $parts[1] -replace '\.git$', ''
+                if ($parts[0] -match '^[A-Za-z0-9_.-]+$' -and $repo -match '^[A-Za-z0-9_.-]+$') {
+                    return "$($parts[0])/$repo"
+                }
+            }
+        }
+    }
+    catch {
+        return $null
+    }
+
+    return $null
+}
+
+function ConvertTo-NormalizedGitPath {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    try {
+        return [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    }
+    catch {
+        return $Path.Trim().TrimEnd('\', '/')
+    }
+}
+
+function ConvertFrom-GitWorktreePorcelain {
+    [CmdletBinding()]
+    param([AllowEmptyString()] [string] $Text)
+
+    $records = [System.Collections.Generic.List[object]]::new()
+    $current = $null
+    foreach ($line in @($Text -split "`r?`n")) {
+        if ($line -match '^worktree\s+(?<value>.+)$') {
+            if ($current) {
+                $records.Add([pscustomobject] $current)
+            }
+            $current = [ordered]@{
+                path = ConvertTo-NormalizedGitPath $matches['value']
+                listed_head = $null
+                listed_branch = $null
+                listed_detached = $false
+                locked = $false
+                lock_reason = $null
+                prunable = $false
+                prune_reason = $null
+            }
+            continue
+        }
+        if (-not $current -or [string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+        if ($line -match '^HEAD\s+(?<value>[0-9a-fA-F]+)$') {
+            $current.listed_head = $matches['value'].ToLowerInvariant()
+        }
+        elseif ($line -match '^branch\s+refs/heads/(?<value>.+)$') {
+            $current.listed_branch = $matches['value']
+        }
+        elseif ($line -eq 'detached') {
+            $current.listed_detached = $true
+        }
+        elseif ($line -match '^locked(?:\s+(?<value>.*))?$') {
+            $current.locked = $true
+            $current.lock_reason = if ($matches['value']) { $matches['value'] } else { $null }
+        }
+        elseif ($line -match '^prunable(?:\s+(?<value>.*))?$') {
+            $current.prunable = $true
+            $current.prune_reason = if ($matches['value']) { $matches['value'] } else { $null }
+        }
+    }
+    if ($current) {
+        $records.Add([pscustomobject] $current)
+    }
+
+    return @($records)
+}
+
+function Test-PublicExposurePath {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+    $normalized = $Path.Trim(' ', '"') -replace '\\', '/'
+    return $normalized -match '(?i)(^|/)(99_private|secrets?)(/|$)|(^|/)(\.env(?:\..*)?|[^/]*(?:private[_-]?key|client[_-]?secret)[^/]*)$|\.(?:pem|key|p12|pfx)$'
+}
+
+function Get-GitStatusObservation {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    $result = Invoke-GitCommandResult -Path $Path -Arguments @('status', '--porcelain=v1', '--untracked-files=normal')
+    if ($result.exit_code -ne 0) {
+        return [pscustomobject]@{
+            dirty_count = $null
+            public_exposure_conflict = $false
+            error = $true
+        }
+    }
+
+    $entries = @($result.stdout -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $exposureConflict = $false
+    foreach ($entry in $entries) {
+        $candidate = if ($entry.Length -gt 3) { $entry.Substring(3) } else { '' }
+        if ($candidate -match ' -> (?<destination>.+)$') {
+            $candidate = $matches['destination']
+        }
+        if (Test-PublicExposurePath -Path $candidate) {
+            $exposureConflict = $true
+            break
+        }
+    }
+
+    return [pscustomobject]@{
+        dirty_count = $entries.Count
+        public_exposure_conflict = $exposureConflict
+        error = $false
+    }
+}
+
+function Get-GitRepositoryWorktrees {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    $listResult = Invoke-GitCommandResult -Path $Path -Arguments @('worktree', 'list', '--porcelain')
+    if ($listResult.exit_code -ne 0) {
+        throw "Unable to enumerate Git worktrees (exit $($listResult.exit_code))."
+    }
+
+    $observations = foreach ($record in ConvertFrom-GitWorktreePorcelain -Text $listResult.stdout) {
+        $exists = Test-Path -LiteralPath $record.path -PathType Container
+        $head = $record.listed_head
+        $branch = $record.listed_branch
+        $detached = [bool] $record.listed_detached
+        $upstream = $null
+        $ahead = $null
+        $behind = $null
+        $dirtyCount = $null
+        $exposureConflict = $false
+        $inspectionError = $false
+
+        if ($exists) {
+            $headResult = Invoke-GitCommandResult -Path $record.path -Arguments @('rev-parse', 'HEAD')
+            if ($headResult.exit_code -eq 0 -and $headResult.stdout -match '^[0-9a-fA-F]+$') {
+                $head = $headResult.stdout.ToLowerInvariant()
+            }
+            else {
+                $inspectionError = $true
+            }
+
+            $branchResult = Invoke-GitCommandResult -Path $record.path -Arguments @('branch', '--show-current')
+            if ($branchResult.exit_code -eq 0) {
+                $branch = if ([string]::IsNullOrWhiteSpace($branchResult.stdout)) { $null } else { $branchResult.stdout }
+                $detached = [string]::IsNullOrWhiteSpace($branch)
+            }
+
+            $upstreamResult = Invoke-GitCommandResult -Path $record.path -Arguments @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
+            if ($upstreamResult.exit_code -eq 0 -and -not [string]::IsNullOrWhiteSpace($upstreamResult.stdout)) {
+                $upstream = $upstreamResult.stdout
+                $countResult = Invoke-GitCommandResult -Path $record.path -Arguments @('rev-list', '--left-right', '--count', 'HEAD...@{u}')
+                if ($countResult.exit_code -eq 0 -and $countResult.stdout -match '^(?<ahead>\d+)\s+(?<behind>\d+)$') {
+                    $ahead = [int] $matches['ahead']
+                    $behind = [int] $matches['behind']
+                }
+                else {
+                    $inspectionError = $true
+                }
+            }
+
+            $status = Get-GitStatusObservation -Path $record.path
+            $dirtyCount = $status.dirty_count
+            $exposureConflict = $status.public_exposure_conflict
+            if ($status.error) {
+                $inspectionError = $true
+            }
+        }
+
+        [pscustomobject]@{
+            path = $record.path
+            exists = $exists
+            head = $head
+            branch = $branch
+            detached = $detached
+            upstream = $upstream
+            ahead = $ahead
+            behind = $behind
+            dirty_count = $dirtyCount
+            locked = [bool] $record.locked
+            prunable = [bool] $record.prunable
+            inspection_error = $inspectionError
+            public_exposure_conflict = $exposureConflict
+        }
+    }
+
+    return @($observations | Sort-Object @{ Expression = { ([string] $_.path).ToLowerInvariant() } }, branch, head)
+}
+
+function Get-IndexedProjectFacts {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $IndexRoot,
+        [Parameter(Mandatory = $true)] [string] $Repo
+    )
+
+    $indexPath = Join-Path $IndexRoot '01_仓库索引/GitHub仓库索引.md'
+    if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
+        return $null
+    }
+
+    foreach ($line in Get-Content -LiteralPath $indexPath -Encoding utf8) {
+        if ($line -notmatch '^\|\s*(?<repo>[^|]+?)\s*\|\s*(?<visibility>[^|]+?)\s*\|\s*(?<branch>[^|]+?)\s*\|\s*(?<paths>[^|]+?)\s*\|') {
+            continue
+        }
+        $rowRepo = ConvertTo-GitHubRepoSlug $matches['repo'].Trim(' ', '`')
+        if ($rowRepo -ine $Repo) {
+            continue
+        }
+        $paths = @($matches['paths'] -split '<br>' | ForEach-Object { $_.Trim(' ', '`') } | Where-Object { $_ -and $_ -ne '未发现本地 clone' })
+        return [pscustomobject]@{
+            visibility = $matches['visibility'].Trim().ToUpperInvariant()
+            default_branch = $matches['branch'].Trim(' ', '`')
+            paths = $paths
+        }
+    }
+
+    return $null
+}
+
+function Resolve-AdmissionRepoPath {
+    [CmdletBinding()]
+    param([string[]] $CandidatePaths)
+
+    $existing = @($CandidatePaths | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { ConvertTo-NormalizedGitPath $_ } | Sort-Object -Unique)
+    if ($existing.Count -eq 0) {
+        return [pscustomobject]@{ path = $null; ambiguous = $false }
+    }
+    if ($existing.Count -eq 1) {
+        return [pscustomobject]@{ path = $existing[0]; ambiguous = $false }
+    }
+
+    $commonDirs = foreach ($candidate in $existing) {
+        $result = Invoke-GitCommandResult -Path $candidate -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir')
+        if ($result.exit_code -eq 0) { ConvertTo-NormalizedGitPath $result.stdout } else { "missing::$candidate" }
+    }
+    if (@($commonDirs | Sort-Object -Unique).Count -eq 1) {
+        return [pscustomobject]@{ path = $existing[0]; ambiguous = $false }
+    }
+
+    return [pscustomobject]@{ path = $null; ambiguous = $true }
+}
+
+function New-AdmissionError {
+    param([string] $Category, [int] $ExitCode)
+    [pscustomobject]@{ category = $Category; exit_code = $ExitCode }
+}
+
+function Get-ProjectAdmissionRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Repo,
+        [string] $RepoPath,
+        [string] $Visibility,
+        [string] $DefaultBranch,
+        [string] $IndexRoot,
+        [switch] $Fetch,
+        [scriptblock] $FetchInvoker,
+        [scriptblock] $GitHubInvoker
+    )
+
+    $observedUtc = [DateTime]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    $normalizedRepo = ConvertTo-GitHubRepoSlug $Repo
+    $reasons = [System.Collections.Generic.List[string]]::new()
+    $errors = [System.Collections.Generic.List[object]]::new()
+    $worktrees = @()
+    $remoteSlug = $null
+    $localRoot = $null
+    $gitCommonDir = $null
+    $remoteMode = 'cached'
+
+    if (-not $normalizedRepo) {
+        $reasons.Add('invalid_repo')
+    }
+
+    $facts = $null
+    if ($normalizedRepo -and -not [string]::IsNullOrWhiteSpace($IndexRoot)) {
+        $facts = Get-IndexedProjectFacts -IndexRoot $IndexRoot -Repo $normalizedRepo
+    }
+    if ([string]::IsNullOrWhiteSpace($Visibility) -and $facts) {
+        $Visibility = $facts.visibility
+    }
+    if ([string]::IsNullOrWhiteSpace($DefaultBranch) -and $facts) {
+        $DefaultBranch = $facts.default_branch
+    }
+
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($RepoPath)) {
+        $candidates = @($RepoPath)
+    }
+    elseif ($facts) {
+        $candidates = @($facts.paths)
+    }
+    $pathResolution = Resolve-AdmissionRepoPath -CandidatePaths $candidates
+    if ($pathResolution.ambiguous) {
+        $reasons.Add('ambiguous_repo_path')
+    }
+    elseif ([string]::IsNullOrWhiteSpace($pathResolution.path)) {
+        $reasons.Add('missing_repo_path')
+    }
+    else {
+        $RepoPath = $pathResolution.path
+        try {
+            $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
+        }
+        catch {
+            $errors.Add((New-AdmissionError -Category 'worktree_enumeration_failed' -ExitCode 1))
+            $reasons.Add('missing_repo_path')
+        }
+
+        $localRoot = ConvertTo-NormalizedGitPath $RepoPath
+        $commonResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir')
+        if ($commonResult.exit_code -eq 0) {
+            $gitCommonDir = ConvertTo-NormalizedGitPath $commonResult.stdout
+        }
+        $remoteResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('config', '--get', 'remote.origin.url')
+        if ($remoteResult.exit_code -eq 0) {
+            $remoteSlug = ConvertTo-GitHubRepoSlug $remoteResult.stdout
+        }
+        if (-not $remoteSlug -or ($normalizedRepo -and $remoteSlug -ine $normalizedRepo)) {
+            $reasons.Add('remote_mismatch')
+        }
+
+        if ([string]::IsNullOrWhiteSpace($DefaultBranch)) {
+            $defaultResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
+            if ($defaultResult.exit_code -eq 0 -and $defaultResult.stdout -match '^origin/(?<branch>.+)$') {
+                $DefaultBranch = $matches['branch']
+            }
+        }
+    }
+
+    if ($Fetch -and -not [string]::IsNullOrWhiteSpace($RepoPath)) {
+        $fetchResult = if ($FetchInvoker) { & $FetchInvoker $RepoPath } else { Invoke-GitCommandResult -Path $RepoPath -Arguments @('fetch', '--prune', 'origin') }
+        $metadataResult = if ($GitHubInvoker) {
+            & $GitHubInvoker $normalizedRepo
+        }
+        else {
+            Invoke-ExternalCommandResult -FilePath 'gh.exe' -ArgumentList @('repo', 'view', $normalizedRepo, '--json', 'nameWithOwner,visibility,defaultBranchRef,url')
+        }
+
+        $metadata = $null
+        if ($metadataResult.exit_code -eq 0) {
+            try {
+                $metadata = $metadataResult.stdout | ConvertFrom-Json -ErrorAction Stop
+                $metadataRepo = ConvertTo-GitHubRepoSlug ([string] $metadata.nameWithOwner)
+                if (-not $metadataRepo -or $metadataRepo -ine $normalizedRepo) {
+                    $metadata = $null
+                    $errors.Add((New-AdmissionError -Category 'github_metadata_mismatch' -ExitCode 1))
+                }
+            }
+            catch {
+                $metadata = $null
+                $errors.Add((New-AdmissionError -Category 'github_metadata_invalid' -ExitCode 1))
+            }
+        }
+        else {
+            $errors.Add((New-AdmissionError -Category 'github_metadata_failed' -ExitCode ([int] $metadataResult.exit_code)))
+        }
+
+        if ($fetchResult.exit_code -ne 0) {
+            $errors.Add((New-AdmissionError -Category 'fetch_failed' -ExitCode ([int] $fetchResult.exit_code)))
+        }
+
+        if ($fetchResult.exit_code -eq 0 -and $metadata) {
+            try {
+                $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
+                $remoteMode = 'live'
+                $Visibility = ([string] $metadata.visibility).ToUpperInvariant()
+                if ($metadata.defaultBranchRef -and $metadata.defaultBranchRef.name) {
+                    $DefaultBranch = [string] $metadata.defaultBranchRef.name
+                }
+            }
+            catch {
+                $errors.Add((New-AdmissionError -Category 'post_fetch_worktree_inspection_failed' -ExitCode 1))
+                $reasons.Add('live_evidence_unavailable')
+            }
+        }
+        else {
+            $reasons.Add('live_evidence_unavailable')
+        }
+    }
+    elseif ($Fetch) {
+        $reasons.Add('live_evidence_unavailable')
+    }
+
+    $Visibility = if ([string]::IsNullOrWhiteSpace($Visibility)) { $null } else { $Visibility.Trim().ToUpperInvariant() }
+    $DefaultBranch = if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { $null } else { $DefaultBranch.Trim() }
+    if (-not $Visibility) { $reasons.Add('visibility_unknown') }
+    if (-not $DefaultBranch) { $reasons.Add('default_branch_unknown') }
+
+    if ($remoteMode -eq 'cached') { $reasons.Add('cached_observation') }
+    if (@($worktrees | Where-Object { $_.dirty_count -gt 0 }).Count -gt 0) { $reasons.Add('dirty_worktree') }
+    if (@($worktrees | Where-Object { $_.exists -and [string]::IsNullOrWhiteSpace([string] $_.upstream) }).Count -gt 0) { $reasons.Add('no_upstream') }
+    if (@($worktrees | Where-Object prunable).Count -gt 0) { $reasons.Add('prunable_worktree') }
+    if (@($worktrees | Where-Object detached).Count -gt 0) { $reasons.Add('detached_worktree') }
+    if (@($worktrees | Where-Object inspection_error).Count -gt 0) { $reasons.Add('worktree_inspection_error') }
+    if ($Visibility -eq 'PUBLIC' -and @($worktrees | Where-Object public_exposure_conflict).Count -gt 0) {
+        $reasons.Add('public_exposure_conflict')
+    }
+
+    $reasonArray = @($reasons | Sort-Object -Unique)
+    $blockingReasons = @('invalid_repo', 'missing_repo_path', 'ambiguous_repo_path', 'remote_mismatch', 'public_exposure_conflict', 'live_evidence_unavailable', 'visibility_unknown', 'default_branch_unknown')
+    $decision = if (@($reasonArray | Where-Object { $_ -in $blockingReasons }).Count -gt 0) {
+        'block'
+    }
+    elseif ($reasonArray.Count -gt 0) {
+        'warn'
+    }
+    else {
+        'proceed'
+    }
+
+    [pscustomobject][ordered]@{
+        schema = $script:AdmissionSchema
+        observed_utc = $observedUtc
+        repo = $normalizedRepo
+        visibility = $Visibility
+        remote = $remoteSlug
+        default_branch = $DefaultBranch
+        local_root = $localRoot
+        git_common_dir = $gitCommonDir
+        remote_mode = $remoteMode
+        decision = $decision
+        reasons = $reasonArray
+        errors = @($errors)
+        worktrees = @($worktrees)
+    }
+}
+
+Export-ModuleMember -Function @(
+    'Invoke-ExternalCommandResult',
+    'Invoke-GitCommandResult',
+    'ConvertTo-GitHubRepoSlug',
+    'ConvertFrom-GitWorktreePorcelain',
+    'Get-GitRepositoryWorktrees',
+    'Get-IndexedProjectFacts',
+    'Get-ProjectAdmissionRecord'
+)

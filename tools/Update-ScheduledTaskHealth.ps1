@@ -1,25 +1,11 @@
-param(
+﻿param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-    [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*HealthLongevity*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*SteamMillennium*', '*GitHubLocalIndex*', '*LibreHardwareMonitor*'),
-    [string] $PurposeCatalogPath = 'E:\PCConfig\registries\task_purpose_catalog.json',
+    [string[]] $NamePatterns = @('*Backup*', '*Sync*', '*Mirror*', '*Watchdog*', '*Heartbeat*', '*AutoPush*', '*AutoStart*', '*GitHubLocalIndex*'),
     [switch] $NoWrite
 )
 
-$script:NormalRunningTaskNames = @{}
-
-if (Test-Path -LiteralPath $PurposeCatalogPath -PathType Leaf) {
-    try {
-        $purposeCatalog = Get-Content -Raw -LiteralPath $PurposeCatalogPath | ConvertFrom-Json
-        foreach ($entry in @($purposeCatalog.entries)) {
-            if ([string] $entry.normal_state -eq 'Running' -and -not [string]::IsNullOrWhiteSpace([string] $entry.task_name)) {
-                $script:NormalRunningTaskNames[[string] $entry.task_name] = $true
-            }
-        }
-    }
-    catch {
-        Write-Warning "Could not read PCConfig scheduled task purpose catalog: $PurposeCatalogPath"
-    }
-}
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 function ConvertTo-TaskResultAssessment {
     param([AllowNull()] [object] $LastTaskResult)
@@ -96,15 +82,6 @@ function ConvertTo-PublicTaskRow {
             Summary  = '任务已禁用，未参与自动运行'
         }
     }
-    elseif ([string] $Task.State -eq 'Running' -and $assessment.Code -eq 267009 -and $script:NormalRunningTaskNames.ContainsKey([string] $Task.TaskName)) {
-        $assessment = [pscustomobject]@{
-            Code     = $assessment.Code
-            HexCode  = $assessment.HexCode
-            Severity = '正常'
-            Summary  = '任务常驻运行，符合 PCConfig normal_state'
-        }
-    }
-
     $lastRun = if ($Info.LastRunTime) { ([datetime] $Info.LastRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
     $nextRun = if ([string] $Task.State -eq 'Disabled') { '' } elseif ($Info.NextRunTime) { ([datetime] $Info.NextRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
 
@@ -219,7 +196,7 @@ function Write-ScheduledTaskDocuments {
         [object[]] $Rows
     )
 
-    $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+    $date = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
     $normalRows = @($Rows | Where-Object { $_.Severity -eq '正常' })
     $warningRows = @($Rows | Where-Object { $_.Severity -eq '警告' })
     $errorRows = @($Rows | Where-Object { $_.Severity -eq '异常' })
@@ -232,7 +209,7 @@ function Write-ScheduledTaskDocuments {
         '',
         "本文件由 ``tools/Update-ScheduledTaskHealth.ps1`` 只读刷新。脚本只记录任务名、状态、运行时间和返回码摘要，不保存完整任务 XML 或完整 Action 命令。",
         '',
-        '口径说明：本文件是公开安全健康摘要，不等同于 Windows Task Scheduler 全量扫描，也不等同于 PCConfig 的人工 purpose catalog。全量机器事实以 `E:\PCConfig\registries\tasks.json` 为准；任务目的、归属、正常态和审计说明以 `E:\PCConfig\registries\task_purpose_catalog.json` 为准。',
+        '口径说明：本文件只汇总当前 Task Scheduler 的公开安全运行态，不保存任务 Action、触发器或恢复配置。机器配置、任务目的与恢复规则由机器配置中心维护。',
         '',
         '## 当前统计',
         '',
@@ -283,7 +260,7 @@ function Write-ScheduledTaskDocuments {
 function Invoke-UpdateScheduledTaskHealth {
     param(
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
-        [string[]] $NamePatterns = @('*Backup*', '*AutoPush*', '*OpenClaw*', '*WeFlow*', '*TimeAudit*', '*Codex*', '*DevConfig*', '*WeChat*', '*PinDefaultAudio*', '*Scripts*', '*Ramdisk*', '*Sunshine*', '*Ollama*', '*TURZX*', '*CleanupOrphanedMillennium*', '*SteamMillennium*', '*GitHubLocalIndex*', '*LibreHardwareMonitor*'),
+        [string[]] $NamePatterns = @('*Backup*', '*Sync*', '*Mirror*', '*Watchdog*', '*Heartbeat*', '*AutoPush*', '*AutoStart*', '*GitHubLocalIndex*'),
         [switch] $NoWrite
     )
 

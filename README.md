@@ -15,7 +15,7 @@
 
 以后修改任意 Git 项目时，Agent 控制先走 `E:\.agents\skills\project-entry-gate`，再查询本仓库作为 Git 项目事实入口和公开发布门禁：
 
-1. 在 `01_仓库索引/` 和 `02_同步诊断/` 确认项目本地路径、远端、可见性、分支/同步状态、脏状态和推送策略。
+1. 优先运行 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`，获得带 schema、UTC 观察时间、`cached|live` 证据模式、所有 worktree 和 `proceed|warn|block` 决策的单仓库事实；Markdown 索引用于总览和人工阅读。
 2. 如果改动涉及绝对路径、计划任务、本机数据源、跨盘迁移、备份/恢复、本地工具链、启动脚本、快捷方式或共享目录，同时查询 `E:\PCConfig`。
 3. 进入具体项目后，再读取该项目自己的 `AGENTS.md`、README、脚本和测试命令。
 4. 改完项目后，按默认联动提交/推送目标仓库；如果项目路径、机器依赖或恢复信息变化，再更新 `E:\PCConfig` 和本索引。
@@ -39,24 +39,26 @@
 
 - [GitHub 总览](00_总览/GitHub总览.md)
 - [当前同步看板](00_总览/当前同步看板.md)
-- [本机配置状态](02_同步诊断/本机配置状态.md)
-- [H 盘 U 盘收尾状态](02_同步诊断/H盘U盘收尾状态.md)
-- [用户自动化任务治理建议](04_计划任务/用户自动化任务治理建议.md)
+- [GitHub 仓库索引](01_仓库索引/GitHub仓库索引.md)
+- [分支与远端诊断](02_同步诊断/分支与远端诊断.md)
+- [未推送队列](02_同步诊断/未推送队列.md)
 - [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)
 - [2026-07-05 历史审计](90_历史审计/2026/2026-07-05-GitHub仓库与计划任务审计.md)
 
 ## 自动刷新入口
 
+- `.\tools\Get-ProjectAdmission.ps1 -Repo wlyaaaaa/github-local-index -Json`：使用 cached refs 的只读 admission；加 `-Fetch` 后只有 fetch 与 GitHub metadata 都成功才标记为 `live`，所需 live 证据失败时返回非零。
 - `.\tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读干跑，检查 GitHub 远端仓库、本地 clone、ahead/behind 和脏工作区映射。
 - `.\tools\Update-GitHubIndex.ps1`：刷新 `00_总览/`、`01_仓库索引/`、`02_同步诊断/` 下的公开 Markdown 摘要。
 - `.\tools\Update-ScheduledTaskHealth.ps1`：刷新 `04_计划任务/` 下的计划任务健康摘要和异常清单。
 - `.\tools\Update-UserAutomationMap.ps1`：刷新 `04_计划任务/用户自动化任务地图.md` 和 `04_计划任务/仓库计划任务建议.md`，记录用户自动化任务用途推测和仓库计划任务缺口。
-- `.\tools\Refresh-GitHubLocalIndex.ps1 -Fast -Repo wlyaaaaa/github-local-index`：单仓库快路径，只解析现有 clone 索引并输出目标仓库分支、upstream、ahead/behind 和脏状态；用于项目收尾，不重建公开 Markdown，不枚举计划任务。
+- `.\tools\Refresh-GitHubLocalIndex.ps1 -Fast -Repo wlyaaaaa/github-local-index -Json`：单仓库快路径，返回同一 admission schema；不重建公开 Markdown，不枚举计划任务。
 - `.\tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：只读一致性检查，临时生成摘要后对比 tracked Markdown；默认只把 GitHub/同步诊断类稳定文档漂移视为失败，计划任务文档漂移作为易变警告。加 `-Strict` 可做全量强一致检查。
 - `.\tools\Refresh-GitHubLocalIndex.ps1 -CheckOnly`：通过现有刷新包装器执行只读一致性检查，不写公开 Markdown。
-- `.\tools\Register-GitHubLocalIndexRefreshTask.ps1 -CheckOnly`：注册 `GitHubLocalIndex Consistency Check` 计划任务，只定期检查一致性，不自动提交或推送；计划任务入口使用 `wscript.exe` 调用 `tools\Refresh-GitHubLocalIndex-Hidden.vbs`，避免 PowerShell 窗口闪现并保留退出码。
-- `pwsh .\tests\Run-UnitTests.ps1`：运行轻量 PowerShell 7 自测，覆盖刷新脚本 fast path 契约。
+- `.\tools\Register-GitHubLocalIndexRefreshTask.ps1 -CheckOnly -Json`：只输出 `GitHubLocalIndex Consistency Check` 的 read-only Action 定义，不注册或修改 live task。只有 root 在保存 legacy pre-image 并取得明确授权后才运行 `-Apply`。
+- `.\tools\Add-PushRecord.ps1 -Repo <owner/name> -Branch <branch> -Commit <hash> -Reason <summary> -Json`：纯文件、幂等的里程碑记录；不会 stage、commit、pull、rebase 或 push。
+- `pwsh .\tests\Run-UnitTests.ps1`、`pwsh .\tests\Test-ProjectAdmission.ps1`、`pwsh .\tests\Test-PushRecord.ps1`：运行行为、worktree/admission 和并发 push-record 测试。
 
-## Codex 默认联动
+## 收尾联动
 
-今后 Codex 只要实际修改了任意 Git 工作区，默认流程是：验证目标仓库、显式 stage、提交并推送目标仓库，然后回到本仓库记录本轮同步结论，再提交并推送 `wlyaaaaa/github-local-index`。用户明确说“只本地”“不提交”或“不推送”时，按用户本轮要求优先。
+项目收尾先读取 admission JSON，再由目标项目自己的流程决定提交和推送。本索引不因每次普通任务或普通 push 自动产生 commit：只有仓库身份/路径/可见性、公开门禁、worktree 状态口径或明确里程碑发生变化时，才运行生成器或 `Add-PushRecord.ps1`，Git 事务始终由外层 closeout 显式执行。用户要求“只本地”“不提交”或“不推送”时，本仓库同样保持本地且不触碰 remote。

@@ -1,12 +1,16 @@
-param(
+﻿param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [switch] $CheckOnly,
     [switch] $Fast,
     [string] $Repo,
-    [string] $RepoPath
+    [string] $RepoPath,
+    [switch] $Json
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
 
 $logDir = Join-Path $RepoRoot '99_private\logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -35,22 +39,7 @@ function Add-PathIfExists {
 function Normalize-RefreshRepoSlug {
     param([AllowNull()] [string] $Value)
 
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return $null
-    }
-
-    $text = $Value.Trim() -replace '\\', '/'
-    $text = $text -replace '\.git$', ''
-
-    if ($text -match 'github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+)$') {
-        return "$($matches['owner'])/$($matches['repo'])"
-    }
-
-    if ($text -match '^(?<owner>[^/\s]+)/(?<repo>[^/\s]+)$') {
-        return "$($matches['owner'])/$($matches['repo'])"
-    }
-
-    return $text
+    ConvertTo-GitHubRepoSlug $Value
 }
 
 function Resolve-IndexedClonePath {
@@ -137,34 +126,14 @@ function Invoke-FastRepositoryRefresh {
 
     $originUrl = Invoke-GitScalar -Path $targetPath -Arguments @('remote', 'get-url', 'origin')
     $resolvedRepo = if (-not [string]::IsNullOrWhiteSpace($Repo)) { Normalize-RefreshRepoSlug $Repo } else { Normalize-RefreshRepoSlug $originUrl }
-    $branch = Invoke-GitScalar -Path $targetPath -Arguments @('branch', '--show-current')
-    $upstream = Invoke-GitScalar -Path $targetPath -Arguments @('rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}')
-    $counts = if (-not [string]::IsNullOrWhiteSpace($upstream)) {
-        Invoke-GitScalar -Path $targetPath -Arguments @('rev-list', '--left-right', '--count', 'HEAD...@{u}')
-    } else {
-        $null
-    }
-    $dirtyLines = @(& git -C $targetPath status --porcelain=v1 --untracked-files=normal 2>$null)
-
-    $ahead = $null
-    $behind = $null
-    if ($counts -match '^(?<left>\d+)\s+(?<right>\d+)$') {
-        $ahead = [int] $matches['left']
-        $behind = [int] $matches['right']
+    if ([string]::IsNullOrWhiteSpace($resolvedRepo)) {
+        throw "Cannot normalize GitHub remote for path: $targetPath"
     }
 
-    $summary = [pscustomobject]@{
-        Repo       = $resolvedRepo
-        Path       = $targetPath
-        Branch     = $branch
-        Upstream   = $upstream
-        Ahead      = $ahead
-        Behind     = $behind
-        DirtyCount = $dirtyLines.Count
-    }
+    $summary = Get-ProjectAdmissionRecord -Repo $resolvedRepo -RepoPath $targetPath -IndexRoot $RepoRoot
 
-    Write-RefreshLog ("FAST repo={0} path={1} branch={2} upstream={3} ahead={4} behind={5} dirty={6}" -f `
-        $summary.Repo, $summary.Path, $summary.Branch, $summary.Upstream, $summary.Ahead, $summary.Behind, $summary.DirtyCount)
+    Write-RefreshLog ("FAST repo={0} root={1} mode={2} decision={3} worktrees={4}" -f `
+        $summary.repo, $summary.local_root, $summary.remote_mode, $summary.decision, @($summary.worktrees).Count)
 
     return $summary
 }
@@ -246,7 +215,13 @@ function Invoke-GitHubLocalIndexRefresh {
 
 if ($MyInvocation.InvocationName -ne '.') {
     try {
-        Invoke-GitHubLocalIndexRefresh | Out-Host
+        $result = Invoke-GitHubLocalIndexRefresh
+        if ($Json -and $null -ne $result) {
+            $result | ConvertTo-Json -Depth 10
+        }
+        elseif ($null -ne $result) {
+            $result | Out-Host
+        }
         exit 0
     }
     catch {

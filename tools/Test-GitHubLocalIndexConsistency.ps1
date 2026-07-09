@@ -153,14 +153,7 @@ function Compare-GitHubLocalIndexDocuments {
 function New-GitHubLocalIndexConsistencyTempRoot {
     param([string] $RepoRoot)
 
-    $privateRoot = Join-Path $RepoRoot '99_private'
-    if (-not (Test-Path -LiteralPath $privateRoot)) {
-        New-Item -ItemType Directory -Path $privateRoot | Out-Null
-    }
-
-    $tempParent = Join-Path $privateRoot 'consistency-checks'
-    New-Item -ItemType Directory -Path $tempParent -Force | Out-Null
-    return Join-Path $tempParent ('generated-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
+    return Join-Path ([System.IO.Path]::GetTempPath()) ('github-local-index-consistency-' + [guid]::NewGuid().ToString('N'))
 }
 
 function Remove-GitHubLocalIndexConsistencyTempRoot {
@@ -173,9 +166,10 @@ function Remove-GitHubLocalIndexConsistencyTempRoot {
         return
     }
 
-    $privateRoot = (Resolve-Path -LiteralPath (Join-Path $RepoRoot '99_private')).Path
-    $resolvedTemp = (Resolve-Path -LiteralPath $TempRoot).Path
-    if (-not $resolvedTemp.StartsWith($privateRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $systemTempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $resolvedTemp = [System.IO.Path]::GetFullPath((Resolve-Path -LiteralPath $TempRoot).Path)
+    $leaf = Split-Path -Leaf $resolvedTemp
+    if (-not $resolvedTemp.StartsWith($systemTempRoot, [System.StringComparison]::OrdinalIgnoreCase) -or $leaf -notlike 'github-local-index-consistency-*') {
         throw "Refusing to remove unexpected consistency temp path: $resolvedTemp"
     }
 

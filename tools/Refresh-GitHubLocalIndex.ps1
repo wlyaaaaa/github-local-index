@@ -13,12 +13,18 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
 
 $logDir = Join-Path $RepoRoot '99_private\logs'
-New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logPath = Join-Path $logDir 'GitHubLocalIndexRefresh.log'
+$script:RefreshLoggingEnabled = -not $CheckOnly
 
 function Write-RefreshLog {
     param([string] $Message)
 
+    if (-not $script:RefreshLoggingEnabled) {
+        return
+    }
+    if (-not (Test-Path -LiteralPath $logDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
     $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message
     Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
 }

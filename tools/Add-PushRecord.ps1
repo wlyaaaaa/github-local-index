@@ -68,7 +68,9 @@ function Test-PushRecordReasonSafety {
         'ghp_[A-Za-z0-9]{36,}',
         'github_pat_[A-Za-z0-9_]{20,}',
         'xox[baprs]-[A-Za-z0-9-]{20,}',
-        'sk-[A-Za-z0-9]{20,}'
+        'sk-[A-Za-z0-9]{20,}',
+        '\b(?:client[_-]?secret|password|passwd|pwd)\s*[:=]\s*\S+',
+        '\bauthorization\s*:\s*bearer\s+\S+'
     )
     foreach ($pattern in $secretPatterns) {
         if ($Value -match $pattern) {

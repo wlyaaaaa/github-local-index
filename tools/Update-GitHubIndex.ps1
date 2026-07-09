@@ -547,11 +547,15 @@ function Resolve-CloneStatuses {
 
             $repoErrorReasons = @($admission.errors | ForEach-Object { [string] $_.category })
             foreach ($worktree in @($admission.worktrees)) {
-                $ahead = if ($null -eq $worktree.ahead) { 0 } else { [int] $worktree.ahead }
-                $behind = if ($null -eq $worktree.behind) { 0 } else { [int] $worktree.behind }
-                $dirtyCount = if ($null -eq $worktree.dirty_count) { 0 } else { [int] $worktree.dirty_count }
+                $inspectionFailed = [bool] $worktree.inspection_error
+                $ahead = if ($inspectionFailed -and $null -eq $worktree.ahead) { $null } elseif ($null -eq $worktree.ahead) { 0 } else { [int] $worktree.ahead }
+                $behind = if ($inspectionFailed -and $null -eq $worktree.behind) { $null } elseif ($null -eq $worktree.behind) { 0 } else { [int] $worktree.behind }
+                $dirtyCount = if ($inspectionFailed -and $null -eq $worktree.dirty_count) { $null } elseif ($null -eq $worktree.dirty_count) { 0 } else { [int] $worktree.dirty_count }
                 $hasUpstream = -not [string]::IsNullOrWhiteSpace([string] $worktree.upstream)
-                $state = if (-not $worktree.exists -or $worktree.prunable) {
+                $state = if ($inspectionFailed) {
+                    'worktree 检查失败（状态未知）'
+                }
+                elseif (-not $worktree.exists -or $worktree.prunable) {
                     'prunable worktree（路径缺失）'
                 }
                 else {
@@ -584,7 +588,7 @@ function Resolve-CloneStatuses {
                     State = $state
                     NextAction = $nextAction
                     IsDirty = $dirtyCount -gt 0
-                    NeedsReview = $repoErrorReasons.Count -gt 0 -or $worktree.prunable -or (-not $hasUpstream) -or $ahead -gt 0 -or $behind -gt 0 -or $dirtyCount -gt 0
+                    NeedsReview = $inspectionFailed -or $repoErrorReasons.Count -gt 0 -or $worktree.prunable -or (-not $hasUpstream) -or $ahead -gt 0 -or $behind -gt 0 -or $dirtyCount -gt 0
                     QueueReasons = @($queueReasons)
                     RemoteMode = $admission.remote_mode
                 }

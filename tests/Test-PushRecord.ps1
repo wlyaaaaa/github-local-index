@@ -155,6 +155,19 @@ try {
     $rejected = Complete-PushRecordProcess -Handle $rejectHandle
     Assert-True ($rejected.ExitCode -ne 0) 'rejects obvious secret material in reason'
     Assert-Equal $beforeRejected (Get-FileHash -LiteralPath $concurrentLog -Algorithm SHA256).Hash 'rejected reason leaves log unchanged'
+
+    $unsafeReasonCases = @(
+        [pscustomobject]@{ Commit = 'badc0de'; Label = 'client_secret assignment'; Reason = 'client_secret=TEST_ONLY_VALUE_DO_NOT_USE' },
+        [pscustomobject]@{ Commit = 'c0ffee1'; Label = 'password assignment'; Reason = 'password: TEST_ONLY_VALUE_DO_NOT_USE' },
+        [pscustomobject]@{ Commit = 'decaf12'; Label = 'Authorization Bearer header'; Reason = 'Authorization: Bearer TEST_ONLY_VALUE_DO_NOT_USE' }
+    )
+    foreach ($case in $unsafeReasonCases) {
+        $beforeUnsafeReason = (Get-FileHash -LiteralPath $concurrentLog -Algorithm SHA256).Hash
+        $unsafeHandle = Start-PushRecordProcess -LogPath $concurrentLog -Repo 'example/reject' -Branch 'main' -Commit $case.Commit -Reason $case.Reason
+        $unsafeResult = Complete-PushRecordProcess -Handle $unsafeHandle
+        Assert-True ($unsafeResult.ExitCode -ne 0) "rejects $($case.Label) in reason"
+        Assert-Equal $beforeUnsafeReason (Get-FileHash -LiteralPath $concurrentLog -Algorithm SHA256).Hash "$($case.Label) leaves log unchanged"
+    }
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) {

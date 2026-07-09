@@ -41,15 +41,15 @@ if ($MyInvocation.InvocationName -ne '.') {
     }
     catch {
         if ($Json) {
-            [pscustomobject][ordered]@{
-                schema = 'github-local-index.project-admission.v1'
-                observed_utc = [DateTime]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
-                repo = $Repo
-                decision = 'block'
-                reasons = @('internal_error')
-                errors = @([pscustomobject]@{ category = 'internal_error'; exit_code = 1 })
-                worktrees = @()
-            } | ConvertTo-Json -Depth 6
+            New-ProjectAdmissionRecord `
+                -ObservedUtc ([DateTime]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)) `
+                -Repo (ConvertTo-GitHubRepoSlug $Repo) `
+                -RemoteMode 'cached' `
+                -Decision 'block' `
+                -Reasons @('internal_error') `
+                -Errors @([pscustomobject]@{ category = 'internal_error'; exit_code = 1 }) `
+                -Worktrees @() |
+                ConvertTo-Json -Depth 10
         }
         else {
             Write-Error 'Project admission failed.'

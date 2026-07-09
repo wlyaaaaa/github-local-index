@@ -17,11 +17,10 @@ checkScript = here & "\Test-GitHubLocalIndexConsistency.ps1"
 shell.CurrentDirectory = repoRoot
 
 whereCode = shell.Run("cmd.exe /d /c where pwsh.exe >nul 2>nul", 0, True)
-If whereCode = 0 Then
-    command = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File """ & checkScript & """ -SkipFetch"
-Else
-    command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & checkScript & """ -SkipFetch"
+If whereCode <> 0 Then
+    WScript.Quit 3
 End If
+command = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File """ & checkScript & """ -SkipFetch"
 
 exitCode = shell.Run(command, 0, True)
 WScript.Quit exitCode

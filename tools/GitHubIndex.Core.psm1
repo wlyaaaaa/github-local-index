@@ -104,6 +104,31 @@ function ConvertTo-GitHubRepoSlug {
     return $null
 }
 
+function ConvertTo-PublicGitHubRemoteUrl {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Value)
+
+    $slug = ConvertTo-GitHubRepoSlug $Value
+    if (-not $slug) {
+        return $null
+    }
+
+    $text = $Value.Trim()
+    if ($text -match '^https?://') {
+        try {
+            $uri = [uri] $text
+            if (-not [string]::IsNullOrEmpty($uri.UserInfo) -or -not [string]::IsNullOrEmpty($uri.Query) -or -not [string]::IsNullOrEmpty($uri.Fragment)) {
+                return "https://github.com/$slug.git"
+            }
+        }
+        catch {
+            return $null
+        }
+    }
+
+    return $text
+}
+
 function ConvertTo-NormalizedGitPath {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)] [string] $Path)
@@ -178,11 +203,43 @@ function Test-PublicExposurePath {
     return $normalized -match '(?i)(^|/)(99_private|secrets?)(/|$)|(^|/)(\.env(?:\..*)?|[^/]*(?:private[_-]?key|client[_-]?secret)[^/]*)$|\.(?:pem|key|p12|pfx)$'
 }
 
+function ConvertFrom-GitStatusPorcelainV1Z {
+    [CmdletBinding()]
+    param([AllowEmptyString()] [string] $Text)
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    $segments = @($Text.Split([char] 0, [System.StringSplitOptions]::RemoveEmptyEntries))
+    for ($index = 0; $index -lt $segments.Count; $index++) {
+        $segment = [string] $segments[$index]
+        if ($segment.Length -lt 3 -or $segment[2] -ne ' ') {
+            throw 'Invalid NUL-delimited Git status record.'
+        }
+
+        $status = $segment.Substring(0, 2)
+        $paths = [System.Collections.Generic.List[string]]::new()
+        $paths.Add($segment.Substring(3))
+        if ($status -match '[RC]') {
+            if ($index + 1 -ge $segments.Count) {
+                throw 'Incomplete NUL-delimited Git rename record.'
+            }
+            $index++
+            $paths.Add([string] $segments[$index])
+        }
+
+        $entries.Add([pscustomobject]@{
+            status = $status
+            paths = @($paths)
+        })
+    }
+
+    return @($entries)
+}
+
 function Get-GitStatusObservation {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)] [string] $Path)
 
-    $result = Invoke-GitCommandResult -Path $Path -Arguments @('status', '--porcelain=v1', '--untracked-files=normal')
+    $result = Invoke-GitCommandResult -Path $Path -Arguments @('status', '--porcelain=v1', '-z', '--untracked-files=all')
     if ($result.exit_code -ne 0) {
         return [pscustomobject]@{
             dirty_count = $null
@@ -191,17 +248,25 @@ function Get-GitStatusObservation {
         }
     }
 
-    $entries = @($result.stdout -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    try {
+        $entries = @(ConvertFrom-GitStatusPorcelainV1Z -Text $result.stdout)
+    }
+    catch {
+        return [pscustomobject]@{
+            dirty_count = $null
+            public_exposure_conflict = $false
+            error = $true
+        }
+    }
     $exposureConflict = $false
     foreach ($entry in $entries) {
-        $candidate = if ($entry.Length -gt 3) { $entry.Substring(3) } else { '' }
-        if ($candidate -match ' -> (?<destination>.+)$') {
-            $candidate = $matches['destination']
+        foreach ($candidate in @($entry.paths)) {
+            if (Test-PublicExposurePath -Path $candidate) {
+                $exposureConflict = $true
+                break
+            }
         }
-        if (Test-PublicExposurePath -Path $candidate) {
-            $exposureConflict = $true
-            break
-        }
+        if ($exposureConflict) { break }
     }
 
     return [pscustomobject]@{
@@ -347,6 +412,40 @@ function New-AdmissionError {
     [pscustomobject]@{ category = $Category; exit_code = $ExitCode }
 }
 
+function New-ProjectAdmissionRecord {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $ObservedUtc,
+        [AllowNull()] [string] $Repo,
+        [AllowNull()] [string] $RemoteUrl,
+        [AllowNull()] [string] $Visibility,
+        [AllowNull()] [string] $DefaultBranch,
+        [AllowNull()] [string] $LocalRoot,
+        [AllowNull()] [string] $GitCommonDir,
+        [ValidateSet('cached', 'live')] [string] $RemoteMode = 'cached',
+        [ValidateSet('proceed', 'warn', 'block')] [string] $Decision = 'block',
+        [string[]] $Reasons = @(),
+        [object[]] $Errors = @(),
+        [object[]] $Worktrees = @()
+    )
+
+    [pscustomobject][ordered]@{
+        schema = $script:AdmissionSchema
+        observed_utc = $ObservedUtc
+        repo = $Repo
+        remote_url = $RemoteUrl
+        visibility = $Visibility
+        default_branch = $DefaultBranch
+        local_root = $LocalRoot
+        git_common_dir = $GitCommonDir
+        remote_mode = $RemoteMode
+        decision = $Decision
+        reasons = @($Reasons)
+        errors = @($Errors)
+        worktrees = @($Worktrees)
+    }
+}
+
 function Get-ProjectAdmissionRecord {
     [CmdletBinding()]
     param(
@@ -366,6 +465,7 @@ function Get-ProjectAdmissionRecord {
     $errors = [System.Collections.Generic.List[object]]::new()
     $worktrees = @()
     $remoteSlug = $null
+    $remoteUrl = $null
     $localRoot = $null
     $gitCommonDir = $null
     $remoteMode = 'cached'
@@ -417,6 +517,7 @@ function Get-ProjectAdmissionRecord {
         $remoteResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('config', '--get', 'remote.origin.url')
         if ($remoteResult.exit_code -eq 0) {
             $remoteSlug = ConvertTo-GitHubRepoSlug $remoteResult.stdout
+            $remoteUrl = ConvertTo-PublicGitHubRemoteUrl $remoteResult.stdout
         }
         if (-not $remoteSlug -or ($normalizedRepo -and $remoteSlug -ine $normalizedRepo)) {
             $reasons.Add('remote_mismatch')
@@ -470,6 +571,12 @@ function Get-ProjectAdmissionRecord {
                 if ($metadata.defaultBranchRef -and $metadata.defaultBranchRef.name) {
                     $DefaultBranch = [string] $metadata.defaultBranchRef.name
                 }
+                if (-not [string]::IsNullOrWhiteSpace([string] $metadata.url)) {
+                    $metadataRemoteUrl = ConvertTo-PublicGitHubRemoteUrl ([string] $metadata.url)
+                    if ($metadataRemoteUrl) {
+                        $remoteUrl = $metadataRemoteUrl
+                    }
+                }
             }
             catch {
                 $errors.Add((New-AdmissionError -Category 'post_fetch_worktree_inspection_failed' -ExitCode 1))
@@ -494,13 +601,16 @@ function Get-ProjectAdmissionRecord {
     if (@($worktrees | Where-Object { $_.exists -and [string]::IsNullOrWhiteSpace([string] $_.upstream) }).Count -gt 0) { $reasons.Add('no_upstream') }
     if (@($worktrees | Where-Object prunable).Count -gt 0) { $reasons.Add('prunable_worktree') }
     if (@($worktrees | Where-Object detached).Count -gt 0) { $reasons.Add('detached_worktree') }
-    if (@($worktrees | Where-Object inspection_error).Count -gt 0) { $reasons.Add('worktree_inspection_error') }
+    if (@($worktrees | Where-Object inspection_error).Count -gt 0) {
+        $reasons.Add('worktree_inspection_error')
+        $errors.Add((New-AdmissionError -Category 'worktree_inspection_failed' -ExitCode 1))
+    }
     if ($Visibility -eq 'PUBLIC' -and @($worktrees | Where-Object public_exposure_conflict).Count -gt 0) {
         $reasons.Add('public_exposure_conflict')
     }
 
     $reasonArray = @($reasons | Sort-Object -Unique)
-    $blockingReasons = @('invalid_repo', 'missing_repo_path', 'ambiguous_repo_path', 'remote_mismatch', 'public_exposure_conflict', 'live_evidence_unavailable', 'visibility_unknown', 'default_branch_unknown')
+    $blockingReasons = @('invalid_repo', 'missing_repo_path', 'ambiguous_repo_path', 'remote_mismatch', 'public_exposure_conflict', 'live_evidence_unavailable', 'visibility_unknown', 'default_branch_unknown', 'worktree_inspection_error')
     $decision = if (@($reasonArray | Where-Object { $_ -in $blockingReasons }).Count -gt 0) {
         'block'
     }
@@ -511,29 +621,30 @@ function Get-ProjectAdmissionRecord {
         'proceed'
     }
 
-    [pscustomobject][ordered]@{
-        schema = $script:AdmissionSchema
-        observed_utc = $observedUtc
-        repo = $normalizedRepo
-        visibility = $Visibility
-        remote = $remoteSlug
-        default_branch = $DefaultBranch
-        local_root = $localRoot
-        git_common_dir = $gitCommonDir
-        remote_mode = $remoteMode
-        decision = $decision
-        reasons = $reasonArray
-        errors = @($errors)
-        worktrees = @($worktrees)
-    }
+    New-ProjectAdmissionRecord `
+        -ObservedUtc $observedUtc `
+        -Repo $normalizedRepo `
+        -RemoteUrl $remoteUrl `
+        -Visibility $Visibility `
+        -DefaultBranch $DefaultBranch `
+        -LocalRoot $localRoot `
+        -GitCommonDir $gitCommonDir `
+        -RemoteMode $remoteMode `
+        -Decision $decision `
+        -Reasons $reasonArray `
+        -Errors @($errors) `
+        -Worktrees @($worktrees)
 }
 
 Export-ModuleMember -Function @(
     'Invoke-ExternalCommandResult',
     'Invoke-GitCommandResult',
     'ConvertTo-GitHubRepoSlug',
+    'ConvertTo-PublicGitHubRemoteUrl',
     'ConvertFrom-GitWorktreePorcelain',
+    'ConvertFrom-GitStatusPorcelainV1Z',
     'Get-GitRepositoryWorktrees',
     'Get-IndexedProjectFacts',
+    'New-ProjectAdmissionRecord',
     'Get-ProjectAdmissionRecord'
 )

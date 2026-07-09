@@ -112,6 +112,39 @@ if ($seedDiscovery) {
     }
 }
 
+$inspectionRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-inspection-' + [guid]::NewGuid().ToString('N'))
+try {
+    & git init --initial-branch=main $inspectionRoot 2>&1 | Out-Null
+    & git -C $inspectionRoot config user.name 'Inspection Test'
+    & git -C $inspectionRoot config user.email 'inspection@example.invalid'
+    Set-Content -LiteralPath (Join-Path $inspectionRoot 'fixture.txt') -Value 'fixture' -Encoding utf8
+    & git -C $inspectionRoot add fixture.txt 2>&1 | Out-Null
+    & git -C $inspectionRoot commit -m fixture 2>&1 | Out-Null
+    & git -C $inspectionRoot remote add origin 'https://github.com/wlyaaaaa/inspection-fixture.git'
+    $inspectionIndex = [string] (& git -C $inspectionRoot rev-parse --git-path index)
+    if (-not [System.IO.Path]::IsPathRooted($inspectionIndex)) { $inspectionIndex = Join-Path $inspectionRoot $inspectionIndex }
+    [System.IO.File]::WriteAllBytes($inspectionIndex, [byte[]] @(1, 2, 3, 4))
+
+    $inspectionRepositories = @([pscustomobject]@{
+        nameWithOwner = 'wlyaaaaa/inspection-fixture'
+        visibility = 'PRIVATE'
+        url = 'https://github.com/wlyaaaaa/inspection-fixture'
+        defaultBranchRef = [pscustomobject]@{ name = 'main' }
+    })
+    $inspectionCloneMap = @{
+        'wlyaaaaa/inspection-fixture' = @([pscustomobject]@{ Path = $inspectionRoot })
+    }
+    Resolve-CloneStatuses -CloneMap $inspectionCloneMap -Repositories $inspectionRepositories -SkipFetch
+    $inspectionRow = @($inspectionCloneMap['wlyaaaaa/inspection-fixture'])[0]
+    Assert-True ($null -eq $inspectionRow.DirtyCount) 'generator does not coerce failed worktree inspection to dirty count zero'
+    Assert-True ($inspectionRow.State -match '检查失败') 'generator labels failed worktree inspection explicitly'
+    Assert-True ($inspectionRow.QueueReasons -contains 'worktree_inspection_failed') 'generator preserves worktree inspection error category'
+    Assert-True $inspectionRow.NeedsReview 'generator always queues failed worktree inspection for review'
+}
+finally {
+    if (Test-Path -LiteralPath $inspectionRoot) { Remove-Item -LiteralPath $inspectionRoot -Recurse -Force }
+}
+
 $repositories = @(
     [pscustomobject]@{
         nameWithOwner = 'wlyaaaaa/demo'
@@ -215,6 +248,37 @@ Assert-True ($generatedPaths -contains '00_总览\GitHub总览.md') 'consistency
 Assert-True ($generatedPaths -contains '00_总览\当前同步看板.md') 'consistency coverage includes dashboard'
 Assert-True ($generatedPaths -contains '02_同步诊断\未推送队列.md') 'consistency coverage includes queue'
 
+$readOnlyRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-readonly-' + [guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $readOnlyRoot -Force | Out-Null
+    $refreshPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1'
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $refreshPath -RepoRoot $readOnlyRoot -CheckOnly 2>&1 | Out-Null
+    Assert-True ($LASTEXITCODE -ne 0) 'CheckOnly fixture reports its intentionally missing generator scripts'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $readOnlyRoot -Force -Recurse).Count 'Refresh CheckOnly writes nothing inside the repository tree even on failure'
+}
+finally {
+    if (Test-Path -LiteralPath $readOnlyRoot) { Remove-Item -LiteralPath $readOnlyRoot -Recurse -Force }
+}
+
+$consistencyReadOnlyRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-consistency-root-' + [guid]::NewGuid().ToString('N'))
+$consistencyTempRoot = $null
+try {
+    New-Item -ItemType Directory -Path $consistencyReadOnlyRoot -Force | Out-Null
+    $consistencyTempRoot = New-GitHubLocalIndexConsistencyTempRoot -RepoRoot $consistencyReadOnlyRoot
+    $normalizedRepoRoot = [System.IO.Path]::GetFullPath($consistencyReadOnlyRoot).TrimEnd('\', '/')
+    $normalizedGeneratedRoot = [System.IO.Path]::GetFullPath($consistencyTempRoot).TrimEnd('\', '/')
+    Assert-True (-not $normalizedGeneratedRoot.StartsWith($normalizedRepoRoot, [System.StringComparison]::OrdinalIgnoreCase)) 'consistency generation uses system temp outside the repository tree'
+    New-Item -ItemType Directory -Path $consistencyTempRoot -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $consistencyTempRoot 'fixture.txt') -Value 'fixture' -Encoding utf8
+    Remove-GitHubLocalIndexConsistencyTempRoot -RepoRoot $consistencyReadOnlyRoot -TempRoot $consistencyTempRoot
+    Assert-True (-not (Test-Path -LiteralPath $consistencyTempRoot)) 'consistency temp root is removed after the check'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $consistencyReadOnlyRoot -Force -Recurse).Count 'consistency check leaves no repository-tree temp directories'
+}
+finally {
+    if ($consistencyTempRoot -and (Test-Path -LiteralPath $consistencyTempRoot)) { Remove-Item -LiteralPath $consistencyTempRoot -Recurse -Force }
+    if (Test-Path -LiteralPath $consistencyReadOnlyRoot) { Remove-Item -LiteralPath $consistencyReadOnlyRoot -Recurse -Force }
+}
+
 $updateSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Update-GitHubIndex.ps1') -Raw -Encoding utf8
 Assert-True ($updateSource -match 'GitHubIndex\.Core\.psm1') 'index generator imports the shared admission core'
 Assert-True ($updateSource -match 'Get-ProjectAdmissionRecord') 'index generator consumes admission records'
@@ -261,9 +325,22 @@ if ($hookParameters -contains 'RepoPath') {
         $installedText = [System.Text.Encoding]::ASCII.GetString($hookBytes)
         Assert-True (-not $installedText.Contains("`r")) 'installed hook uses LF line endings'
         Assert-True ($installedText.StartsWith('#!/bin/sh')) 'installed hook keeps a valid Git Bash shebang'
+        Assert-True ($installedText -match 'name-only -z') 'installed hook requests NUL-delimited staged paths'
+        Assert-True ($installedText -match 'read -r -d') 'installed hook reads staged paths with a NUL delimiter'
         $firstHookHash = (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $hookPath -RepoPath $hookRepo | Out-Null
         Assert-Equal $firstHookHash (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash 'hook installation is byte deterministic'
+
+        & git -C $hookRepo config user.name 'Hook Test'
+        & git -C $hookRepo config user.email 'hook@example.invalid'
+        & git -C $hookRepo config core.quotePath true
+        $sensitiveHookDirectory = Join-Path $hookRepo '中文 空格\嵌套'
+        New-Item -ItemType Directory -Path $sensitiveHookDirectory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $sensitiveHookDirectory '.env') -Value 'TEST_ONLY=1' -Encoding utf8
+        & git -C $hookRepo add -- . 2>&1 | Out-Null
+        $hookCommitOutput = @(& git -C $hookRepo commit -m 'must be blocked' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks a staged nested .env path containing Chinese and spaces'
+        Assert-True (($hookCommitOutput -join "`n") -match 'Blocked staged path') 'hook rejection is caused by the sensitive-path gate'
     }
     finally {
         if (Test-Path -LiteralPath $hookRepo) { Remove-Item -LiteralPath $hookRepo -Recurse -Force }
@@ -291,6 +368,8 @@ if ($registerParameters -contains 'Json' -and $registerParameters -contains 'App
 $hiddenLauncherSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex-Hidden.vbs') -Raw -Encoding utf8
 Assert-True ($hiddenLauncherSource -match 'Test-GitHubLocalIndexConsistency\.ps1') 'hidden task launcher calls the read-only consistency script'
 Assert-True (-not ($hiddenLauncherSource -match 'Refresh-GitHubLocalIndex\.ps1')) 'hidden task launcher cannot call the write refresh wrapper'
+Assert-True (-not ($hiddenLauncherSource -match '(?i)powershell\.exe')) 'hidden task launcher never falls back to unsupported Windows PowerShell 5.1'
+Assert-True ($hiddenLauncherSource -match 'If whereCode <> 0 Then\s*WScript\.Quit [1-9]') 'hidden task launcher exits nonzero when pwsh is unavailable'
 
 $consistencySource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1') -Raw -Encoding utf8
 Assert-True (-not ($consistencySource -match 'C:\\Users\\10979|G:\\')) 'consistency checker does not embed machine scan roots'

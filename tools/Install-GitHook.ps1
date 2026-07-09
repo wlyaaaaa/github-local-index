@@ -26,7 +26,7 @@ $hookContent = @'
 blacklist_paths='(^|/)(99_private|secrets?)(/|$)|private[_-]?key|client[_-]?secret|\.env$|\.(pem|key|p12|pfx)$'
 secret_patterns='-----BEGIN[ A-Z]+PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}'
 
-git diff --cached --name-only | while IFS= read -r file; do
+git diff --cached --name-only -z | while IFS= read -r -d '' file; do
     [ -z "$file" ] && continue
     if printf '%s\n' "$file" | grep -Eiq "$blacklist_paths"; then
         printf '%s\n' "Blocked staged path: $file" >&2

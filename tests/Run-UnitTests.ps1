@@ -361,7 +361,7 @@ if ($registerParameters -contains 'Json' -and $registerParameters -contains 'App
     Assert-Equal 0 $LASTEXITCODE 'task definition dry-run succeeds without registration'
     $definition = ($definitionJson -join "`n") | ConvertFrom-Json
     Assert-Equal 'GitHubLocalIndex Consistency Check' $definition.task_name 'dry-run targets the read-only consistency task'
-    Assert-True ($definition.action.arguments -match 'Refresh-GitHubLocalIndex-Hidden\.vbs.+CheckOnly') 'dry-run action invokes hidden launcher in CheckOnly mode'
+    Assert-True ($definition.action.arguments -match 'Refresh-GitHubLocalIndex-Hidden\.vbs"\s+-CheckOnly$') 'dry-run action must invoke the hidden launcher with the explicit -CheckOnly token'
     Assert-True (-not ($definition.action.arguments -match 'Refresh-GitHubLocalIndex\.ps1|commit|push')) 'dry-run action cannot invoke write refresh, commit or push'
 }
 

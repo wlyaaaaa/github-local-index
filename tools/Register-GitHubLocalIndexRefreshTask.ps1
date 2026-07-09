@@ -25,7 +25,7 @@ function Get-GitHubLocalIndexTaskDefinition {
         schedule = [pscustomobject]@{ frequency = 'daily'; at = $At.ToString('HH:mm:ss') }
         action = [pscustomobject]@{
             execute = (Join-Path $env:WINDIR 'System32\wscript.exe')
-            arguments = '"{0}" CheckOnly' -f $wrapperPath
+            arguments = '"{0}" -CheckOnly' -f $wrapperPath
             working_directory = $repoRoot
         }
         description = 'Runs a read-only GitHub local index consistency check. It does not refresh Markdown, commit, or push.'

@@ -17,7 +17,7 @@
 
 以后修改任意 Git 项目时，Agent 控制先走 `E:\.agents\skills\project-entry-gate`，再查询本仓库作为 Git 项目事实入口和公开发布门禁：
 
-1. 优先运行 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`，获得带 schema、UTC 观察时间、`cached|live` 证据模式、所有 worktree 和 `proceed|warn|block` 决策的单仓库事实；Markdown 索引用于总览和人工阅读。
+1. 优先运行 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`，获得带 schema、UTC 观察时间、`cached|live` 证据模式、所有 worktree 的 `dirty_summary` / `sync_state`、只读 `decision` 和直接推送 `push_decision` / `push_strategy` 的单仓库事实；Markdown 索引用于总览和人工阅读。
 2. 如果改动涉及绝对路径、计划任务、本机数据源、跨盘迁移、备份/恢复、本地工具链、启动脚本、快捷方式或共享目录，同时查询 `E:\PCConfig`。
 3. 进入具体项目后，再读取该项目自己的 `AGENTS.md`、README、脚本和测试命令。
 4. 改完项目后，按默认联动提交/推送目标仓库；如果项目路径、机器依赖或恢复信息变化，再更新 `E:\PCConfig` 和本索引。
@@ -49,7 +49,7 @@
 
 ## 自动刷新入口
 
-- `.\tools\Get-ProjectAdmission.ps1 -Repo wlyaaaaa/github-local-index -Json`：使用 cached refs 的只读 admission；加 `-Fetch` 后只有 fetch 与 GitHub metadata 都成功才标记为 `live`，所需 live 证据失败时返回非零。
+- `.\tools\Get-ProjectAdmission.ps1 -Repo wlyaaaaa/github-local-index -Json`：使用 cached refs 的只读 admission；加 `-Fetch` 后只有 fetch 与 GitHub metadata 都成功才标记为 `live`。`decision` 保留项目进入语义，`push_decision` / `push_strategy` 表达直接推送门禁；behind/diverged 只阻止直接推送，不阻止只读进入。
 - `.\tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读干跑，检查 GitHub 远端仓库、本地 clone、ahead/behind 和脏工作区映射。
 - `.\tools\Update-GitHubIndex.ps1`：刷新 `00_总览/`、`01_仓库索引/`、`02_同步诊断/` 下的公开 Markdown 摘要。
 - `.\tools\Update-ScheduledTaskHealth.ps1`：刷新 `04_计划任务/` 下的计划任务健康摘要和异常清单。

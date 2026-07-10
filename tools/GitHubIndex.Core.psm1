@@ -235,6 +235,69 @@ function ConvertFrom-GitStatusPorcelainV1Z {
     return @($entries)
 }
 
+function Get-GitDirtySummary {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)] [AllowEmptyCollection()] [object[]] $Entries)
+
+    $staged = 0
+    $unstaged = 0
+    $untracked = 0
+    $conflicted = 0
+    $conflictCodes = @('DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU')
+
+    foreach ($entry in @($Entries)) {
+        $status = [string] $entry.status
+        if ($status -in $conflictCodes) {
+            $conflicted++
+            continue
+        }
+        if ($status -eq '??') {
+            $untracked++
+            continue
+        }
+        if ($status.Length -ge 2) {
+            if ($status[0] -ne ' ') { $staged++ }
+            if ($status[1] -ne ' ') { $unstaged++ }
+        }
+    }
+
+    [pscustomobject][ordered]@{
+        total = @($Entries).Count
+        staged = $staged
+        unstaged = $unstaged
+        untracked = $untracked
+        conflicted = $conflicted
+    }
+}
+
+function New-UnknownGitDirtySummary {
+    [pscustomobject][ordered]@{
+        total = $null
+        staged = $null
+        unstaged = $null
+        untracked = $null
+        conflicted = $null
+    }
+}
+
+function Get-GitSyncState {
+    [CmdletBinding()]
+    param(
+        [AllowNull()] [string] $Upstream,
+        [AllowNull()] [Nullable[int]] $Ahead,
+        [AllowNull()] [Nullable[int]] $Behind,
+        [bool] $InspectionError = $false
+    )
+
+    if ($InspectionError) { return 'unknown' }
+    if ([string]::IsNullOrWhiteSpace($Upstream)) { return 'no_upstream' }
+    if ($null -eq $Ahead -or $null -eq $Behind) { return 'unknown' }
+    if ($Ahead -gt 0 -and $Behind -gt 0) { return 'diverged' }
+    if ($Ahead -gt 0) { return 'ahead' }
+    if ($Behind -gt 0) { return 'behind' }
+    return 'in_sync'
+}
+
 function Get-GitStatusObservation {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)] [string] $Path)
@@ -243,6 +306,7 @@ function Get-GitStatusObservation {
     if ($result.exit_code -ne 0) {
         return [pscustomobject]@{
             dirty_count = $null
+            dirty_summary = New-UnknownGitDirtySummary
             public_exposure_conflict = $false
             error = $true
         }
@@ -254,10 +318,12 @@ function Get-GitStatusObservation {
     catch {
         return [pscustomobject]@{
             dirty_count = $null
+            dirty_summary = New-UnknownGitDirtySummary
             public_exposure_conflict = $false
             error = $true
         }
     }
+    $dirtySummary = Get-GitDirtySummary -Entries $entries
     $exposureConflict = $false
     foreach ($entry in $entries) {
         foreach ($candidate in @($entry.paths)) {
@@ -270,7 +336,8 @@ function Get-GitStatusObservation {
     }
 
     return [pscustomobject]@{
-        dirty_count = $entries.Count
+        dirty_count = $dirtySummary.total
+        dirty_summary = $dirtySummary
         public_exposure_conflict = $exposureConflict
         error = $false
     }
@@ -294,6 +361,7 @@ function Get-GitRepositoryWorktrees {
         $ahead = $null
         $behind = $null
         $dirtyCount = $null
+        $dirtySummary = New-UnknownGitDirtySummary
         $exposureConflict = $false
         $inspectionError = $false
 
@@ -327,6 +395,7 @@ function Get-GitRepositoryWorktrees {
 
             $status = Get-GitStatusObservation -Path $record.path
             $dirtyCount = $status.dirty_count
+            $dirtySummary = $status.dirty_summary
             $exposureConflict = $status.public_exposure_conflict
             if ($status.error) {
                 $inspectionError = $true
@@ -343,6 +412,8 @@ function Get-GitRepositoryWorktrees {
             ahead = $ahead
             behind = $behind
             dirty_count = $dirtyCount
+            dirty_summary = $dirtySummary
+            sync_state = Get-GitSyncState -Upstream $upstream -Ahead $ahead -Behind $behind -InspectionError ($inspectionError -or -not $exists)
             locked = [bool] $record.locked
             prunable = [bool] $record.prunable
             inspection_error = $inspectionError
@@ -412,6 +483,40 @@ function New-AdmissionError {
     [pscustomobject]@{ category = $Category; exit_code = $ExitCode }
 }
 
+function Get-ProjectPushGuidance {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [ValidateSet('proceed', 'warn', 'block')] [string] $AdmissionDecision,
+        [string[]] $Reasons = @(),
+        [ValidateSet('cached', 'live')] [string] $RemoteMode = 'cached',
+        [object[]] $Worktrees = @()
+    )
+
+    if ($AdmissionDecision -eq 'block') {
+        $strategy = if (@($Reasons) -contains 'public_exposure_conflict') { 'resolve_public_exposure' } else { 'resolve_admission_block' }
+        return [pscustomobject]@{ decision = 'block'; strategy = $strategy }
+    }
+    if (@($Worktrees | Where-Object { $_.sync_state -eq 'diverged' }).Count -gt 0) {
+        return [pscustomobject]@{ decision = 'block'; strategy = 'reconcile_then_recheck' }
+    }
+    if (@($Worktrees | Where-Object { $_.sync_state -eq 'behind' }).Count -gt 0) {
+        return [pscustomobject]@{ decision = 'block'; strategy = 'update_then_recheck' }
+    }
+    if (@($Worktrees | Where-Object { $null -ne $_.dirty_summary -and $_.dirty_summary.total -gt 0 }).Count -gt 0) {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'clean_or_stage_explicitly' }
+    }
+    if (@($Worktrees | Where-Object { $_.exists -and $_.sync_state -eq 'no_upstream' }).Count -gt 0) {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'set_upstream' }
+    }
+    if ($RemoteMode -eq 'cached') {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'fetch_recheck' }
+    }
+    if (@($Worktrees | Where-Object { $_.sync_state -eq 'ahead' }).Count -gt 0) {
+        return [pscustomobject]@{ decision = 'proceed'; strategy = 'normal' }
+    }
+    return [pscustomobject]@{ decision = 'proceed'; strategy = 'none' }
+}
+
 function New-ProjectAdmissionRecord {
     [CmdletBinding()]
     param(
@@ -424,6 +529,8 @@ function New-ProjectAdmissionRecord {
         [AllowNull()] [string] $GitCommonDir,
         [ValidateSet('cached', 'live')] [string] $RemoteMode = 'cached',
         [ValidateSet('proceed', 'warn', 'block')] [string] $Decision = 'block',
+        [ValidateSet('proceed', 'warn', 'block')] [string] $PushDecision = 'block',
+        [ValidateSet('none', 'normal', 'fetch_recheck', 'clean_or_stage_explicitly', 'set_upstream', 'update_then_recheck', 'reconcile_then_recheck', 'resolve_public_exposure', 'resolve_admission_block')] [string] $PushStrategy = 'resolve_admission_block',
         [string[]] $Reasons = @(),
         [object[]] $Errors = @(),
         [object[]] $Worktrees = @()
@@ -440,6 +547,8 @@ function New-ProjectAdmissionRecord {
         git_common_dir = $GitCommonDir
         remote_mode = $RemoteMode
         decision = $Decision
+        push_decision = $PushDecision
+        push_strategy = $PushStrategy
         reasons = @($Reasons)
         errors = @($Errors)
         worktrees = @($Worktrees)
@@ -620,6 +729,7 @@ function Get-ProjectAdmissionRecord {
     else {
         'proceed'
     }
+    $pushGuidance = Get-ProjectPushGuidance -AdmissionDecision $decision -Reasons $reasonArray -RemoteMode $remoteMode -Worktrees $worktrees
 
     New-ProjectAdmissionRecord `
         -ObservedUtc $observedUtc `
@@ -631,6 +741,8 @@ function Get-ProjectAdmissionRecord {
         -GitCommonDir $gitCommonDir `
         -RemoteMode $remoteMode `
         -Decision $decision `
+        -PushDecision $pushGuidance.decision `
+        -PushStrategy $pushGuidance.strategy `
         -Reasons $reasonArray `
         -Errors @($errors) `
         -Worktrees @($worktrees)

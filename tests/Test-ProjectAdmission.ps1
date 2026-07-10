@@ -45,6 +45,7 @@ if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf) -or -not (Test-Path
 }
 
 Import-Module $modulePath -Force
+$admissionModule = Get-Module GitHubIndex.Core
 
 $statusParser = Get-Command ConvertFrom-GitStatusPorcelainV1Z -ErrorAction SilentlyContinue
 Assert-True ($null -ne $statusParser) 'admission core exposes a NUL-delimited status parser'
@@ -53,6 +54,72 @@ if ($statusParser) {
     $parsedStatus = @(ConvertFrom-GitStatusPorcelainV1Z -Text ("?? $newlinePath" + [char] 0))
     Assert-Equal 1 $parsedStatus.Count 'NUL status parser keeps one entry for a path containing a newline'
     Assert-Equal $newlinePath $parsedStatus[0].paths[0] 'NUL status parser preserves Chinese, spaces and newlines verbatim'
+}
+
+$dirtySummaryCommand = & $admissionModule { Get-Command Get-GitDirtySummary -ErrorAction SilentlyContinue }
+Assert-True ($null -ne $dirtySummaryCommand) 'admission core exposes a private dirty summary classifier'
+if ($dirtySummaryCommand) {
+    $statusFixture = @(
+        'A  staged.txt',
+        ' M unstaged.txt',
+        '?? untracked.txt',
+        'UU conflicted.txt'
+    ) -join [char] 0
+    $statusFixture += [char] 0
+    $dirtySummary = & $admissionModule {
+        param($Text)
+        Get-GitDirtySummary -Entries @(ConvertFrom-GitStatusPorcelainV1Z -Text $Text)
+    } $statusFixture
+    Assert-Equal 4 $dirtySummary.total 'dirty summary counts all status entries'
+    Assert-Equal 1 $dirtySummary.staged 'dirty summary counts staged entries'
+    Assert-Equal 1 $dirtySummary.unstaged 'dirty summary counts unstaged entries'
+    Assert-Equal 1 $dirtySummary.untracked 'dirty summary counts untracked entries'
+    Assert-Equal 1 $dirtySummary.conflicted 'dirty summary counts conflicts without double-counting columns'
+}
+
+$syncStateCommand = & $admissionModule { Get-Command Get-GitSyncState -ErrorAction SilentlyContinue }
+Assert-True ($null -ne $syncStateCommand) 'admission core exposes a private sync state classifier'
+if ($syncStateCommand) {
+    $syncCases = @(
+        @{ upstream = 'origin/main'; ahead = 0; behind = 0; error = $false; expected = 'in_sync' },
+        @{ upstream = 'origin/main'; ahead = 1; behind = 0; error = $false; expected = 'ahead' },
+        @{ upstream = 'origin/main'; ahead = 0; behind = 1; error = $false; expected = 'behind' },
+        @{ upstream = 'origin/main'; ahead = 1; behind = 1; error = $false; expected = 'diverged' },
+        @{ upstream = $null; ahead = $null; behind = $null; error = $false; expected = 'no_upstream' },
+        @{ upstream = 'origin/main'; ahead = $null; behind = $null; error = $true; expected = 'unknown' }
+    )
+    foreach ($case in $syncCases) {
+        $actual = & $admissionModule {
+            param($Upstream, $Ahead, $Behind, $InspectionError)
+            Get-GitSyncState -Upstream $Upstream -Ahead $Ahead -Behind $Behind -InspectionError $InspectionError
+        } $case.upstream $case.ahead $case.behind $case.error
+        Assert-Equal $case.expected $actual "sync state classifies $($case.expected)"
+    }
+}
+
+$pushGuidanceCommand = & $admissionModule { Get-Command Get-ProjectPushGuidance -ErrorAction SilentlyContinue }
+Assert-True ($null -ne $pushGuidanceCommand) 'admission core exposes a private push guidance classifier'
+if ($pushGuidanceCommand) {
+    $cleanSummary = [pscustomobject]@{ total = 0; staged = 0; unstaged = 0; untracked = 0; conflicted = 0 }
+    $dirtySummaryFixture = [pscustomobject]@{ total = 1; staged = 0; unstaged = 0; untracked = 1; conflicted = 0 }
+    $pushCases = @(
+        @{ name = 'cached clean in-sync'; decision = 'warn'; reasons = @('cached_observation'); mode = 'cached'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $cleanSummary }); expectedDecision = 'warn'; expectedStrategy = 'fetch_recheck' },
+        @{ name = 'live clean ahead'; decision = 'proceed'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'ahead'; dirty_summary = $cleanSummary }); expectedDecision = 'proceed'; expectedStrategy = 'normal' },
+        @{ name = 'live clean in-sync'; decision = 'proceed'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $cleanSummary }); expectedDecision = 'proceed'; expectedStrategy = 'none' },
+        @{ name = 'dirty'; decision = 'warn'; reasons = @('dirty_worktree'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $dirtySummaryFixture }); expectedDecision = 'warn'; expectedStrategy = 'clean_or_stage_explicitly' },
+        @{ name = 'no upstream'; decision = 'warn'; reasons = @('no_upstream'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'no_upstream'; dirty_summary = $cleanSummary }); expectedDecision = 'warn'; expectedStrategy = 'set_upstream' },
+        @{ name = 'behind'; decision = 'warn'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'behind'; dirty_summary = $cleanSummary }); expectedDecision = 'block'; expectedStrategy = 'update_then_recheck' },
+        @{ name = 'diverged'; decision = 'warn'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'diverged'; dirty_summary = $cleanSummary }); expectedDecision = 'block'; expectedStrategy = 'reconcile_then_recheck' },
+        @{ name = 'public exposure'; decision = 'block'; reasons = @('public_exposure_conflict'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $dirtySummaryFixture }); expectedDecision = 'block'; expectedStrategy = 'resolve_public_exposure' }
+    )
+    foreach ($case in $pushCases) {
+        $guidance = & $admissionModule {
+            param($AdmissionDecision, $Reasons, $RemoteMode, $Worktrees)
+            Get-ProjectPushGuidance -AdmissionDecision $AdmissionDecision -Reasons $Reasons -RemoteMode $RemoteMode -Worktrees $Worktrees
+        } $case.decision $case.reasons $case.mode $case.worktrees
+        Assert-Equal $case.expectedDecision $guidance.decision "push decision classifies $($case.name)"
+        Assert-Equal $case.expectedStrategy $guidance.strategy "push strategy classifies $($case.name)"
+    }
 }
 
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-admission-' + [guid]::NewGuid().ToString('N'))
@@ -106,8 +173,20 @@ try {
     Assert-True (@($worktrees | Where-Object prunable).Count -eq 1) 'preserves prunable worktree metadata'
     Assert-True (@($worktrees | Where-Object { $_.exists -and -not $_.upstream }).Count -ge 2) 'labels reachable worktrees without upstream'
     Assert-True (@($worktrees | Where-Object { $_.dirty_count -gt 0 }).Count -eq 1) 'observes dirty primary worktree'
+    Assert-True (@($worktrees | Where-Object { $null -ne $_.dirty_summary }).Count -eq $worktrees.Count) 'all worktrees expose dirty summaries'
+    Assert-True (@($worktrees | Where-Object { $_.sync_state -in @('in_sync', 'ahead', 'behind', 'diverged', 'no_upstream', 'unknown') }).Count -eq $worktrees.Count) 'all worktrees expose recognized sync states'
+    Assert-Equal 'in_sync' ($worktrees | Where-Object branch -eq 'main').sync_state 'real worktree fixture produces in_sync'
+    Assert-True (@($worktrees | Where-Object { $_.exists -and $_.sync_state -eq 'no_upstream' }).Count -ge 2) 'real worktree fixture produces no_upstream'
     $sortedPaths = @($worktrees.path | Sort-Object)
     Assert-Equal ($sortedPaths -join '|') (@($worktrees.path) -join '|') 'sorts worktrees by normalized path'
+
+    Set-Content -LiteralPath (Join-Path $linkedPath 'ahead.txt') -Value 'ahead fixture' -Encoding utf8
+    Invoke-TestGit -Path $linkedPath -Arguments @('add', 'ahead.txt') | Out-Null
+    Invoke-TestGit -Path $linkedPath -Arguments @('commit', '-m', 'ahead fixture') | Out-Null
+    Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--set-upstream-to=origin/main', 'feature') | Out-Null
+    $aheadWorktrees = @(Get-GitRepositoryWorktrees -Path $primaryPath)
+    Assert-Equal 'ahead' ($aheadWorktrees | Where-Object branch -eq 'feature').sync_state 'real worktree fixture produces ahead'
+    Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--unset-upstream', 'feature') | Out-Null
 
     $cached = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
     Assert-Equal 'github-local-index.project-admission.v1' $cached.schema 'uses versioned admission schema'
@@ -116,7 +195,8 @@ try {
     Assert-Equal 'https://github.com/example/project.git' $cached.remote_url 'keeps the real configured remote URL in cached admission JSON'
     $requiredAdmissionProperties = @(
         'schema', 'observed_utc', 'repo', 'remote_url', 'visibility', 'default_branch',
-        'local_root', 'git_common_dir', 'remote_mode', 'decision', 'reasons', 'errors', 'worktrees'
+        'local_root', 'git_common_dir', 'remote_mode', 'decision', 'push_decision',
+        'push_strategy', 'reasons', 'errors', 'worktrees'
     )
     foreach ($propertyName in $requiredAdmissionProperties) {
         Assert-True ($cached.PSObject.Properties.Name -contains $propertyName) "normal admission JSON contains $propertyName"
@@ -147,6 +227,8 @@ try {
     Assert-True ($cached.reasons -contains 'dirty_worktree') 'reports dirty worktree reason'
     Assert-True ($cached.reasons -contains 'no_upstream') 'reports no-upstream reason'
     Assert-True ($cached.reasons -contains 'prunable_worktree') 'reports prunable worktree reason'
+    Assert-Equal 'warn' $cached.push_decision 'cached dirty admission warns before direct push'
+    Assert-Equal 'clean_or_stage_explicitly' $cached.push_strategy 'dirty worktree takes precedence over cached evidence'
     Assert-True ([datetimeoffset]::Parse($cached.observed_utc).Offset -eq [timespan]::Zero) 'timestamps observation in UTC'
 
     $fetchSuccess = {
@@ -165,6 +247,13 @@ try {
     Assert-True (-not ($live.reasons -contains 'cached_observation')) 'removes cached warning after live evidence succeeds'
     $livePrimary = $live.worktrees | Where-Object branch -eq 'main'
     Assert-Equal 1 $livePrimary.behind 'recomputes ahead/behind after a successful live fetch'
+    Assert-Equal 'behind' $livePrimary.sync_state 'classifies a fetched behind worktree'
+    Assert-Equal 'block' $live.push_decision 'behind worktree blocks direct push without blocking read-only admission'
+    Assert-Equal 'update_then_recheck' $live.push_strategy 'behind worktree requires update and recheck'
+    Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--set-upstream-to=origin/main', 'feature') | Out-Null
+    $divergedWorktrees = @(Get-GitRepositoryWorktrees -Path $primaryPath)
+    Assert-Equal 'diverged' ($divergedWorktrees | Where-Object branch -eq 'feature').sync_state 'real worktree fixture produces diverged'
+    Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--unset-upstream', 'feature') | Out-Null
 
     $failedFetch = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchFailure -GitHubInvoker $ghSuccess
     Assert-Equal 'cached' $failedFetch.remote_mode 'falls back to cached when fetch fails'
@@ -186,6 +275,8 @@ try {
     $publicConflict = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
     Assert-Equal 'block' $publicConflict.decision 'blocks nested sensitive paths containing Chinese and spaces'
     Assert-True ($publicConflict.reasons -contains 'public_exposure_conflict') 'reports public exposure conflict reason'
+    Assert-Equal 'block' $publicConflict.push_decision 'public exposure conflict blocks push'
+    Assert-Equal 'resolve_public_exposure' $publicConflict.push_strategy 'public exposure conflict has a dedicated remediation strategy'
     Remove-Item -LiteralPath (Split-Path -Parent $sensitiveDirectory) -Recurse -Force
 
     $indexPath = Invoke-TestGit -Path $primaryPath -Arguments @('rev-parse', '--git-path', 'index')

@@ -17,6 +17,7 @@
 - 本仓库可以记录项目入口路径，但路径含义仅用于定位 Git 项目；涉及跨盘迁移、计划任务 Action、启动脚本、快捷方式、端口、模型、本机数据源、备份/恢复时，机器事实以 `E:\PCConfig` 为准。
 - 计划任务在本仓库只作为公开健康看板和项目联动摘要；实际运行状态归 Windows Task Scheduler，机器配置和恢复门禁归 `E:\PCConfig`，任务业务语义和注册脚本归具体项目。
 - AI 全局行为、skills/plugins、能力路由和跨项目协作规则归 `E:\.agents`；本仓库不得把这些内容复制成第二套规则源。
+- 子代理委派、PowerShell 版本门禁、中文编码和 `.ps1` BOM 规则只读取 `E:\.agents\AGENTS.md`；本仓库仅引用，不复制这些 Agent 行为规则。
 - 健康、职业、关系、财富等个人领域判断归对应领域项目；本仓库只能记录仓库状态，不保存个人原始数据或决策内容。
 - 如果同一事实必须被多处引用，本仓库只写摘要和指向，避免复制可变配置；冲突时按“`.agents` 管 AI 行为，`PCConfig` 管机器事实，具体项目管业务语义，本仓库管 Git 门禁”裁决。
 
@@ -40,7 +41,9 @@
 
 ## 推送决策
 
-- 私有备份仓库：工作区干净且 ahead 时，可直接推送。
+- admission v1 的 `decision` 只判断能否只读进入项目；`push_decision` 与 `push_strategy` 单独判断能否直接推送。behind/diverged 不阻止只读进入，但分别要求 `update_then_recheck` / `reconcile_then_recheck` 并阻止直接推送。
+- 每个 worktree 用 `dirty_summary` 区分 staged、unstaged、untracked、conflicted，并用 `sync_state` 表示 `in_sync|ahead|behind|diverged|no_upstream|unknown`；兼容字段 `dirty_count` 必须等于 `dirty_summary.total`。
+- 私有备份仓库：live 证据下工作区干净且 ahead 时，`push_decision=proceed`、`push_strategy=normal`；in-sync 时策略为 `none`。
 - 公开索引仓库：只推文档、规则、摘要和脱敏结论。
 - 公开业务仓库：按仓库自己的 `AGENTS.md` 和本轮用户目标判断；含截图、临时帧、原始日志、绝对路径、进程列表或未整理产物时，优先否决原样提交。
 - 多仓库批处理时，分别记录“已推送 / 否决 / 需人工确认”的原因。

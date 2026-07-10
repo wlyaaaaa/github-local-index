@@ -53,11 +53,11 @@ flowchart TB
 - 本地仓库路径和 Git 根；
 - GitHub owner/repo 和可见性；
 - 当前分支与远端默认分支；
-- ahead、behind 和 detached 状态；
+- ahead、behind、diverged、in-sync、no-upstream 和 detached 状态；
 - 主工作区及其他 worktree；
-- tracked、untracked 和冲突状态；
+- 每个 worktree 的 `dirty_summary`（staged、unstaged、untracked、conflicted）与兼容总数 `dirty_count`；
 - cached 或 live 证据模式；
-- 最终 `proceed`、`warn` 或 `block` 建议。
+- 只读进入项目的 `decision`，以及直接推送的 `push_decision` / `push_strategy`。
 
 示例：
 
@@ -66,7 +66,7 @@ pwsh -NoProfile -File E:\GitHub总索引\tools\Get-ProjectAdmission.ps1 `
   -Repo wlyaaaaa/github-local-index -Json
 ```
 
-admission 是只读门禁，不会替你改分支、提交或推送。
+admission 是只读门禁，不会替你改分支、提交或推送。`decision` 与推送结论刻意分离：behind 或 diverged 仍可只读进入并诊断，但 `push_decision=block`，分别给出 `update_then_recheck` 或 `reconcile_then_recheck`。脏工作区、无 upstream、cached 证据会给出 warn 和对应处理策略；公开暴露或其他 admission blocker 会直接阻止推送。
 
 ### 4.2 公开仓库与本地 clone 索引
 

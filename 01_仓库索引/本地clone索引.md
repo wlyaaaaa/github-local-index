@@ -15,7 +15,7 @@
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`，脏工作区 3 项（cached） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/LocalOCR | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |

@@ -17,12 +17,21 @@
 
 以后修改任意 Git 项目时，Agent 控制先走 `E:\.agents\skills\project-entry-gate`，再查询本仓库作为 Git 项目事实入口和公开发布门禁：
 
+```text
+decision=block => no write or push
+decision!=block && push_decision!=proceed => read-only diagnosis allowed, direct transport blocked
+push_decision=proceed => transport conditions only
+visibility=PUBLIC => separate publication review of rules, visibility, commits, paths and content
+```
+
 1. 优先运行 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`，获得带 schema、UTC 观察时间、`cached|live` 证据模式、所有 worktree 的 `dirty_summary` / `sync_state`、只读 `decision` 和直接推送 `push_decision` / `push_strategy` 的单仓库事实；Markdown 索引用于总览和人工阅读。
 2. 如果改动涉及绝对路径、计划任务、本机数据源、跨盘迁移、备份/恢复、本地工具链、启动脚本、快捷方式或共享目录，同时查询 `E:\PCConfig`。
 3. 进入具体项目后，再读取该项目自己的 `AGENTS.md`、README、脚本和测试命令。
 4. 改完项目后，按默认联动提交/推送目标仓库；如果项目路径、机器依赖或恢复信息变化，再更新 `E:\PCConfig` 和本索引。
 
 本仓库是 Git 项目事实入口和公开门禁；`E:\.agents` 是 Agent 控制入口；`E:\PCConfig` 是机器配置中心；具体项目保留自己的业务规则。
+
+控制面架构、能力、故障或演进任务可按需读取 [`docs/contracts/`](./docs/contracts/) 的 owner-local 合同白盒；普通项目任务不全量加载这些卡，也不在本仓库创建第二份跨基座 catalog。admission V1 的 `push_decision` 只表达 transport conditions，公开仓库仍必须单独复审目标规则、visibility、commits、paths 与 content。
 
 ## 目录
 

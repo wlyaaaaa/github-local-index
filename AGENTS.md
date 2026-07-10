@@ -41,7 +41,17 @@
 
 ## 推送决策
 
-- admission v1 的 `decision` 只判断能否只读进入项目；`push_decision` 与 `push_strategy` 单独判断能否直接推送。behind/diverged 不阻止只读进入，但分别要求 `update_then_recheck` / `reconcile_then_recheck` 并阻止直接推送。
+- 控制面架构、能力、故障或演进任务按需读取 `docs/contracts/` 的 owner-local 合同白盒；普通项目任务仍优先查询 admission，不全量加载合同正文，也不在本仓库维护第二份跨基座 catalog。
+- admission 与发布必须按同一两阶段门禁解释：
+
+```text
+decision=block => no write or push
+decision!=block && push_decision!=proceed => read-only diagnosis allowed, direct transport blocked
+push_decision=proceed => transport conditions only
+visibility=PUBLIC => separate publication review of rules, visibility, commits, paths and content
+```
+
+- admission v1 的 `decision` 只判断能否只读进入项目；`push_decision` 与 `push_strategy` 只判断 Git transport readiness，V1 不输出 `publication_decision`。behind/diverged 不阻止只读进入，但分别要求 `update_then_recheck` / `reconcile_then_recheck` 并阻止直接 transport。
 - 每个 worktree 用 `dirty_summary` 区分 staged、unstaged、untracked、conflicted，并用 `sync_state` 表示 `in_sync|ahead|behind|diverged|no_upstream|unknown`；兼容字段 `dirty_count` 必须等于 `dirty_summary.total`。
 - 私有备份仓库：live 证据下工作区干净且 ahead 时，`push_decision=proceed`、`push_strategy=normal`；in-sync 时策略为 `none`。
 - 公开索引仓库：只推文档、规则、摘要和脱敏结论。

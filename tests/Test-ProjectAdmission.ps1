@@ -295,6 +295,9 @@ try {
     $jsonOutput = @(& pwsh -NoProfile -ExecutionPolicy Bypass -File $cliPath -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PRIVATE' -DefaultBranch 'main' -Json 2>&1)
     Assert-Equal 0 $LASTEXITCODE 'CLI returns success for cached nonblocking admission'
     $cliRecord = ($jsonOutput -join "`n") | ConvertFrom-Json
+    Assert-Equal 0 $LASTEXITCODE 'CLI success represents nonblocking admission only'
+    Assert-True (-not ($cliRecord.PSObject.Properties.Name -contains 'publication_decision')) `
+        'admission v1 deliberately does not claim publication authorization'
     Assert-Equal 'github-local-index.project-admission.v1' $cliRecord.schema 'CLI emits parseable versioned JSON'
     Assert-Equal 'cached' $cliRecord.remote_mode 'CLI JSON exposes observation mode'
 }

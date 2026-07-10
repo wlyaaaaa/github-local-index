@@ -66,7 +66,14 @@ pwsh -NoProfile -File E:\GitHub总索引\tools\Get-ProjectAdmission.ps1 `
   -Repo wlyaaaaa/github-local-index -Json
 ```
 
-admission 是只读门禁，不会替你改分支、提交或推送。`decision` 与推送结论刻意分离：behind 或 diverged 仍可只读进入并诊断，但 `push_decision=block`，分别给出 `update_then_recheck` 或 `reconcile_then_recheck`。脏工作区、无 upstream、cached 证据会给出 warn 和对应处理策略；公开暴露或其他 admission blocker 会直接阻止推送。
+```text
+decision=block => no write or push
+decision!=block && push_decision!=proceed => read-only diagnosis allowed, direct transport blocked
+push_decision=proceed => transport conditions only
+visibility=PUBLIC => separate publication review of rules, visibility, commits, paths and content
+```
+
+admission 是只读门禁，不会替你改分支、提交或推送。behind 或 diverged 仍可只读进入并诊断，但直接 transport 被阻止，分别要求 `update_then_recheck` 或 `reconcile_then_recheck`。脏工作区、无 upstream、cached 证据会给出 warn 和对应策略。即使 `push_decision=proceed`，它也只证明 transport readiness；admission V1 不输出 `publication_decision`，PUBLIC 目标必须另查项目规则、visibility、候选 commits、paths 与 content。
 
 ### 4.2 公开仓库与本地 clone 索引
 
@@ -110,18 +117,20 @@ admission 是只读门禁，不会替你改分支、提交或推送。`decision`
 
 `05_规则与模板\` 定义公开发布脱敏、推送放行/否决和审计报告格式。它避免每个 AI 按自己的直觉重新发明安全标准。
 
+Git 控制面的五张 owner-local 合同白盒位于 [`docs/contracts/`](./docs/contracts/)；它们只保存稳定机制与证据入口，动态事实仍由 admission、refresh 和 milestone helper 在任务当下提供。
+
 ### 4.8 一致性与刷新
 
-总索引提供三种不同成本的检查：
+总索引提供不同成本和写入效果的检查：
 
-| 路线 | 用途 | 是否写文件 |
-|---|---|---|
-| Admission | 单仓库开工事实 | 否 |
-| Fast path | 单仓库收尾快查 | 否 |
-| CheckOnly / consistency | 判断公开索引是否漂移 | 否 |
-| Full refresh | 确实需要重建公开摘要 | 是 |
+| 路线 | 用途 | tracked Markdown | 其他写入效果 |
+|---|---|---|---|
+| Admission | 单仓库开工事实 | 不重建 | 默认 cached 查询不写；`-Fetch` 会更新 Git 远端证据 |
+| Fast path | 单仓库收尾快查 | 不重建 | 可能写本机 private log |
+| CheckOnly / consistency | 判断公开索引是否漂移 | 不重建 | 使用并清理 system temp |
+| Full refresh | 确实需要重建公开摘要 | 重建 | 按刷新流程产生派生材料 |
 
-普通任务使用前两种。只有索引事实、公开门禁或明确里程碑发生变化时，才做完整刷新。
+普通任务使用前两种。Fast 与 CheckOnly 都不是 `zero_write`；只有索引事实、公开门禁或明确里程碑发生变化时，才做完整刷新。
 
 ## 5. 一个项目怎样从开工到收尾
 

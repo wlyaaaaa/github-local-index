@@ -373,6 +373,7 @@ Assert-True ($hiddenLauncherSource -match 'If whereCode <> 0 Then\s*WScript\.Qui
 
 $consistencySource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1') -Raw -Encoding utf8
 Assert-True (-not ($consistencySource -match 'C:\\Users\\10979|G:\\')) 'consistency checker does not embed machine scan roots'
+Assert-True ($consistencySource.Contains(". (Join-Path `$RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot `$RepoRoot -SkipFetch:`$SkipFetch")) 'consistency checker preserves the requested remote observation mode when dot-sourcing the generator'
 
 $compareRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-consistency-' + [guid]::NewGuid().ToString('N'))
 $currentRoot = Join-Path $compareRoot 'current'

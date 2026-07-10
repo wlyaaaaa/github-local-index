@@ -190,9 +190,12 @@ function Invoke-GitHubLocalIndexConsistencyCheck {
     New-Item -ItemType Directory -Path $generatedRoot -Force | Out-Null
 
     try {
-        . (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1')
-        . (Join-Path $RepoRoot 'tools\Update-ScheduledTaskHealth.ps1')
-        . (Join-Path $RepoRoot 'tools\Update-UserAutomationMap.ps1')
+        # Dot-sourcing runs each script's param block in this scope. Pass the
+        # caller's values explicitly so their defaults cannot silently reset
+        # the requested observation mode or repository root.
+        . (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot $RepoRoot -SkipFetch:$SkipFetch
+        . (Join-Path $RepoRoot 'tools\Update-ScheduledTaskHealth.ps1') -RepoRoot $RepoRoot
+        . (Join-Path $RepoRoot 'tools\Update-UserAutomationMap.ps1') -RepoRoot $RepoRoot
 
         $effectiveScanRoots = @($ScanRoots)
         if ($effectiveScanRoots.Count -eq 0) {

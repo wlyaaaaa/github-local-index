@@ -240,8 +240,13 @@ $userTask = [pscustomobject]@{
 }
 $actionSummary = Get-PublicActionSummary -Task $userTask
 Assert-True ($actionSummary -match 'wscript\.exe') 'keeps executable name in public task summary'
-Assert-True ($actionSummary -match 'E:\\Projects\\Tools\\demo\\backup\.ps1') 'keeps the sanitized script path'
+Assert-True ($actionSummary -match 'backup\.ps1') 'keeps only the script leaf name in public task summary'
+Assert-True (-not ($actionSummary -match '[A-Z]:\\')) 'public task summary omits drive-qualified action paths'
 Assert-True (-not ($actionSummary -match 'should-not-appear')) 'drops task arguments after the script path'
+$internalPathHint = Get-RelatedPathHint -TaskName $userTask.TaskName -ActionSummary ((Get-TaskActionTexts -Task $userTask) -join ' ')
+Assert-Equal 'E:\Projects\Tools\demo' $internalPathHint 'keeps full paths only in memory for repository coverage matching'
+Assert-Equal '有运行记录' (Get-PublicLastRunLabel -LastRunTime ([datetime]'2026-07-09T12:00:00')) 'public task map redacts exact last-run timestamps'
+Assert-Equal '已计划' (Get-PublicNextRunLabel -State 'Ready' -NextRunTime ([datetime]'2026-07-09T23:10:00')) 'public task map redacts exact next-run timestamps'
 
 $generatedPaths = @(Get-GitHubLocalIndexGeneratedDocumentPaths)
 Assert-True ($generatedPaths -contains '00_总览\GitHub总览.md') 'consistency coverage includes GitHub overview'
@@ -373,7 +378,7 @@ Assert-True ($hiddenLauncherSource -match 'If whereCode <> 0 Then\s*WScript\.Qui
 
 $consistencySource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1') -Raw -Encoding utf8
 Assert-True (-not ($consistencySource -match 'C:\\Users\\10979|G:\\')) 'consistency checker does not embed machine scan roots'
-Assert-True ($consistencySource.Contains(". (Join-Path `$RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot `$RepoRoot -SkipFetch:`$SkipFetch")) 'consistency checker preserves the requested remote observation mode when dot-sourcing the generator'
+Assert-True ($consistencySource.Contains(". (Join-Path `$RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot `$RepoRoot -Owner `$Owner -ScanRoots `$ScanRoots -SkipFetch:`$SkipFetch")) 'consistency checker preserves every caller-selected generator parameter when dot-sourcing the generator'
 
 $compareRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-consistency-' + [guid]::NewGuid().ToString('N'))
 $currentRoot = Join-Path $compareRoot 'current'

@@ -15,20 +15,20 @@
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`，脏工作区 3 项（cached） |
 | wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/LocalOCR | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/OpenClawGateway | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`，脏工作区 2 项（cached） |
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0`（cached） |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0`（cached） |
 | wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit<br>E:\TimeAudit\.claude\worktrees\agitated-cray-6fe115<br>E:\TimeAudit\.claude\worktrees\competent-gates-0601f9<br>E:\TimeAudit\.claude\worktrees\condescending-banach-39c34b | `codex/full-audit-hardening-docs` 已同步，`0/0`（cached）<br>prunable worktree（路径缺失）（cached）<br>prunable worktree（路径缺失）（cached）<br>prunable worktree（路径缺失）（cached） |
+| wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0`（cached） |
 | wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/vault-tool | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/video-scaffold | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0`（cached） |

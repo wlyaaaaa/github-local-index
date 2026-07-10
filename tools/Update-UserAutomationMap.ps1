@@ -83,6 +83,26 @@ function ConvertTo-UserAutomationTaskResultAssessment {
     }
 }
 
+function Get-PublicLastRunLabel {
+    param([AllowNull()] [object] $LastRunTime)
+
+    if ($null -eq $LastRunTime) { return '无有效记录' }
+    $value = [datetime] $LastRunTime
+    if ($value.Year -le 2000) { return '无有效记录' }
+    return '有运行记录'
+}
+
+function Get-PublicNextRunLabel {
+    param(
+        [AllowNull()] [string] $State,
+        [AllowNull()] [object] $NextRunTime
+    )
+
+    if ($State -eq 'Disabled') { return '已禁用' }
+    if ($null -ne $NextRunTime -and ([datetime] $NextRunTime).Year -gt 2000) { return '已计划' }
+    return '未计划'
+}
+
 function Get-TaskActionTexts {
     param([object] $Task)
 
@@ -217,7 +237,7 @@ function Get-PublicActionSummary {
     param([object] $Task)
 
     $summaries = foreach ($action in @($Task.Actions)) {
-        $execute = [string] $action.Execute
+        $execute = ([string] $action.Execute).Trim('"')
         $arguments = [string] $action.Arguments
         $exeName = if ([string]::IsNullOrWhiteSpace($execute)) { '未知执行器' } else { Split-Path -Leaf $execute }
         $scriptPath = Get-SanitizedPathFromText -Text $arguments
@@ -225,10 +245,11 @@ function Get-PublicActionSummary {
             $scriptPath = Get-SanitizedPathFromText -Text $execute
         }
 
-        if ([string]::IsNullOrWhiteSpace($scriptPath)) {
+        $scriptName = if ([string]::IsNullOrWhiteSpace($scriptPath)) { '' } else { Split-Path -Leaf $scriptPath }
+        if ([string]::IsNullOrWhiteSpace($scriptName) -or $scriptName -eq $exeName) {
             $exeName
         } else {
-            "$exeName -> $scriptPath"
+            "$exeName -> $scriptName"
         }
     }
 
@@ -422,11 +443,13 @@ function Get-UserAutomationTaskRows {
             $assessment = [pscustomobject]@{ Severity = '信息'; Summary = '任务已禁用，未参与自动运行'; CodeText = $assessment.CodeText }
         }
 
-        $lastRun = if ($info -and $info.LastRunTime) { ([datetime] $info.LastRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
-        $nextRun = if ([string] $task.State -eq 'Disabled') { '' } elseif ($info -and $info.NextRunTime) { ([datetime] $info.NextRunTime).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
+        $lastRun = Get-PublicLastRunLabel -LastRunTime $(if ($info) { $info.LastRunTime } else { $null })
+        $nextRun = Get-PublicNextRunLabel -State ([string] $task.State) -NextRunTime $(if ($info) { $info.NextRunTime } else { $null })
         $actionSummary = Get-PublicActionSummary -Task $task
         $purpose = Get-TaskPurposeInference -TaskName ([string] $task.TaskName) -ActionSummary $actionSummary
-        $relatedPath = Get-RelatedPathHint -TaskName ([string] $task.TaskName) -ActionSummary $actionSummary
+        # Full paths are used only in memory to relate a task to an indexed
+        # repository. They are deliberately omitted from public task rows.
+        $relatedPath = Get-RelatedPathHint -TaskName ([string] $task.TaskName) -ActionSummary ((Get-TaskActionTexts -Task $task) -join ' ')
 
         [pscustomobject]@{
             TaskName       = [string] $task.TaskName
@@ -482,18 +505,18 @@ function Write-UserAutomationDocuments {
         '',
         "更新时间：$date",
         '',
-        '本文件扩大到所有“像用户自己配置的自动化”的计划任务。用途、必要性和风险为公开摘要级推测；不保存完整任务 XML 或完整 Action 参数。',
+        '本文件扩大到所有“像用户自己配置的自动化”的计划任务。用途、必要性和风险为公开摘要级推测；不保存完整任务 XML、完整 Action/工作目录、本机绝对路径或精确运行时间。',
         '',
         '## 判定规则',
         '',
         '- 非 Microsoft 系统任务，且不像常见软件更新器。',
         '- 任务名或动作包含备份、同步、自启、推送、看门狗、心跳、监控等语义。',
-        '- Action 指向用户目录、`E:\`、`G:\`、Git 仓库、PowerShell、Python、VBS、bat/cmd 或 git。',
+        '- Action 指向本机绝对路径、Git 仓库、PowerShell、Python、VBS、bat/cmd 或 git。',
         '',
         '## 任务地图',
         ''
     )
-    $taskLines += New-UserAutomationMarkdownTable -Headers @('任务', '状态', '上次运行', '下次运行', '返回码', '动作摘要', '关联路径', '推测用途', '为什么需要', '风险/复查点') -Properties @('TaskName', 'State', 'LastRunTime', 'NextRunTime', 'LastTaskResult', 'ActionSummary', 'RelatedPath', 'Purpose', 'Why', 'Risk') -Rows $TaskRows
+    $taskLines += New-UserAutomationMarkdownTable -Headers @('任务', '状态', '运行记录', '下次状态', '返回码', '动作摘要', '推测用途', '为什么需要', '风险/复查点') -Properties @('TaskName', 'State', 'LastRunTime', 'NextRunTime', 'LastTaskResult', 'ActionSummary', 'Purpose', 'Why', 'Risk') -Rows $TaskRows
     Set-UserAutomationTextFile -Path (Join-Path $RepoRoot '04_计划任务/用户自动化任务地图.md') -Lines $taskLines
 
     $recommendationLines = @(

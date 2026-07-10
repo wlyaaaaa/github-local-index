@@ -193,7 +193,7 @@ function Invoke-GitHubLocalIndexConsistencyCheck {
         # Dot-sourcing runs each script's param block in this scope. Pass the
         # caller's values explicitly so their defaults cannot silently reset
         # the requested observation mode or repository root.
-        . (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot $RepoRoot -SkipFetch:$SkipFetch
+        . (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot $RepoRoot -Owner $Owner -ScanRoots $ScanRoots -SkipFetch:$SkipFetch
         . (Join-Path $RepoRoot 'tools\Update-ScheduledTaskHealth.ps1') -RepoRoot $RepoRoot
         . (Join-Path $RepoRoot 'tools\Update-UserAutomationMap.ps1') -RepoRoot $RepoRoot
 

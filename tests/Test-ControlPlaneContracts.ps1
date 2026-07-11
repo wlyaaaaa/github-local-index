@@ -6,6 +6,11 @@ $ErrorActionPreference = 'Stop'
 
 $script:Failures = 0
 
+function ConvertTo-LfNewlines {
+    param([AllowEmptyString()] [string] $Text)
+    $Text.Replace("`r`n", "`n").Replace("`r", "`n")
+}
+
 function Assert-Equal {
     param(
         [AllowNull()] [object] $Expected,
@@ -42,6 +47,7 @@ function Assert-True {
 function Get-ContractContentViolations {
     param([Parameter(Mandatory = $true)] [string] $Text)
 
+    $Text = ConvertTo-LfNewlines $Text
     $violations = [System.Collections.Generic.List[string]]::new()
     $dynamicFactName = '(?:observed_utc|current_branch|default_branch|branch|commit|head|dirty_count|ahead|behind)'
     $providerJsonField = '(?:schema|observed_utc|repo|remote_url|visibility|default_branch|local_root|git_common_dir|remote_mode|decision|push_decision|push_strategy|reasons|errors|worktrees|dirty_summary|sync_state)'
@@ -157,7 +163,7 @@ foreach ($id in $ids) {
     if (-not $exists) { continue }
 
     $file = Get-Item -LiteralPath $path
-    $text = Get-Content -LiteralPath $path -Raw -Encoding utf8
+    $text = ConvertTo-LfNewlines (Get-Content -LiteralPath $path -Raw -Encoding utf8)
     $lines = @([regex]::Split($text.TrimEnd(), "`r?`n"))
     $actualHeadings = @([regex]::Matches($text, '(?m)^## (.+)$') | ForEach-Object { $_.Groups[1].Value })
     $totalBytes += $file.Length

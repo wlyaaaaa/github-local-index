@@ -6,7 +6,7 @@
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents | `main` 已同步，`0/0`，脏工作区 2 项（cached） |
+| wlyaaaaa/.agents | E:\.agents | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/ai-llm-job-prep | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/ChineseASR | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0`（cached） |
@@ -15,13 +15,13 @@
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`，脏工作区 12 项（cached） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`，脏工作区 8 项（cached） |
 | wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/LocalOCR | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/OpenClawGateway | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`，脏工作区 4 项（cached） |
+| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`，脏工作区 8 项（cached） |
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0`（cached） |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0`（cached） |

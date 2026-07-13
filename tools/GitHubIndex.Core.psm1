@@ -326,7 +326,16 @@ function Get-GitStatusObservation {
     $dirtySummary = Get-GitDirtySummary -Entries $entries
     $exposureConflict = $false
     foreach ($entry in $entries) {
-        foreach ($candidate in @($entry.paths)) {
+        $status = [string] $entry.status
+        if ($status -in @('D ', ' D')) {
+            continue
+        }
+
+        $candidatePaths = @($entry.paths)
+        if ($status -match '[RC]' -and $candidatePaths.Count -gt 0) {
+            $candidatePaths = @($candidatePaths[0])
+        }
+        foreach ($candidate in $candidatePaths) {
             if (Test-PublicExposurePath -Path $candidate) {
                 $exposureConflict = $true
                 break

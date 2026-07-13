@@ -797,7 +797,7 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += ''
     $dashboardLines += '## 下一步优先级'
     $dashboardLines += ''
-    $dashboardLines += '1. 用 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json` 获取单仓库 admission 结论。'
+    $dashboardLines += '1. 当仓库 identity、worktree、sync 或 visibility 的不确定性会影响决策时，按需用 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json` 取得单仓库证据。'
     $dashboardLines += '2. 定期运行 `tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`；只读检查不得提交或推送。'
     $dashboardLines += '3. 对未推送队列中的公开仓库先做暴露面审查。'
     $dashboardLines += '4. 对未发现 clone 的仓库决定是否进入统一目录或标记远端存档；`wlyaaaaa/Key` 始终禁止克隆。'

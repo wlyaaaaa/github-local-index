@@ -279,6 +279,27 @@ try {
     Assert-Equal 'resolve_public_exposure' $publicConflict.push_strategy 'public exposure conflict has a dedicated remediation strategy'
     Remove-Item -LiteralPath (Split-Path -Parent $sensitiveDirectory) -Recurse -Force
 
+    $trackedSensitivePath = Join-Path $primaryPath '.env'
+    $renameSourceDirectory = Join-Path $primaryPath 'secrets'
+    $renameSourcePath = Join-Path $renameSourceDirectory 'rename-fixture.txt'
+    New-Item -ItemType Directory -Path $renameSourceDirectory -Force | Out-Null
+    Set-Content -LiteralPath $trackedSensitivePath -Value 'TEST_ONLY=1' -Encoding utf8
+    Set-Content -LiteralPath $renameSourcePath -Value 'rename fixture' -Encoding utf8
+    Invoke-TestGit -Path $primaryPath -Arguments @('add', '--', '.env', 'secrets/rename-fixture.txt') | Out-Null
+    Invoke-TestGit -Path $primaryPath -Arguments @('commit', '-m', 'sensitive remediation fixtures') | Out-Null
+
+    Invoke-TestGit -Path $primaryPath -Arguments @('rm', '--', '.env') | Out-Null
+    $deletionRemediation = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-True (-not ($deletionRemediation.reasons -contains 'public_exposure_conflict')) 'pure deletion of a tracked sensitive path is remediation, not public exposure'
+    Assert-True ($deletionRemediation.decision -ne 'block') 'pure deletion remains eligible for a remediation commit'
+    Invoke-TestGit -Path $primaryPath -Arguments @('commit', '-m', 'remove sensitive fixture') | Out-Null
+
+    Invoke-TestGit -Path $primaryPath -Arguments @('mv', '--', 'secrets/rename-fixture.txt', 'safe-renamed-fixture.txt') | Out-Null
+    $renameRemediation = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-True (-not ($renameRemediation.reasons -contains 'public_exposure_conflict')) 'rename from a sensitive source to a safe destination is remediation'
+    Assert-True ($renameRemediation.decision -ne 'block') 'safe-destination rename remains eligible for a remediation commit'
+    Invoke-TestGit -Path $primaryPath -Arguments @('commit', '-m', 'rename sensitive fixture safely') | Out-Null
+
     $indexPath = Invoke-TestGit -Path $primaryPath -Arguments @('rev-parse', '--git-path', 'index')
     if (-not [System.IO.Path]::IsPathRooted($indexPath)) { $indexPath = Join-Path $primaryPath $indexPath }
     $indexBytes = [System.IO.File]::ReadAllBytes($indexPath)

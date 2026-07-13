@@ -210,6 +210,10 @@ try {
     $overviewPath = Join-Path $documentRoot '00_总览/GitHub总览.md'
     $overviewText = Get-Content -LiteralPath $overviewPath -Raw -Encoding utf8
     Assert-True ($overviewText -match '\| 2 \| 1 \| 1 \| 1 \|') 'overview counts come from the same repository row set'
+    $dashboardPath = Join-Path $documentRoot '00_总览/当前同步看板.md'
+    $dashboardText = Get-Content -LiteralPath $dashboardPath -Raw -Encoding utf8
+    Assert-True ($dashboardText.Contains('不确定性会影响决策时，按需用')) 'generated dashboard makes admission conditional on decision-relevant uncertainty'
+    Assert-True (-not $dashboardText.Contains('1. 用 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json` 获取单仓库 admission 结论。')) 'generated dashboard excludes the unconditional admission-first instruction'
     $firstOverviewHash = (Get-FileHash -LiteralPath $overviewPath -Algorithm SHA256).Hash
     Write-GitHubIndexDocuments -RepoRoot $documentRoot -Owner 'wlyaaaaa' -Rows $rows
     Assert-Equal $firstOverviewHash (Get-FileHash -LiteralPath $overviewPath -Algorithm SHA256).Hash 'Git document generation is deterministic for a stable row set'
@@ -321,6 +325,18 @@ if ($hookParameters -contains 'RepoPath') {
     $hookRepo = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-hook-' + [guid]::NewGuid().ToString('N'))
     try {
         & git init --initial-branch=main $hookRepo | Out-Null
+        & git -C $hookRepo config user.name 'Hook Test'
+        & git -C $hookRepo config user.email 'hook@example.invalid'
+        & git -C $hookRepo config core.quotePath true
+        $syntheticSecret = 'github_pat_' + ('A' * 24)
+        New-Item -ItemType Directory -Path (Join-Path $hookRepo 'secrets') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $hookRepo '.env') -Value 'TEST_ONLY=1' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $hookRepo 'secrets/rename-fixture.txt') -Value 'rename fixture' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $hookRepo 'remove-secret.txt') -Value $syntheticSecret -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $hookRepo 'type-change-fixture.txt') -Value 'safe regular file' -Encoding utf8
+        & git -C $hookRepo add -- '.env' 'secrets/rename-fixture.txt' 'remove-secret.txt' 'type-change-fixture.txt'
+        & git -C $hookRepo commit -m 'hook remediation fixtures' | Out-Null
+
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $hookPath -RepoPath $hookRepo | Out-Null
         Assert-Equal 0 $LASTEXITCODE 'hook installer succeeds in a temporary repository'
         $installedHook = Join-Path $hookRepo '.git/hooks/pre-commit'
@@ -330,15 +346,13 @@ if ($hookParameters -contains 'RepoPath') {
         $installedText = [System.Text.Encoding]::ASCII.GetString($hookBytes)
         Assert-True (-not $installedText.Contains("`r")) 'installed hook uses LF line endings'
         Assert-True ($installedText.StartsWith('#!/bin/sh')) 'installed hook keeps a valid Git Bash shebang'
-        Assert-True ($installedText -match 'name-only -z') 'installed hook requests NUL-delimited staged paths'
+        Assert-True ($installedText -match 'name-only[^\r\n]+-z') 'installed hook requests NUL-delimited staged paths'
+        Assert-True ($installedText -match 'diff-filter=ACMRT') 'installed hook excludes pure deletions while retaining staged type changes'
         Assert-True ($installedText -match 'read -r -d') 'installed hook reads staged paths with a NUL delimiter'
         $firstHookHash = (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $hookPath -RepoPath $hookRepo | Out-Null
         Assert-Equal $firstHookHash (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash 'hook installation is byte deterministic'
 
-        & git -C $hookRepo config user.name 'Hook Test'
-        & git -C $hookRepo config user.email 'hook@example.invalid'
-        & git -C $hookRepo config core.quotePath true
         $sensitiveHookDirectory = Join-Path $hookRepo '中文 空格\嵌套'
         New-Item -ItemType Directory -Path $sensitiveHookDirectory -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $sensitiveHookDirectory '.env') -Value 'TEST_ONLY=1' -Encoding utf8
@@ -346,6 +360,49 @@ if ($hookParameters -contains 'RepoPath') {
         $hookCommitOutput = @(& git -C $hookRepo commit -m 'must be blocked' 2>&1)
         Assert-True ($LASTEXITCODE -ne 0) 'hook blocks a staged nested .env path containing Chinese and spaces'
         Assert-True (($hookCommitOutput -join "`n") -match 'Blocked staged path') 'hook rejection is caused by the sensitive-path gate'
+        & git -C $hookRepo reset -- . 2>&1 | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo '中文 空格') -Recurse -Force
+
+        Set-Content -LiteralPath (Join-Path $hookRepo 'added-secret.txt') -Value $syntheticSecret -Encoding utf8
+        & git -C $hookRepo add -- 'added-secret.txt' 2>&1 | Out-Null
+        $addedSecretOutput = @(& git -C $hookRepo commit -m 'must block added secret' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook still blocks a newly added secret-shaped value'
+        Assert-True (($addedSecretOutput -join "`n") -match 'Blocked staged content') 'new secret rejection is caused by the content gate'
+        & git -C $hookRepo reset -- 'added-secret.txt' 2>&1 | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo 'added-secret.txt') -Force
+
+        Set-Content -LiteralPath (Join-Path $hookRepo 'plus-prefixed-secret.txt') -Value ('++ ' + $syntheticSecret) -Encoding utf8
+        & git -C $hookRepo add -- 'plus-prefixed-secret.txt' 2>&1 | Out-Null
+        $plusPrefixedSecretOutput = @(& git -C $hookRepo commit -m 'must block plus-prefixed secret' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks a newly added secret-shaped value whose line begins with plus signs'
+        Assert-True (($plusPrefixedSecretOutput -join "`n") -match 'Blocked staged content') 'plus-prefixed secret rejection is caused by the content gate'
+        & git -C $hookRepo reset -- 'plus-prefixed-secret.txt' 2>&1 | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo 'plus-prefixed-secret.txt') -Force
+
+        $typeChangeBlob = [string]($syntheticSecret | & git -C $hookRepo hash-object -w --stdin)
+        Assert-Equal 0 $LASTEXITCODE 'creates a synthetic secret blob for the type-change fixture'
+        $typeChangeBlob = $typeChangeBlob.Trim()
+        & git -C $hookRepo update-index --cacheinfo "120000,$typeChangeBlob,type-change-fixture.txt" 2>&1 | Out-Null
+        Assert-Equal 0 $LASTEXITCODE 'stages a regular-file to symlink type change through the index'
+        $typeChangeStatus = @(& git -C $hookRepo diff --cached --name-status -- 'type-change-fixture.txt' 2>&1)
+        Assert-True (($typeChangeStatus -join "`n") -match '^T\s+type-change-fixture\.txt$') 'type-change regression fixture has Git status T'
+        $typeChangeSecretOutput = @(& git -C $hookRepo commit -m 'must block type-change secret' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks secret-shaped content introduced by a staged type change'
+        Assert-True (($typeChangeSecretOutput -join "`n") -match 'Blocked staged content') 'type-change secret rejection is caused by the content gate'
+        & git -C $hookRepo reset -- 'type-change-fixture.txt' 2>&1 | Out-Null
+
+        & git -C $hookRepo rm -- '.env' 2>&1 | Out-Null
+        $deleteSensitiveOutput = @(& git -C $hookRepo commit -m 'allow sensitive path deletion' 2>&1)
+        Assert-Equal 0 $LASTEXITCODE 'hook allows a pure deletion of a tracked sensitive path'
+
+        Set-Content -LiteralPath (Join-Path $hookRepo 'remove-secret.txt') -Value 'safe replacement' -Encoding utf8
+        & git -C $hookRepo add -- 'remove-secret.txt' 2>&1 | Out-Null
+        $deleteSecretLineOutput = @(& git -C $hookRepo commit -m 'allow secret line deletion' 2>&1)
+        Assert-Equal 0 $LASTEXITCODE 'hook allows deleting a secret-shaped line when no secret is added'
+
+        & git -C $hookRepo mv -- 'secrets/rename-fixture.txt' 'safe-renamed-fixture.txt' 2>&1 | Out-Null
+        $safeRenameOutput = @(& git -C $hookRepo commit -m 'allow safe destination rename' 2>&1)
+        Assert-Equal 0 $LASTEXITCODE 'hook allows renaming a sensitive source path to a safe destination'
     }
     finally {
         if (Test-Path -LiteralPath $hookRepo) { Remove-Item -LiteralPath $hookRepo -Recurse -Force }

@@ -97,10 +97,10 @@ $headings = @(
     '失败与降级', '验证证据', '上下文策略', '已知限制', '扩展入口'
 )
 $requiredContent = @{
-    'git.project-admission' = @('git_project|repo_identity|project_entry', 'decision', 'read-only admission', 'cached', 'warn', 'Markdown', 'machine authority')
+    'git.project-admission' = @('git_project|repo_identity|project_entry', 'optional structured evidence', 'decision=block', 'read-only diagnosis', 'cached', 'github-local-index.project-admission.v1')
     'git.worktree-sync' = @('worktree|dirty|sync|ahead_behind', 'all worktrees', 'fails closed', 'locked', 'prunable')
-    'git.push-publication' = @('push|publication|visibility|public_repo', 'transport readiness', '不代表公开发布授权', '不输出 publication_decision', 'PUBLIC')
-    'git.refresh-consistency' = @('refresh|consistency|index_drift', 'Fast', 'private log', 'CheckOnly', 'system temp', 'zero_write')
+    'git.push-publication' = @('push|publication|visibility|public_repo', 'transport readiness', 'candidate commits', '不输出 publication_decision', 'PUBLIC review', '唯一维护')
+    'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '日常项目任务不需要')
     'git.milestone-record' = @('milestone|push_record', 'pure-file', 'idempotent', 'not zero-write', 'no Git transaction', 'no runtime provider/schema')
 }
 
@@ -191,37 +191,83 @@ foreach ($id in $ids) {
 
 Assert-True ($totalBytes -le 20480) 'all Git contract cards total at most 20 KiB'
 
-$twoGateLines = @(
-    'decision=block => no write or push',
-    'decision!=block && push_decision!=proceed => read-only diagnosis allowed, direct transport blocked',
-    'push_decision=proceed => transport conditions only',
-    'visibility=PUBLIC => separate publication review of rules, visibility, commits, paths and content'
+$matrixPath = '05_规则与模板/推送放行与否决规则.md'
+$matrixText = Get-Content -LiteralPath (Join-Path $repoRoot $matrixPath) -Raw -Encoding utf8
+$matrixLines = @(
+    'decision=block => insufficient admission evidence; no write or direct transport, read-only diagnosis remains allowed',
+    'decision!=block && push_decision!=proceed => direct transport not ready; diagnosis remains allowed',
+    'push_decision=proceed => transport conditions only, never publication authorization',
+    'visibility=PUBLIC => review fresh visibility, candidate commits, paths and content'
 )
-$semanticDocuments = @(
-    'AGENTS.md',
-    'README.md',
-    '我的 GitHub 项目管理指南.md',
-    '05_规则与模板/推送放行与否决规则.md'
-)
-foreach ($relativePath in $semanticDocuments) {
+$lastIndex = -1
+foreach ($line in $matrixLines) {
+    $index = $matrixText.IndexOf($line, [System.StringComparison]::Ordinal)
+    Assert-True ($index -gt $lastIndex) "$matrixPath contains ordered matrix line: $line"
+    $lastIndex = $index
+}
+
+$summaryDocuments = @('AGENTS.md', 'README.md', '我的 GitHub 项目管理指南.md')
+foreach ($relativePath in $summaryDocuments) {
     $documentText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
-    $lastIndex = -1
-    foreach ($line in $twoGateLines) {
-        $index = $documentText.IndexOf($line, [System.StringComparison]::Ordinal)
-        Assert-True ($index -gt $lastIndex) "$relativePath contains ordered two-gate line: $line"
-        $lastIndex = $index
+    Assert-True ($documentText.Contains('推送放行与否决规则')) "$relativePath points to the sole publication matrix"
+    foreach ($line in $matrixLines) {
+        Assert-True (-not $documentText.Contains($line)) "$relativePath does not duplicate full matrix line: $line"
     }
 }
+
+$matrixSignature = $matrixLines[-1]
+$matrixCopies = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter '*.md' | Where-Object {
+    (Get-Content -LiteralPath $_.FullName -Raw -Encoding utf8).Contains($matrixSignature)
+})
+Assert-Equal 1 $matrixCopies.Count 'full publication matrix has exactly one Markdown copy'
+Assert-Equal $matrixPath ($matrixCopies[0].FullName.Substring($repoRoot.Length + 1).Replace('\', '/')) 'full publication matrix lives in the designated rule file'
+
+$fixedRitualPhrases = @(
+    '以后修改任意 Git 项目时',
+    '普通项目任务直接运行 admission/fast-path',
+    '如果改动涉及绝对路径',
+    '本地必须通过运行 `tools/Install-GitHook.ps1`',
+    '项目收尾可用 `tools/Refresh-GitHubLocalIndex.ps1 -Fast',
+    '项目开工先查 admission'
+)
+foreach ($relativePath in $summaryDocuments) {
+    $documentText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
+    foreach ($phrase in $fixedRitualPhrases) {
+        Assert-True (-not $documentText.Contains($phrase)) "$relativePath excludes fixed ritual: $phrase"
+    }
+}
+
+$activeMarkdownFiles = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter '*.md' | Where-Object {
+    $relativePath = $_.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+    $relativePath -notmatch '^(?:99_private|docs/superpowers/plans|90_历史审计)/'
+})
+$absolutePathPcConfigRequirement = '(?im)^(?=[^\r\n]*涉及绝对路径)(?=[^\r\n]*PCConfig)(?=[^\r\n]*(?:必须|都应|应当|需要|需查询))[^\r\n]*$'
+$ordinaryRefreshRequirement = '(?im)^(?=[^\r\n]*(?:任何|普通))(?=[^\r\n]*(?:移动|归档|删除|总索引更新))(?=[^\r\n]*(?:刷新|refresh))(?=[^\r\n]*PCConfig)(?=[^\r\n]*(?:必须|都应|应当|需要|需查询))[^\r\n]*$'
+foreach ($file in $activeMarkdownFiles) {
+    $relativePath = $file.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+    $documentText = Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8
+    Assert-True (-not ($documentText -match $absolutePathPcConfigRequirement)) "$relativePath does not require PCConfig merely because an absolute path is involved"
+    Assert-True (-not ($documentText -match $ordinaryRefreshRequirement)) "$relativePath does not force PCConfig refresh for ordinary move, archive, delete, or index work"
+}
+
+$agentsText = Get-Content -LiteralPath (Join-Path $repoRoot 'AGENTS.md') -Raw -Encoding utf8
+$readmeText = Get-Content -LiteralPath (Join-Path $repoRoot 'README.md') -Raw -Encoding utf8
+$guideText = Get-Content -LiteralPath (Join-Path $repoRoot '我的 GitHub 项目管理指南.md') -Raw -Encoding utf8
+Assert-True ($agentsText.Contains('信息价值')) 'AGENTS routes provider use by information value'
+Assert-True ($readmeText.Contains('不要求每个 Git 任务执行固定命令链')) 'README rejects a fixed command chain'
+Assert-True ($guideText.Contains('不是每个项目任务必须逐站通过的流水线')) 'guide explains owner dispatch instead of a pipeline'
+Assert-True ($guideText.Contains('只有当前决定依赖路径')) 'guide uses semantic PCConfig routing'
 
 foreach ($relativePath in @('AGENTS.md', 'README.md')) {
     $routeText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
     Assert-True ($routeText -match 'docs[/\\]contracts') "$relativePath exposes the owner-local contract whitebox route"
 }
 
-$pushRuleText = Get-Content -LiteralPath (Join-Path $repoRoot '05_规则与模板/推送放行与否决规则.md') -Raw -Encoding utf8
-$readOnlyAdmissionSentence = '`decision` 控制只读项目准入；`decision=block` 还会禁止写入和推送；`decision!=block` 不构成写入授权。'
-Assert-True ($pushRuleText.Contains($readOnlyAdmissionSentence)) 'push rule states read-only admission without implying write authorization'
-Assert-True (-not ($pushRuleText.Contains('`decision` 控制能否写入'))) 'push rule does not reverse admission into write authorization'
+$pushRuleText = $matrixText
+Assert-True ($pushRuleText.Contains('read-only diagnosis remains allowed')) 'push rule preserves read-only diagnosis when admission evidence blocks writes'
+Assert-True ($pushRuleText.Contains('preserve exact content')) 'push rule preserves exact content for trusted private backup targets'
+Assert-True ($pushRuleText.Contains('wlyaaaaa/Key')) 'push rule preserves the Key no-clone boundary'
+Assert-True ($pushRuleText.Contains('transport ready') -and $pushRuleText.Contains('publication safe') -and $pushRuleText.Contains('authorization present')) 'push rule separates transport, publication, and authorization'
 
 if ($script:Failures -gt 0) {
     throw "$script:Failures test(s) failed"

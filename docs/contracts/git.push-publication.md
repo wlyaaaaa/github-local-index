@@ -1,34 +1,34 @@
 # git.push-publication
 
 ## 产品目标
-把 Git transport readiness 与内容公开发布授权分成两个独立门禁。
+把 Git transport readiness 与实际内容 publication 判断分离，并让公开门禁关注候选结果而非命令打卡。
 
 ## 触发条件
-triggers: `push|publication|visibility|public_repo`
+triggers: `push|publication|visibility|public_repo`；只有准备产生外部写入或公开结果时才需要完整发布证据。
 
 ## owner 与权威
 owner: E:\GitHub总索引
 
 ## 权威输入
-transport 使用 admission V1 的 `decision`、`push_decision`、`push_strategy` 与 visibility；发布审查读取目标项目规则和候选内容。
+transport 可采用 admission V1 或等价的新鲜 Git 证据；publication 依赖当前目标 visibility、candidate commits、paths、content、项目规则与用户授权。
 
 ## 核心机制
-`push_decision=proceed` 只表示 transport conditions ready，不代表公开发布授权；PUBLIC always requires separate target-project/content exposure review。
+`push_decision=proceed` 最多表示 transport readiness，不代表公开发布授权。PUBLIC review 必须判断实际候选暴露面；运行某个 provider、Hook 或扫描器本身不能证明安全。
 
 ## 输出合同
-V1 `github-local-index.project-admission.v1` 不输出 publication_decision；transport 结论与发布复审结果不得互相冒充。
+V1 `github-local-index.project-admission.v1` 不输出 publication_decision；transport 与 publication 结论不得互相冒充。完整矩阵由 `05_规则与模板/推送放行与否决规则.md` 唯一维护。
 
 ## 失败与降级
-`decision=block` 禁止写入与推送；transport 未放行时仅可只读诊断；PUBLIC 复审不清楚时停止发布。
+identity、visibility、目标或候选内容存在实质不确定性时停止写入/发布并补证；transport 不可用时仍允许 read-only diagnosis。
 
 ## 验证证据
-`tests/Test-ProjectAdmission.ps1` 验证 admission/transport，`tests/Test-ControlPlaneContracts.ps1` 验证 publication 分离措辞。
+`tests/Test-ProjectAdmission.ps1` 验证 transport 语义；`tests/Test-ControlPlaneContracts.ps1` 验证 publication 分离、唯一矩阵与无固定调用链。
 
 ## 上下文策略
-普通入口读取单项目 admission；只有准备发布时才加载目标规则、visibility、提交、路径和内容证据。
+模型按风险选择最小充分证据；只有准备发布时才审查当前 visibility 与实际 candidates，不在普通读取或本地实现时加载完整矩阵。
 
 ## 已知限制
-本卡不扫描候选内容，也不替具体项目授予发布权限；transport readiness 不是安全证明。
+本卡不授予外部写入，不扫描候选内容，也不替具体项目决定业务发布；PRIVATE 保真仍要求确认目标可见性。
 
 ## 扩展入口
-若未来需要机器化发布授权，必须另行设计版本化接口，不能把字段暗加进 admission V1。
+若未来机器化 publication，需要独立版本化接口和候选内容证据，不能暗改 admission V1。

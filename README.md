@@ -1,52 +1,40 @@
 # GitHub 总索引
 
-这是本机 GitHub 仓库的总索引、同步诊断和推送决策台账。它不是临时报告目录，而是长期维护的公开索引仓库。
+这是本机 GitHub 仓库的公开索引、同步诊断和发布边界仓库，远端为 `wlyaaaaa/github-local-index`。它提供可查询事实和维护工具，但不要求每个 Git 任务执行固定命令链。
 
-公开远端：`wlyaaaaa/github-local-index`
+完整的人类说明见 [我的 GitHub 项目管理指南](./我的%20GitHub%20项目管理指南.md)。
 
-完整的人类说明见 [我的 GitHub 项目管理指南](./我的%20GitHub%20项目管理指南.md)：它详细解释索引怎样工作、为什么这样分层、项目怎样进入和收尾，以及公开/私有仓库的安全边界。AI 做普通项目任务时按需使用，不必每次加载全文。
+## Owner 定位
 
-## 定位
+| Owner | 负责内容 | 何时关注 |
+|---|---|---|
+| `E:\.agents` | Agent 行为、skills/plugins、能力路由 | 工作方式或能力选择相关 |
+| `E:\GitHub总索引` | 仓库身份、远端、可见性、同步诊断、公开发布边界 | Git 事实或发布风险相关 |
+| `E:\PCConfig` | 路径迁移、任务、端口、运行时、本机数据、恢复 | 当前决策依赖机器事实 |
+| 具体项目 | 业务语义、源码、项目规则、测试和部署 | 项目实现相关 |
 
-- 记录 GitHub 仓库、本地 clone、分支、ahead/behind、脏工作区和计划任务健康状态。
-- 保存可公开的审计摘要、推送决策、否决原因和后续处理队列。
-- 不保存私钥值、token 值、完整 `.env`、OAuth JSON、原始密钥文件或未脱敏日志。
-- 私有 GitHub 仓库按用户需求视为可信云备份位置，可用于备份密钥、配置快照和恢复材料；本公开索引只记录结论，不复制密钥内容。
+模型根据目标、不确定性、风险与信息成本选择相关 owner。一个 Windows 路径只是上下文时，不需要因此加载 PCConfig；普通项目改动也不需要为了形式同步三个控制面。
 
-## Git 项目事实入口
+## 核心能力
 
-以后修改任意 Git 项目时，Agent 控制先走 `E:\.agents\skills\project-entry-gate`，再查询本仓库作为 Git 项目事实入口和公开发布门禁：
+- `01_仓库索引/`：公开安全的 GitHub 仓库与本地 clone 索引。
+- `02_同步诊断/`：分支、远端、ahead/behind、worktree 和脏状态快照。
+- `03_推送决策/`：真正有长期价值的公开里程碑记录，不是每次 push 的流水账。
+- `04_计划任务/`：可公开的自动化健康摘要，不拥有完整任务配置。
+- `05_规则与模板/`：公开发布与脱敏规则。
+- `tools/Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`：按需取得当前仓库身份、worktree、同步与 transport 的结构化证据，schema 保持 `github-local-index.project-admission.v1`。
 
-```text
-decision=block => no write or push
-decision!=block && push_decision!=proceed => read-only diagnosis allowed, direct transport blocked
-push_decision=proceed => transport conditions only
-visibility=PUBLIC => separate publication review of rules, visibility, commits, paths and content
-```
+admission provider 在身份、同步、worktree、visibility 或推送条件不清楚时很有价值；已有新鲜可靠证据时可以跳过。其 transport 结论不是写入授权，更不是公开发布授权；`decision=block` 仍允许只读调查原因。
 
-1. 优先运行 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`，获得带 schema、UTC 观察时间、`cached|live` 证据模式、所有 worktree 的 `dirty_summary` / `sync_state`、只读 `decision` 和直接推送 `push_decision` / `push_strategy` 的单仓库事实；Markdown 索引用于总览和人工阅读。
-2. 如果改动涉及绝对路径、计划任务、本机数据源、跨盘迁移、备份/恢复、本地工具链、启动脚本、快捷方式或共享目录，同时查询 `E:\PCConfig`。
-3. 进入具体项目后，再读取该项目自己的 `AGENTS.md`、README、脚本和测试命令。
-4. 改完项目后，按默认联动提交/推送目标仓库；如果项目路径、机器依赖或恢复信息变化，再更新 `E:\PCConfig` 和本索引。
+## 公开与私有边界
 
-本仓库是 Git 项目事实入口和公开门禁；`E:\.agents` 是 Agent 控制入口；`E:\PCConfig` 是机器配置中心；具体项目保留自己的业务规则。
+本仓库自身是 `PUBLIC`，只能保存公开安全的索引、规则、摘要和脱敏结论。真实密钥、私钥、token、完整配置、原始日志/数据库/聊天/健康资料、私密截图和机器快照不得进入本仓库。
 
-控制面架构、能力、故障或演进任务可按需读取 [`docs/contracts/`](./docs/contracts/) 的 owner-local 合同白盒；普通项目任务不全量加载这些卡，也不在本仓库创建第二份跨基座 catalog。admission V1 的 `push_decision` 只表达 transport conditions，公开仓库仍必须单独复审目标规则、visibility、commits、paths 与 content。
+确认仍为 `PRIVATE` 的备份、恢复或个人知识库目标可按任务需要保留精确凭据内容；`wlyaaaaa/Key` 是例外，只记录远端状态，禁止本机 clone 或展开。
 
-## 目录
+Git transport readiness 与内容 publication 是两个不同判断。完整且唯一的发布矩阵见 [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)。
 
-| 路径 | 用途 |
-|---|---|
-| `00_总览/` | 当前全局看板和同步总览 |
-| `01_仓库索引/` | GitHub 仓库、本地 clone、未发现 clone 的索引 |
-| `02_同步诊断/` | 未推送、脏工作区、分支与远端诊断 |
-| `03_推送决策/` | 已推送、否决推送、需人工确认的记录 |
-| `04_计划任务/` | Windows 计划任务健康摘要和异常清单 |
-| `05_规则与模板/` | 公开发布、推送放行/否决、审计报告模板 |
-| `90_历史审计/` | 已完成的历史审计报告 |
-| `99_private/` | 本地私有原始材料，已被 `.gitignore` 排除 |
-
-## 当前入口
+## 目录入口
 
 - [GitHub 总览](00_总览/GitHub总览.md)
 - [当前同步看板](00_总览/当前同步看板.md)
@@ -54,22 +42,16 @@ visibility=PUBLIC => separate publication review of rules, visibility, commits, 
 - [分支与远端诊断](02_同步诊断/分支与远端诊断.md)
 - [未推送队列](02_同步诊断/未推送队列.md)
 - [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)
-- [2026-07-05 历史审计](90_历史审计/2026/2026-07-05-GitHub仓库与计划任务审计.md)
+- [owner-local Git 合同](docs/contracts/)
 
-## 自动刷新入口
+## 维护工具
 
-- `.\tools\Get-ProjectAdmission.ps1 -Repo wlyaaaaa/github-local-index -Json`：使用 cached refs 的只读 admission；加 `-Fetch` 后只有 fetch 与 GitHub metadata 都成功才标记为 `live`。`decision` 保留项目进入语义，`push_decision` / `push_strategy` 表达直接推送门禁；behind/diverged 只阻止直接推送，不阻止只读进入。
-- `.\tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读干跑，检查 GitHub 远端仓库、本地 clone、ahead/behind 和脏工作区映射。
-- `.\tools\Update-GitHubIndex.ps1`：刷新 `00_总览/`、`01_仓库索引/`、`02_同步诊断/` 下的公开 Markdown 摘要。
-- `.\tools\Update-ScheduledTaskHealth.ps1`：刷新 `04_计划任务/` 下的计划任务健康摘要和异常清单。
-- `.\tools\Update-UserAutomationMap.ps1`：刷新 `04_计划任务/用户自动化任务地图.md` 和 `04_计划任务/仓库计划任务建议.md`，记录用户自动化任务用途推测和仓库计划任务缺口。
-- `.\tools\Refresh-GitHubLocalIndex.ps1 -Fast -Repo wlyaaaaa/github-local-index -Json`：单仓库快路径，返回同一 admission schema；不重建公开 Markdown，不枚举计划任务。
-- `.\tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：只读一致性检查，临时生成摘要后对比 tracked Markdown；默认只把 GitHub/同步诊断类稳定文档漂移视为失败，计划任务文档漂移作为易变警告。加 `-Strict` 可做全量强一致检查。
-- `.\tools\Refresh-GitHubLocalIndex.ps1 -CheckOnly`：通过现有刷新包装器执行只读一致性检查，不写公开 Markdown。
-- `.\tools\Register-GitHubLocalIndexRefreshTask.ps1 -CheckOnly -Json`：只输出 `GitHubLocalIndex Consistency Check` 的 read-only Action 定义，不注册或修改 live task。只有 root 在保存 legacy pre-image 并取得明确授权后才运行 `-Apply`。
-- `.\tools\Add-PushRecord.ps1 -Repo <owner/name> -Branch <branch> -Commit <hash> -Reason <summary> -Json`：纯文件、幂等的里程碑记录；不会 stage、commit、pull、rebase 或 push。
-- `pwsh .\tests\Run-UnitTests.ps1`、`pwsh .\tests\Test-ProjectAdmission.ps1`、`pwsh .\tests\Test-PushRecord.ps1`：运行行为、worktree/admission 和并发 push-record 测试。
+- `tools/Get-ProjectAdmission.ps1`：单仓库结构化事实；`-Fetch` 请求 live 远端证据。
+- `tools/Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读预览索引生成结果。
+- `tools/Update-GitHubIndex.ps1`：在确需更新公开快照时重建相关 Markdown。
+- `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：诊断生成快照与当前索引的漂移。
+- `tools/Install-GitHook.ps1`：首次安装或修复本仓库的防泄漏 Hook，不是每任务步骤。
+- `tools/Add-PushRecord.ps1`：幂等写入明确里程碑；不执行 Git transaction。
+- `tests/Run-UnitTests.ps1`、`tests/Test-ProjectAdmission.ps1`、`tests/Test-ControlPlaneContracts.ps1`：验证工具行为与稳定合同。
 
-## 收尾联动
-
-项目收尾先读取 admission JSON，再由目标项目自己的流程决定提交和推送。本索引不因每次普通任务或普通 push 自动产生 commit：只有仓库身份/路径/可见性、公开门禁、worktree 状态口径或明确里程碑发生变化时，才运行生成器或 `Add-PushRecord.ps1`，Git 事务始终由外层 closeout 显式执行。用户要求“只本地”“不提交”或“不推送”时，本仓库同样保持本地且不触碰 remote。
+兼容工具可以继续被已有自动化调用，但兼容存在不等于推荐日常调用。只有仓库身份、路径、可见性、生成口径、公开门禁或明确里程碑等 owner 事实变化时才更新本索引；普通业务提交留在目标项目。

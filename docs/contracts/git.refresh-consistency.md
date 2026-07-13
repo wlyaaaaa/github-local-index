@@ -1,34 +1,34 @@
 # git.refresh-consistency
 
 ## 产品目标
-区分单仓库快查、一致性检查与公开摘要重建的成本和写入语义。
+为索引维护提供一致性诊断和快照重建能力，不把 refresh 变成普通 Git 开工或收尾步骤。
 
 ## 触发条件
-triggers: `refresh|consistency|index_drift`
+triggers: `refresh|consistency|index_drift`；语义条件是索引 owner 事实、生成口径或公开快照确实可能漂移。
 
 ## owner 与权威
 owner: E:\GitHub总索引
 
 ## 权威输入
-现有 refresh wrapper、GitHub 索引生成器和 consistency checker 是行为入口。
+refresh wrapper、索引生成器与 consistency checker 是维护入口；当前 Git/GitHub 事实高于生成 Markdown 的观察快照。
 
 ## 核心机制
-Fast avoids tracked Markdown rebuild but may write private log；CheckOnly uses system temp 生成后比较并清理临时材料。
+Fast 保留为既有调用方的 compatibility mode，避免 tracked Markdown rebuild 但可能写 private log；CheckOnly 使用 system temp 比较并清理；完整 refresh 才重建 tracked Markdown。
 
 ## 输出合同
-Fast 返回单仓库 admission 结果；CheckOnly 返回漂移诊断；完整刷新才重建 tracked Markdown。
+Fast 返回 V1 admission 兼容结果，CheckOnly 返回 drift 诊断，完整刷新返回生成结果；三者都不自动 stage、commit 或 push。
 
 ## 失败与降级
-refresh 或比较失败时保留失败状态，不把缺失证据解释为一致，也不自动提交生成结果。
+刷新或比较失败时保留错误，不把 unknown 解释为一致，也不自动发布生成材料；可直接用当前 owner 证据继续只读诊断。
 
 ## 验证证据
-`tests/Run-UnitTests.ps1` 验证快路径、system temp 和仓库树内只读边界。
+`tests/Run-UnitTests.ps1` 验证 compatibility mode、system temp、仓库树写入边界与生成器行为。
 
 ## 上下文策略
-普通开工/收尾优先 admission 或 Fast；只有一致性问题才加载生成器和差异证据。
+仅在维护索引一致性时加载生成器和 drift 证据；日常项目任务不需要 Fast、CheckOnly 或完整 refresh。
 
 ## 已知限制
-Fast 与 CheckOnly neither is `zero_write`：前者可能写 private log，后者使用并删除 system temp。
+Fast 与 CheckOnly 都不是 `zero_write`：前者可能写 private log，后者创建并清理 system temp；Hook 或 refresh 也不是 publication 证明。
 
 ## 扩展入口
-若新增刷新模式，必须先声明 tracked、private、temporary 和 external 四类写入效果。
+新增模式需声明 tracked、private、temporary 与 external 写入效果，并证明其信息价值不能由现有能力覆盖。

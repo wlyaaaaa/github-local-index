@@ -18,6 +18,7 @@
 - `E:\.agents` 拥有 Agent 行为、skills/plugins 与能力路由；本仓库不复制第二套行为规则。
 - `E:\PCConfig` 只在当前决策确实依赖路径迁移、计划任务、端口、运行时、本机数据、备份或恢复事实时参与；出现一个绝对路径字面量本身不构成触发。
 - 具体项目拥有业务语义、源码、项目规则、测试和部署方式；本仓库不替代项目内证据。
+- 现有仓库路径继续作为事实保留。以后新建或新 clone 的个人 Git 仓库默认根是 `V:\Dev\Personal\Projects`，个人临时 worktree 默认根是 `V:\Dev\Personal\Worktrees`；未来工作仓库使用 `V:\Dev\Work\...`。只有仓库实际创建、clone 或迁移后才写入索引，不预登记空目录；具体项目兼容性和公司合规要求可覆盖默认位置。
 - `tools/Get-ProjectAdmission.ps1 -Json` 是可选的结构化证据能力。仓库身份、worktree、同步、visibility 或直接 transport 状态不清楚，或调用的信息价值高于成本时使用；事实已由新鲜可靠证据明确时不为流程打卡重复调用。
 - admission V1 的 `decision`、`push_decision` 与 `push_strategy` 只描述 provider 观察到的进入/transport 条件，不授予写入或公开发布权限。`decision=block` 应阻止基于不充分证据的写入和直接 transport，但不得阻止继续只读诊断。
 - owner-local 合同位于 [`docs/contracts/`](./docs/contracts/)；仅在机制、兼容性、故障或控制面演进需要时读取。

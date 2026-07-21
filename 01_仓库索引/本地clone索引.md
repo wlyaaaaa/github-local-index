@@ -22,6 +22,7 @@
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/OpenClawGateway | E:\.worktrees\local-gpu-arbitration\openclaw<br>E:\Projects\Tools\OpenClawGateway | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） |
+| wlyaaaaa/PersonalOS | E:\PersonalOS | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/PCConfig | E:\.worktrees\local-gpu-arbitration\pcconfig<br>E:\PCConfig | `codex/local-gpu-arbitration` 已同步，`0/0`（live）<br>`main` 已同步，`0/0`，脏工作区 10 项（live） |
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0`（live） |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（live） |

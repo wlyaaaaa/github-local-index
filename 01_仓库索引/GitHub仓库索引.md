@@ -2,7 +2,7 @@
 
 更新时间：2026-07-14
 
-当前 `wlyaaaaa` 账号共有 30 个仓库。本文件由 `tools/Update-GitHubIndex.ps1` 刷新。
+当前 `wlyaaaaa` 账号共有 31 个仓库。本文件由 `tools/Update-GitHubIndex.ps1` 刷新。
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
@@ -24,6 +24,7 @@
 | wlyaaaaa/md-triple-tactics-talent-solver | PUBLIC | main | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（live） | 正常维护 |
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（live） | 正常维护 |
 | wlyaaaaa/OpenClawGateway | PUBLIC | main | E:\.worktrees\local-gpu-arbitration\openclaw<br>E:\Projects\Tools\OpenClawGateway | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） | 远端观察失败；当前仅使用 cached 引用，需人工复查 |
+| wlyaaaaa/PersonalOS | PRIVATE | main | E:\PersonalOS | `main` 已同步，`0/0`（live） | 正常维护 |
 | wlyaaaaa/PCConfig | PRIVATE | main | E:\.worktrees\local-gpu-arbitration\pcconfig<br>E:\PCConfig | `codex/local-gpu-arbitration` 已同步，`0/0`（live）<br>`main` 已同步，`0/0`，脏工作区 10 项（live） | 私有仓库按备份需求确认后提交<br>正常维护 |
 | wlyaaaaa/ProxyClean | PUBLIC | master | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0`（live） | 正常维护 |
 | wlyaaaaa/RamdiskGuardian | PUBLIC | main | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（live） | 正常维护 |

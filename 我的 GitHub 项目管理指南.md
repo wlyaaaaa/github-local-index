@@ -28,8 +28,9 @@ flowchart TB
 ### 以后新仓库放在哪里
 
 - 四大基座和现有 `E:\Projects\...` 仓库保持原位，不为目录统一批量迁移。
-- 新建或新 clone 的个人 Git 仓库默认放在 `V:\Dev\Personal\Projects\...`；个人临时 worktree 默认放在 `V:\Dev\Personal\Worktrees\...`。
-- 未来工作仓库和 worktree 分别使用 `V:\Dev\Work\Projects\...` 与 `V:\Dev\Work\Worktrees\...`；这只是组织边界，不替代公司设备或合规隔离。
+- 新建或新 clone 的个人 Git 仓库默认放在 `V:\Personal\Projects\...`；个人临时 worktree 默认放在 `V:\Personal\Worktrees\...`。
+- 未来工作仓库和 worktree 分别使用 `V:\Work\Projects\...` 与 `V:\Work\Worktrees\...`；这只是组织边界，不替代公司设备或合规隔离。
+- `V:\Dev` 只保留已经存在的 worktree；不要手动搬动它们，也不要再往旧根创建新仓库。由拥有它们的主仓库在任务完成后用 Git 正常退役。
 - 总索引记录实际存在的仓库路径，不把默认目录或空目录提前登记成仓库。若项目不兼容 ReFS、要求特定恢复方式或另有项目规则，以专项证据为准。
 - `Z:` 是可丢缓存层，不放 Git 仓库。
 

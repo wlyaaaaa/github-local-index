@@ -421,8 +421,7 @@ function Invoke-DeleteRepository {
         if ($fault -eq 'exit_after_remote_delete') { Throw-ContractError 'github_delete_outcome_unknown' }
         return
     }
-    $query = 'mutation($repositoryId:ID!){deleteRepository(input:{repositoryId:$repositoryId}){clientMutationId}}'
-    $response = Invoke-Gh -Arguments @('api', 'graphql', '-f', "query=$query", '-f', "repositoryId=$ExpectedNodeId")
+    $response = Invoke-Gh -Arguments @('api', '--method', 'DELETE', "repos/$Repository")
     if ($response.exit_code -ne 0) { Throw-ContractError 'github_delete_outcome_unknown' }
 }
 

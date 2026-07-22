@@ -24,6 +24,10 @@ function Assert-True {
     else { Write-Host "PASS: $Name" }
 }
 
+$toolText = Get-Content -LiteralPath $tool -Raw -Encoding UTF8
+Assert-True ($toolText.Contains('Invoke-Gh -Arguments @(''api'', ''--method'', ''DELETE'', "repos/$Repository")')) 'live deletion uses GitHub REST DELETE repository endpoint'
+Assert-True ($toolText -notmatch 'deleteRepository\s*\(\s*input') 'live deletion does not depend on a nonexistent GraphQL mutation'
+
 function Write-Fixture {
     param([string]$Path, [bool]$Exists = $true, [string]$Fault = '')
     $value = [ordered]@{

@@ -71,6 +71,12 @@ function ConvertTo-ConsistencyComparableLine {
         return $Line
     }
 
+    # The index repository reports its own dirty-file count in several
+    # generated documents. That count necessarily changes while a refresh is
+    # writing those documents, so it is a volatile self-reference rather than
+    # meaningful document drift.
+    $Line = $Line -replace '脏工作区 \d+ 项', '脏工作区 __SELF_INDEX_DIRTY__ 项'
+
     $cells = [regex]::Split($Line, '\|')
     switch ($RelativePath) {
         '01_仓库索引\GitHub仓库索引.md' {

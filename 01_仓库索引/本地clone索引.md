@@ -1,37 +1,36 @@
 # 本地 Clone 索引
 
-更新时间：2026-07-14
+更新时间：2026-07-23
 
 ## 已确认本地位置
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents<br>E:\.worktrees\local-gpu-arbitration\agents | `main` 已同步，`0/0`，脏工作区 2 项（live）<br>`codex/local-gpu-arbitration` 已同步，`0/0`（live） |
-| wlyaaaaa/ai-cli-profile-manager | E:\Projects\Tools\ai-cli-profile-manager | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/ai-llm-job-prep | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`（live） |
-| wlyaaaaa/ChineseASR | E:\.worktrees\local-gpu-arbitration\chineseasr<br>E:\Projects\Tools\ChineseASR | `codex/local-gpu-arbitration` 已同步，`0/0`（live）<br>`main` 已同步，`0/0`（live） |
-| wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（live） |
-| wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/HealthLongevity | E:\Projects\Decisions\HealthLongevity | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/LocalOCR | E:\.worktrees\local-gpu-arbitration\localocr<br>E:\Projects\Tools\LocalOCR | `codex/local-gpu-arbitration` 已同步，`0/0`（live）<br>`main` 已同步，`0/0`（live） |
-| wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（live） |
+| wlyaaaaa/.agents | E:\.agents<br>E:\.worktrees\local-gpu-arbitration\agents<br>E:\.worktrees\personalos-s8-wp4\agents<br>V:\Personal\Worktrees\agents-s9-wp4-release | `main` ahead/behind `4/0`，脏工作区 20 项（cached）<br>`codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`codex/s8-wp4-personalos-router` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） |
+| wlyaaaaa/ai-cli-profile-manager | E:\Projects\Tools\ai-cli-profile-manager | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/ai-llm-job-prep | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`（cached） |
+| wlyaaaaa/ChineseASR | E:\.worktrees\local-gpu-arbitration\chineseasr<br>E:\Projects\Tools\ChineseASR | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） |
+| wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（cached） |
+| wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引<br>V:\Personal\Worktrees\github-index-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\github-index-s9-wp4-release | `main` ahead/behind `2/0`，脏工作区 13 项（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream，脏工作区 14 项（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） |
+| wlyaaaaa/LocalOCR | E:\.worktrees\local-gpu-arbitration\localocr<br>E:\Projects\Tools\LocalOCR | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） |
+| wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/OpenClawGateway | E:\.worktrees\local-gpu-arbitration\openclaw<br>E:\Projects\Tools\OpenClawGateway | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） |
-| wlyaaaaa/PersonalOS | E:\PersonalOS | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/PCConfig | E:\.worktrees\local-gpu-arbitration\pcconfig<br>E:\PCConfig | `codex/local-gpu-arbitration` 已同步，`0/0`（live）<br>`main` 已同步，`0/0`，脏工作区 10 项（live） |
-| wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0`（live） |
-| wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0`（live） |
-| wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`（live） |
-| wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0`（live） |
-| wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/vault-tool | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/video-scaffold | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/wechat-history-ai-bridge | E:\Projects\Tools\WeFlowBridge<br>E:\Projects\Worktrees\WeFlowBridge-ai-integration-1-0<br>E:\Projects\Worktrees\WeFlowBridge-ai-readme-v2<br>E:\Projects\Worktrees\WeFlowBridge-star-readme<br>E:\Projects\Worktrees\WeFlowBridge-wechat-history-branding | `master` 已同步，`0/0`（live）<br>`codex/weflowbridge-ai-integration-1-0` 已同步，`0/0`（live）<br>`codex/weflowbridge-ai-readme-v2` 无 upstream（live）<br>`codex/weflowbridge-star-readme` 已同步，`0/0`（live）<br>`codex/wechat-history-ai-bridge-branding` 已同步，`0/0`（live） |
+| wlyaaaaa/PCConfig | E:\.worktrees\local-gpu-arbitration\pcconfig<br>E:\.worktrees\personalos-s8-wp4\pcconfig<br>E:\PCConfig<br>V:\Dev\Personal\Worktrees\pcconfig-s9-wp1-cold-owner<br>V:\Dev\Personal\Worktrees\pcconfig-s9-wp1-nearline<br>V:\Personal\Worktrees\pcconfig-s9-nearline<br>V:\Personal\Worktrees\pcconfig-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\pcconfig-s9-wp4-release | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`codex/s8-wp4-personalos-runtime` 无 upstream（cached）<br>`main` ahead/behind `13/0`，脏工作区 30 项（cached）<br>prunable worktree（路径缺失）（cached）<br>prunable worktree（路径缺失）（cached）<br>`codex/s9-nearline-fix` 无 upstream（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream，脏工作区 11 项（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） |
+| wlyaaaaa/PersonalOS | E:\PersonalOS<br>E:\PersonalOS-worktrees\s7-wp1-shadow-admission<br>E:\PersonalOS-worktrees\s7-wp2-source-preservation<br>E:\PersonalOS-worktrees\s7-wp3-semantic-memory<br>E:\PersonalOS-worktrees\s7-wp4-candidate-projection<br>E:\PersonalOS-worktrees\s7-wp4-evidence-slice<br>E:\PersonalOS-worktrees\s7-wp4-task-context<br>E:\PersonalOS-worktrees\s7-wp5-feedback-loop<br>E:\PersonalOS-worktrees\s8-wp1-backup-recovery<br>E:\PersonalOS-worktrees\s8-wp1-plan<br>E:\PersonalOS-worktrees\s8-wp2-document-state<br>E:\PersonalOS-worktrees\s8-wp3-health-integration<br>E:\PersonalOS-worktrees\s8-wp4-beta<br>E:\PersonalOS-worktrees\s9-wp1-release-recovery<br>E:\PersonalOS-worktrees\stage7-entry-fixes<br>E:\PersonalOS-worktrees\stage7-real-value-design<br>E:\PersonalOS-worktrees\stage7-wp1-plan<br>E:\PersonalOS-worktrees\stage7-wp2-plan<br>E:\PersonalOS-worktrees\wp3-design-plan<br>E:\PersonalOS-worktrees\wp3-operation-kernel<br>E:\PersonalOS-worktrees\wp4-design-plan<br>E:\PersonalOS-worktrees\wp4-immutable-archive<br>E:\PersonalOS-worktrees\wp5-design-plan<br>E:\PersonalOS-worktrees\wp5-temporal-history<br>E:\PersonalOS-worktrees\wp6-design-plan<br>E:\PersonalOS-worktrees\wp6-governance-context<br>E:\PersonalOS-worktrees\wp7-action-recovery<br>E:\PersonalOS-worktrees\wp7-design<br>V:\Personal\Worktrees\personalos-initialization-design<br>V:\Personal\Worktrees\personalos-s9-wp2<br>V:\Personal\Worktrees\personalos-s9-wp2-audit<br>V:\Personal\Worktrees\personalos-s9-wp2-cutover<br>V:\Personal\Worktrees\personalos-s9-wp2-final-gate-fixes<br>V:\Personal\Worktrees\personalos-s9-wp2-fix<br>V:\Personal\Worktrees\personalos-s9-wp2-task4<br>V:\Personal\Worktrees\personalos-s9-wp3-active-attention<br>V:\Personal\Worktrees\personalos-s9-wp4-release<br>V:\Personal\Worktrees\personalso-source-preflight | `main` ahead/behind `34/0`（cached）<br>`codex/s7-wp1-shadow-admission` 无 upstream（cached）<br>`codex/s7-wp2-source-preservation` 无 upstream（cached）<br>`codex/s7-wp3-semantic-memory` 无 upstream（cached）<br>`codex/s7-wp4-candidate-projection` 无 upstream（cached）<br>`codex/s7-wp4-evidence-slice` 无 upstream（cached）<br>`codex/s7-wp4-task-context` 无 upstream（cached）<br>`codex/s7-wp5-feedback-loop` 无 upstream（cached）<br>`codex/s8-wp1-backup-recovery` 无 upstream（cached）<br>`codex/s8-wp1-plan` 无 upstream（cached）<br>`codex/s8-wp2-document-state` 无 upstream（cached）<br>`codex/s8-wp3-health-integration` 无 upstream（cached）<br>`codex/s8-wp4-beta` 无 upstream（cached）<br>`codex/s9-wp1-release-recovery` 无 upstream（cached）<br>`codex/stage7-entry-fixes` 无 upstream（cached）<br>`codex/stage7-real-value-design` 无 upstream（cached）<br>`codex/stage7-wp1-plan` 无 upstream（cached）<br>`codex/stage7-wp2-plan` 无 upstream（cached）<br>`codex/wp3-design-plan` 无 upstream（cached）<br>`codex/wp3-operation-kernel` 无 upstream，脏工作区 1 项（cached）<br>`codex/wp4-design-plan` 无 upstream（cached）<br>`codex/wp4-immutable-archive` 无 upstream（cached）<br>`codex/wp5-design-plan` 无 upstream（cached）<br>`codex/wp5-temporal-history` 无 upstream（cached）<br>`codex/wp6-design-plan` 无 upstream（cached）<br>`codex/wp6-governance-context` 无 upstream（cached）<br>`codex/wp7-action-recovery` 无 upstream（cached）<br>`codex/wp7-design` 无 upstream（cached）<br>`codex/initialization-design` 无 upstream（cached）<br>`codex/s9-wp2-health-absorption` 无 upstream（cached）<br>`codex/s9-wp2-audit` 无 upstream（cached）<br>`codex/s9-wp2-cutover` 无 upstream（cached）<br>`codex/s9-wp2-final-gate-fixes` 无 upstream（cached）<br>`codex/s9-wp2-gate-fixes` 无 upstream（cached）<br>`codex/s9-wp2-real-shadow` 无 upstream（cached）<br>`codex/s9-wp3-active-attention` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached）<br>`codex/source-preflight-prep` 无 upstream（cached） |
+| wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `codex/cleanup-duplicate-scripts` 已同步，`0/0`（cached） |
+| wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` ahead/behind `2/0`（cached） |
+| wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `codex/public-config-backup` 已同步，`0/0`（cached） |
+| wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`，脏工作区 2 项（cached） |
+| wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit | `codex/full-audit-hardening-docs` 已同步，`0/0`（cached） |
+| wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/vault-tool | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/video-scaffold | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/wechat-history-ai-bridge | E:\Projects\Tools\WeFlowBridge<br>E:\Projects\Worktrees\WeFlowBridge-ai-integration-1-0<br>E:\Projects\Worktrees\WeFlowBridge-ai-readme-v2<br>E:\Projects\Worktrees\WeFlowBridge-star-readme<br>E:\Projects\Worktrees\WeFlowBridge-wechat-history-branding | `master` 已同步，`0/0`（cached）<br>`codex/weflowbridge-ai-integration-1-0` 已同步，`0/0`（cached）<br>`codex/weflowbridge-ai-readme-v2` 无 upstream（cached）<br>`codex/weflowbridge-star-readme` 已同步，`0/0`（cached）<br>`codex/wechat-history-ai-bridge-branding` 已同步，`0/0`（cached） |

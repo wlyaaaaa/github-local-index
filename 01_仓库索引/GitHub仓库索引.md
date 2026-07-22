@@ -16,7 +16,7 @@
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引<br>V:\Personal\Worktrees\github-index-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\github-index-s9-wp4-release | `main` ahead/behind `2/0`，脏工作区 13 项（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） | 公开仓库先做暴露面审查，再按显式路径提交<br>需人工确认 upstream 后再判断推送策略 |
+| wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引<br>V:\Personal\Worktrees\github-index-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\github-index-s9-wp4-release | `main` ahead/behind `5/0`（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） | 公开仓库完成脱敏审查后推送<br>需人工确认 upstream 后再判断推送策略 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
 | wlyaaaaa/legal-filing-kit | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |

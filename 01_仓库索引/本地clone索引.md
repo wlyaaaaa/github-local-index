@@ -16,7 +16,7 @@
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引<br>V:\Personal\Worktrees\github-index-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\github-index-s9-wp4-release | `main` ahead/behind `2/0`，脏工作区 13 项（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引<br>V:\Personal\Worktrees\github-index-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\github-index-s9-wp4-release | `main` ahead/behind `5/0`（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） |
 | wlyaaaaa/LocalOCR | E:\.worktrees\local-gpu-arbitration\localocr<br>E:\Projects\Tools\LocalOCR | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） |

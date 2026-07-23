@@ -416,10 +416,21 @@ function Get-ExistingTaskHintsForRepository {
     )
 
     $namePart = ($Repository.NameWithOwner -replace '^wlyaaaaa/', '')
-    $localPath = [string] $Repository.LocalPath
+    $localPaths = @(([string] $Repository.LocalPath) -split '<br>' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne '未发现本地 clone' })
+    $taskNamePattern = switch ($namePart) {
+        '.agents' { '^AgentsHotMirror-' }
+        'ai-llm-job-prep' { '^AIModelsBackup-' }
+        'devconfig-backup' { '^(DevConfigBackup|WeChatBackup)-' }
+        default { '' }
+    }
     $hints = foreach ($task in $TaskRows) {
         $text = "$($task.TaskName) $($task.ActionSummary) $($task.RelatedPath)"
-        if ($localPath -ne '未发现本地 clone' -and $text -like "*$localPath*") {
+        if ($localPaths | Where-Object { $text -like "*$_*" } | Select-Object -First 1) {
+            $task.TaskName
+            continue
+        }
+
+        if ($taskNamePattern -and $task.TaskName -match $taskNamePattern) {
             $task.TaskName
             continue
         }

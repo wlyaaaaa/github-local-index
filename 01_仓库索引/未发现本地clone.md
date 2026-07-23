@@ -7,6 +7,7 @@
 | GitHub 仓库 | 可见性 | 当前决策 |
 | --- | --- | --- |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | 需要时统一 clone，或标记远端存档 |
+| wlyaaaaa/Key | PRIVATE | 需要时 clone 到受管私有路径；checkout 只保留密文和公开安全说明 |
 | wlyaaaaa/legal-filing-kit | PRIVATE | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/llm-backend-toolkit | PUBLIC | 需要时统一 clone，或标记远端存档 |
 

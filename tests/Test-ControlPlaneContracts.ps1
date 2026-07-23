@@ -266,7 +266,7 @@ foreach ($relativePath in @('AGENTS.md', 'README.md')) {
 $pushRuleText = $matrixText
 Assert-True ($pushRuleText.Contains('read-only diagnosis remains allowed')) 'push rule preserves read-only diagnosis when admission evidence blocks writes'
 Assert-True ($pushRuleText.Contains('preserve exact content')) 'push rule preserves exact content for trusted private backup targets'
-Assert-True ($pushRuleText.Contains('wlyaaaaa/Key')) 'push rule preserves the Key no-clone boundary'
+Assert-True ($pushRuleText.Contains('wlyaaaaa/Key') -and $pushRuleText.Contains('密文')) 'push rule preserves the Key encrypted-artifact-only boundary'
 Assert-True ($pushRuleText.Contains('transport ready') -and $pushRuleText.Contains('publication safe') -and $pushRuleText.Contains('authorization present')) 'push rule separates transport, publication, and authorization'
 
 if ($script:Failures -gt 0) {

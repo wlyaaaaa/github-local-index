@@ -18,7 +18,7 @@
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引<br>V:\Personal\Worktrees\github-index-s9-wp4-owner-closeout<br>V:\Personal\Worktrees\github-index-s9-wp4-release | `main` ahead/behind `5/0`（cached）<br>`codex/s9-wp4-owner-closeout` 无 upstream（cached）<br>`codex/s9-wp4-release` 无 upstream（cached） | 公开仓库完成脱敏审查后推送<br>需人工确认 upstream 后再判断推送策略 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
-| wlyaaaaa/Key | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态 |
+| wlyaaaaa/Key | PRIVATE | main | V:\Personal\Projects\Key | `main` 已同步，`0/0`（live） | 受管私有 clone；checkout 只保留密文和公开安全说明 |
 | wlyaaaaa/legal-filing-kit | PRIVATE | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone 到私有目录，或标记为远端备份仓库 |
 | wlyaaaaa/llm-backend-toolkit | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/LocalOCR | PUBLIC | main | E:\.worktrees\local-gpu-arbitration\localocr<br>E:\Projects\Tools\LocalOCR | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached） | 正常维护 |

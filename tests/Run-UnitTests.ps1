@@ -201,8 +201,8 @@ Assert-True ($demoRow.QueueReason -match 'behind 2') 'queue aggregates behind re
 Assert-True ($demoRow.QueueReason -match '脏工作区 3 项') 'queue aggregates dirty reason'
 Assert-True ($demoRow.QueueReason -match '无 upstream') 'queue preserves no-upstream reason from a secondary worktree'
 Assert-Equal '未发现本地 clone' $keyRow.LocalPath 'marks Key as missing local clone'
-Assert-True ($keyRow.NextAction -match '严格禁止克隆') 'keeps Key do-not-clone rule'
-Assert-True (-not ($keyRow.NextAction -match 'clone 到')) 'never suggests cloning Key'
+Assert-True ($keyRow.NextAction -match '受管私有路径') 'keeps Key managed-clone rule'
+Assert-True ($keyRow.NextAction -match '密文') 'limits Key checkout to encrypted artifacts'
 
 $documentRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-docs-' + [guid]::NewGuid().ToString('N'))
 try {

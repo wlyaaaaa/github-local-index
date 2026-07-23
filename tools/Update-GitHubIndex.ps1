@@ -115,7 +115,7 @@ function Get-MissingCloneAction {
     )
 
     if ($NameWithOwner -eq 'wlyaaaaa/Key') {
-        return '已确认本机没有 clone；严格禁止克隆；仅保留远端私有备份状态'
+        return '需要时 clone 到受管私有路径；checkout 只保留密文和公开安全说明'
     }
 
     if ($Visibility -eq 'PRIVATE') {
@@ -701,7 +701,7 @@ function Write-GitHubIndexDocuments {
         $missingLines += '当前没有未发现本地 clone 的 GitHub 仓库。'
     }
     $missingLines += ''
-    $missingLines += '说明：`Key` 仓库严格禁止克隆到本机；本公开索引只记录“远端私有备份存在 / 本机无 clone”状态，不做恢复、展开或内容复制。'
+    $missingLines += '说明：`Key` 仓库可 clone 到受管私有路径，但 checkout 只允许密文和公开安全说明；解密明文、口令与密钥文件不得进入仓库。'
     Set-TextFile -Path (Join-Path $RepoRoot '01_仓库索引/未发现本地clone.md') -Lines $missingLines
 
     $queueLines = @(
@@ -800,7 +800,7 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += '1. 当仓库 identity、worktree、sync 或 visibility 的不确定性会影响决策时，按需用 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json` 取得单仓库证据。'
     $dashboardLines += '2. 定期运行 `tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`；只读检查不得提交或推送。'
     $dashboardLines += '3. 对未推送队列中的公开仓库先做暴露面审查。'
-    $dashboardLines += '4. 对未发现 clone 的仓库决定是否进入统一目录或标记远端存档；`wlyaaaaa/Key` 始终禁止克隆。'
+    $dashboardLines += '4. 对未发现 clone 的仓库决定是否进入统一目录或标记远端存档；`wlyaaaaa/Key` 仅允许受管私有 clone 和密文维护。'
     $dashboardLines += '5. 只有明确里程碑或索引事实变化时才记录 push milestone；普通推送不制造索引提交。'
     Set-TextFile -Path (Join-Path $RepoRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }

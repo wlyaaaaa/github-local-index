@@ -30,7 +30,7 @@ admission provider 在身份、同步、worktree、visibility 或推送条件不
 
 本仓库自身是 `PUBLIC`，只能保存公开安全的索引、规则、摘要和脱敏结论。真实密钥、私钥、token、完整配置、原始日志/数据库/聊天/健康资料、私密截图和机器快照不得进入本仓库。
 
-确认仍为 `PRIVATE` 的备份、恢复或个人知识库目标可按任务需要保留精确凭据内容；`wlyaaaaa/Key` 是例外，只记录远端状态，禁止本机 clone 或展开。
+确认仍为 `PRIVATE` 的备份、恢复或个人知识库目标可按任务需要保留精确凭据内容；`wlyaaaaa/Key` 可在受管私有路径 clone，但 checkout 只保留密文和公开安全说明，解密明文、口令与密钥文件不得进入仓库。
 
 Git transport readiness 与内容 publication 是两个不同判断。完整且唯一的发布矩阵见 [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)。
 

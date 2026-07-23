@@ -355,6 +355,30 @@ function Get-IndexedCloneScanRoots {
     if (Test-Path -LiteralPath $RepoRoot -PathType Container) {
         $roots.Add([System.IO.Path]::GetFullPath($RepoRoot))
     }
+
+    # The previous index is useful for preserving existing worktree paths, but it
+    # cannot discover a repository that was created under a newly adopted root.
+    # Seed every current canonical/compatibility root as well, then let the
+    # repository map keep only remotes owned by the indexed GitHub account.
+    $ownerVolumeRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($RepoRoot))
+    $canonicalCandidates = @(
+        (Join-Path $ownerVolumeRoot '.agents'),
+        (Join-Path $ownerVolumeRoot 'PCConfig'),
+        (Join-Path $ownerVolumeRoot 'PersonalOS'),
+        (Join-Path $ownerVolumeRoot 'Projects'),
+        (Join-Path $ownerVolumeRoot '.worktrees'),
+        (Join-Path $ownerVolumeRoot 'PersonalOS-worktrees'),
+        'V:\Personal\Projects',
+        'V:\Personal\Worktrees',
+        'V:\Work',
+        'V:\Dev'
+    )
+    foreach ($candidate in $canonicalCandidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Container) {
+            $roots.Add([System.IO.Path]::GetFullPath($candidate))
+        }
+    }
+
     return @($roots | Sort-Object -Unique)
 }
 

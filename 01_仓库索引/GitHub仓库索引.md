@@ -13,7 +13,7 @@
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\.worktrees\local-gpu-arbitration\chineseasr<br>E:\Projects\Tools\ChineseASR<br>V:\Personal\Worktrees\ChineseASR-observer-projection | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached）<br>`codex/observer-projection` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（cached） | 正常维护 |
-| wlyaaaaa/codex-local-remote | PUBLIC | main | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 64 项（cached）<br>`detached` 无 upstream（cached） | 公开仓库先做暴露面审查，再按显式路径提交<br>需人工确认 upstream 后再判断推送策略 |
+| wlyaaaaa/codex-local-remote | PUBLIC | main | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 66 项（cached）<br>`detached` 无 upstream（cached） | 公开仓库先做暴露面审查，再按显式路径提交<br>需人工确认 upstream 后再判断推送策略 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） | 正常维护 |

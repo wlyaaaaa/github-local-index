@@ -13,7 +13,7 @@
 | wlyaaaaa/ChineseASR | E:\.worktrees\local-gpu-arbitration\chineseasr<br>E:\Projects\Tools\ChineseASR<br>V:\Personal\Worktrees\ChineseASR-observer-projection | `codex/local-gpu-arbitration` 已同步，`0/0`（cached）<br>`main` 已同步，`0/0`（cached）<br>`codex/observer-projection` 已同步，`0/0`（cached） |
 | wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（cached） |
-| wlyaaaaa/codex-local-remote | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 64 项（cached）<br>`detached` 无 upstream（cached） |
+| wlyaaaaa/codex-local-remote | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 66 项（cached）<br>`detached` 无 upstream（cached） |
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |

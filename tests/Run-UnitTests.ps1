@@ -120,6 +120,60 @@ $isolatedResult = Invoke-ExternalCommandWithRetry -Operation 'unit retry scope i
 Assert-Equal 2 $script:IsolationAttempts 'caller locals cannot corrupt retry-loop state'
 Assert-Equal 'isolated' ($isolatedResult -join '') 'isolated retry still returns final stdout'
 
+$pinnedSnapshotClassifier = Get-Command Get-CommitPinnedSnapshotState -ErrorAction SilentlyContinue
+Assert-True ($null -ne $pinnedSnapshotClassifier) 'commit-pinned snapshot classifier exists'
+if ($pinnedSnapshotClassifier) {
+    $pinnedSnapshot = Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1' `
+        -Head '87dcfd16b13231b157b21911cf21689866fcffac' `
+        -HasUpstream $true -Ahead 0 -Behind 2 -DirtyCount 0 -Exists $true -Prunable $false
+    Assert-Equal '87dcfd1' $pinnedSnapshot.commit_prefix 'recognizes a clean audit path pinned to its HEAD prefix'
+    Assert-Equal 2 $pinnedSnapshot.observed_behind 'retains non-actionable remote distance as evidence'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1' `
+        -Head '87dcfd16b13231b157b21911cf21689866fcffac' `
+        -HasUpstream $true -Ahead 0 -Behind 2 -DirtyCount 1 -Exists $true -Prunable $false)) 'dirty audit worktree is never suppressed as pinned'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1' `
+        -Head '87dcfd16b13231b157b21911cf21689866fcffac' `
+        -HasUpstream $true -Ahead 1 -Behind 0 -DirtyCount 0 -Exists $true -Prunable $false)) 'ahead audit worktree is never suppressed as pinned'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1' `
+        -Head '87dcfd16b13231b157b21911cf21689866fcffac' `
+        -HasUpstream $true -Ahead $null -Behind 2 -DirtyCount 0 -Exists $true -Prunable $false)) 'missing upstream distance evidence is never coerced into pinned'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\legal-filing-kit-active-87dcfd1' `
+        -Head '87dcfd16b13231b157b21911cf21689866fcffac' `
+        -HasUpstream $true -Ahead 0 -Behind 2 -DirtyCount 0 -Exists $true -Prunable $false)) 'commit suffix without an audit marker remains actionable'
+    foreach ($falseMarker in @('reviewer', 'auditor', 'snapshotter', 'acceptance')) {
+        Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+            -Path "V:\Personal\Worktrees\demo-$falseMarker-87dcfd1" `
+            -Head '87dcfd16b13231b157b21911cf21689866fcffac' `
+            -HasUpstream $true -Ahead 0 -Behind 2 -DirtyCount 0 -Exists $true -Prunable $false)) "non-contract marker '$falseMarker' remains actionable"
+    }
+    $detachedPinnedSnapshot = Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794' `
+        -Head '25d2794c11989d451164713e6f72544b1b0a0671' `
+        -HasUpstream $false -Detached $true -Ahead 0 -Behind 0 -DirtyCount 0 -Exists $true -Prunable $false
+    Assert-Equal '25d2794' $detachedPinnedSnapshot.commit_prefix 'recognizes a clean detached review path pinned to its HEAD prefix'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794' `
+        -Head '25d2794c11989d451164713e6f72544b1b0a0671' `
+        -HasUpstream $false -Detached $false -Ahead 0 -Behind 0 -DirtyCount 0 -Exists $true -Prunable $false)) 'ordinary no-upstream branch remains actionable'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794' `
+        -Head '25d2794c11989d451164713e6f72544b1b0a0671' `
+        -HasUpstream $false -Detached $true -Ahead $null -Behind $null -DirtyCount $null -Exists $true -Prunable $false)) 'detached snapshot requires a real clean observation'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794' `
+        -Head '25d2794c11989d451164713e6f72544b1b0a0671' `
+        -HasUpstream $false -Detached $true -Ahead 1 -Behind 0 -DirtyCount 0 -Exists $true -Prunable $false)) 'detached snapshot with contradictory ahead evidence remains actionable'
+    Assert-True ($null -eq (Get-CommitPinnedSnapshotState `
+        -Path 'V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794' `
+        -Head '25d2794c11989d451164713e6f72544b1b0a0671' `
+        -HasUpstream $false -Detached $true -Ahead 0 -Behind 1 -DirtyCount 0 -Exists $true -Prunable $false)) 'detached snapshot with contradictory behind evidence remains actionable'
+}
+
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-unit-' + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot '.git') | Out-Null
@@ -266,6 +320,53 @@ Assert-Equal '未发现本地 clone' $keyRow.LocalPath 'marks Key as missing loc
 Assert-True ($keyRow.NextAction -match '受管私有路径') 'keeps Key managed-clone rule'
 Assert-True ($keyRow.NextAction -match '密文') 'limits Key checkout to encrypted artifacts'
 
+$pinnedRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
+    nameWithOwner = 'wlyaaaaa/pinned-demo'
+    visibility = 'PRIVATE'
+    url = 'https://github.com/wlyaaaaa/pinned-demo'
+    defaultBranchRef = [pscustomobject]@{ name = 'main' }
+    pushedAt = '2026-07-01T00:00:00Z'
+    updatedAt = '2026-07-01T00:00:00Z'
+}) -CloneMap @{
+    'wlyaaaaa/pinned-demo' = @(
+        [pscustomobject]@{
+            Path = 'V:\Personal\Worktrees\pinned-demo-audit-87dcfd1'
+            Branch = 'audit'
+            Upstream = 'origin/audit'
+            Ahead = 0
+            Behind = 0
+            DirtyCount = 0
+            State = 'pinned'
+            NextAction = 'preserve'
+            IsDirty = $false
+            IsPinnedSnapshot = $true
+            PinnedObservedBehind = 2
+            NeedsReview = $false
+            QueueReasons = @()
+        },
+        [pscustomobject]@{
+            Path = 'V:\Personal\Worktrees\pinned-demo-review-25d2794'
+            Branch = ''
+            Upstream = ''
+            Ahead = 0
+            Behind = 0
+            DirtyCount = 0
+            State = 'pinned detached'
+            NextAction = 'preserve'
+            IsDirty = $false
+            IsPinnedSnapshot = $true
+            PinnedObservedBehind = $null
+            NeedsReview = $false
+            QueueReasons = @()
+        }
+    )
+})
+Assert-Equal 2 $pinnedRows[0].PinnedSnapshotCount 'row aggregation preserves pinned snapshot count'
+Assert-Equal 2 $pinnedRows[0].PinnedObservedBehind 'row aggregation preserves non-actionable observed behind'
+Assert-Equal 0 $pinnedRows[0].Behind 'pinned observed behind never becomes actionable behind'
+Assert-True (-not $pinnedRows[0].NeedsReview) 'clean pinned snapshots do not create a review queue'
+Assert-Equal '' $pinnedRows[0].QueueReason 'pinned detached snapshot does not create no-upstream noise'
+
 $externalRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
     nameWithOwner = 'wlyaaaaa/PersonalOS'
     visibility = 'PRIVATE'
@@ -299,6 +400,11 @@ try {
     $firstOverviewHash = (Get-FileHash -LiteralPath $overviewPath -Algorithm SHA256).Hash
     Write-GitHubIndexDocuments -RepoRoot $documentRoot -Owner 'wlyaaaaa' -Rows $rows
     Assert-Equal $firstOverviewHash (Get-FileHash -LiteralPath $overviewPath -Algorithm SHA256).Hash 'Git document generation is deterministic for a stable row set'
+    Write-GitHubIndexDocuments -RepoRoot $documentRoot -Owner 'wlyaaaaa' -Rows $pinnedRows
+    $pinnedBranchText = Get-Content -LiteralPath (Join-Path $documentRoot '02_同步诊断/分支与远端诊断.md') -Raw -Encoding utf8
+    Assert-True ($pinnedBranchText.Contains('## 无行动项')) 'pinned-only repository is grouped as no-action, not synchronized'
+    Assert-True (-not $pinnedBranchText.Contains('## 已同步')) 'pinned-only repository is never labeled synchronized by its section'
+    Assert-True ($pinnedBranchText.Contains('wlyaaaaa/pinned-demo') -and $pinnedBranchText.Contains('pinned detached')) 'pinned-only grouping retains explicit snapshot state'
 }
 finally {
     if (Test-Path -LiteralPath $documentRoot) { Remove-Item -LiteralPath $documentRoot -Recurse -Force }

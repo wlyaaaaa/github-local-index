@@ -13,7 +13,7 @@ owner: E:\GitHub总索引
 权威输入是 admission provider 对 Git worktree、status 和 upstream 关系的当前检查。
 
 ## 核心机制
-默认兼容模式下 all worktrees contribute to dirty、sync and ahead/behind judgment；指定 target worktree/ref 时，全部 worktree 仍作为 evidence 返回，只有精确目标参与顶层 transport 判断。
+默认兼容模式下 all worktrees contribute to dirty、sync and ahead/behind judgment；指定 target worktree/ref 时，全部 worktree 仍作为 evidence 返回，只有精确目标参与顶层 transport 判断。若 clean 的历史 audit/reaudit/snapshot/review 路径以当前 HEAD 前缀结尾，且 either `有 upstream + 原始 ahead=0` or `detached + 无 upstream`，则认定为 commit-pinned snapshot：结构化保留数量与远端距离证据，但不把 pinned behind/no-upstream 汇入行动队列。dirty、非零 ahead、普通无 upstream 分支、路径/HEAD 不匹配、upstream 距离缺失或 detached 携带矛盾的非零距离时绝不抑制；文档只把它归入“无行动项”，不声称“已同步”。
 
 ## 输出合同
 每个 worktree 暴露 dirty summary、sync state、upstream 限制以及 locked/prunable 可见标记；顶层同时回显规范化 target。
@@ -22,7 +22,7 @@ owner: E:\GitHub总索引
 任一可达 worktree inspection failure fails closed；locked/prunable limits remain visible，不被折叠成正常。
 
 ## 验证证据
-`tests/Test-ProjectAdmission.ps1` 以 primary、linked、detached、locked/prunable 和检查失败场景验证行为。
+`tests/Test-ProjectAdmission.ps1` 以 primary、linked、detached、locked/prunable 和检查失败场景验证行为；`tests/Run-UnitTests.ps1` 验证 commit-pinned snapshot 的成立与失败关闭条件。
 
 ## 上下文策略
 卡片只描述聚合口径；动态路径、计数和同步值在任务当下从 provider 读取。

@@ -235,6 +235,55 @@ function Get-RepoStateText {
     return $state
 }
 
+function Get-CommitPinnedSnapshotState {
+    param(
+        [string] $Path,
+        [string] $Head,
+        [bool] $HasUpstream,
+        [bool] $Detached = $false,
+        [AllowNull()] [object] $Ahead,
+        [AllowNull()] [object] $Behind,
+        [AllowNull()] [object] $DirtyCount,
+        [bool] $Exists,
+        [bool] $Prunable
+    )
+
+    if (-not $Exists -or $Prunable -or
+        $null -eq $DirtyCount -or [int] $DirtyCount -ne 0 -or
+        [string]::IsNullOrWhiteSpace($Path) -or
+        $Head -notmatch '^[0-9a-fA-F]{40}$') {
+        return $null
+    }
+    if ($HasUpstream) {
+        if ($null -eq $Ahead -or $null -eq $Behind -or [int] $Ahead -ne 0) {
+            return $null
+        }
+    }
+    else {
+        if (-not $Detached -or
+            ($null -ne $Ahead -and [int] $Ahead -ne 0) -or
+            ($null -ne $Behind -and [int] $Behind -ne 0)) {
+            return $null
+        }
+    }
+
+    $leaf = [System.IO.Path]::GetFileName(([string] $Path).TrimEnd('\', '/'))
+    if ($leaf -notmatch '(?i)(?:^|[-_.])(?:audit|reaudit|snapshot|review)[-_.](?:.*[-_.])?(?<commit>[0-9a-f]{7,40})$') {
+        return $null
+    }
+
+    $commitPrefix = [string] $matches['commit']
+    if (-not $Head.StartsWith($commitPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        commit_prefix = $commitPrefix.ToLowerInvariant()
+        observed_behind = if ($HasUpstream) { [int] $Behind } else { $null }
+        detached = [bool] $Detached
+    }
+}
+
 function Get-GitConfigPaths {
     param([string[]] $Roots)
 
@@ -505,6 +554,8 @@ function ConvertTo-GitHubIndexRows {
                 Ahead         = 0
                 Behind        = 0
                 DirtyCount    = 0
+                PinnedSnapshotCount = 0
+                PinnedObservedBehind = 0
                 QueueReason   = ''
                 PushedAt      = $repo.pushedAt
                 UpdatedAt     = $repo.updatedAt
@@ -530,6 +581,8 @@ function ConvertTo-GitHubIndexRows {
                 Ahead         = 0
                 Behind        = 0
                 DirtyCount    = 0
+                PinnedSnapshotCount = 0
+                PinnedObservedBehind = 0
                 QueueReason   = ''
                 PushedAt      = $repo.pushedAt
                 UpdatedAt     = $repo.updatedAt
@@ -546,6 +599,18 @@ function ConvertTo-GitHubIndexRows {
         $dirtyCount = @($clones | Measure-Object -Property DirtyCount -Sum).Sum
         $ahead = @($clones | Measure-Object -Property Ahead -Sum).Sum
         $behind = @($clones | Measure-Object -Property Behind -Sum).Sum
+        $pinnedSnapshots = @($clones | Where-Object {
+            $null -ne $_.PSObject.Properties['IsPinnedSnapshot'] -and [bool] $_.IsPinnedSnapshot
+        })
+        $pinnedObservedBehindValues = @($pinnedSnapshots | ForEach-Object {
+            if ($null -ne $_.PinnedObservedBehind) { [int] $_.PinnedObservedBehind }
+        })
+        $pinnedObservedBehind = if ($pinnedObservedBehindValues.Count -gt 0) {
+            [int] (@($pinnedObservedBehindValues | Measure-Object -Sum).Sum)
+        }
+        else {
+            0
+        }
 
         $queueReason = ''
         if ($needsReview) {
@@ -553,7 +618,10 @@ function ConvertTo-GitHubIndexRows {
             if ($ahead -gt 0) { $reasons += "ahead $ahead" }
             if ($behind -gt 0) { $reasons += "behind $behind" }
             if ($dirtyCount -gt 0) { $reasons += "脏工作区 $dirtyCount 项" }
-            if (@($clones | Where-Object { [string]::IsNullOrWhiteSpace([string] $_.Upstream) }).Count -gt 0) { $reasons += '无 upstream' }
+            if (@($clones | Where-Object {
+                (-not ($null -ne $_.PSObject.Properties['IsPinnedSnapshot'] -and [bool] $_.IsPinnedSnapshot)) -and
+                [string]::IsNullOrWhiteSpace([string] $_.Upstream)
+            }).Count -gt 0) { $reasons += '无 upstream' }
             foreach ($cloneReason in @($clones | ForEach-Object { @($_.QueueReasons) })) {
                 if (-not [string]::IsNullOrWhiteSpace([string] $cloneReason)) {
                     $reasons += [string] $cloneReason
@@ -574,6 +642,8 @@ function ConvertTo-GitHubIndexRows {
             Ahead         = [int] $ahead
             Behind        = [int] $behind
             DirtyCount    = [int] $dirtyCount
+            PinnedSnapshotCount = $pinnedSnapshots.Count
+            PinnedObservedBehind = $pinnedObservedBehind
             QueueReason   = $queueReason
             PushedAt      = $repo.pushedAt
             UpdatedAt     = $repo.updatedAt
@@ -636,11 +706,42 @@ function Resolve-CloneStatuses {
             $repoErrorReasons = @($admission.errors | ForEach-Object { [string] $_.category })
             foreach ($worktree in @($admission.worktrees)) {
                 $inspectionFailed = [bool] $worktree.inspection_error
-                $ahead = if ($inspectionFailed -and $null -eq $worktree.ahead) { $null } elseif ($null -eq $worktree.ahead) { 0 } else { [int] $worktree.ahead }
-                $behind = if ($inspectionFailed -and $null -eq $worktree.behind) { $null } elseif ($null -eq $worktree.behind) { 0 } else { [int] $worktree.behind }
-                $dirtyCount = if ($inspectionFailed -and $null -eq $worktree.dirty_count) { $null } elseif ($null -eq $worktree.dirty_count) { 0 } else { [int] $worktree.dirty_count }
+                $observedAhead = $worktree.ahead
+                $observedBehind = $worktree.behind
+                $observedDirtyCount = $worktree.dirty_count
+                $ahead = if ($inspectionFailed -and $null -eq $observedAhead) { $null } elseif ($null -eq $observedAhead) { 0 } else { [int] $observedAhead }
+                $behind = if ($inspectionFailed -and $null -eq $observedBehind) { $null } elseif ($null -eq $observedBehind) { 0 } else { [int] $observedBehind }
+                $dirtyCount = if ($inspectionFailed -and $null -eq $observedDirtyCount) { $null } elseif ($null -eq $observedDirtyCount) { 0 } else { [int] $observedDirtyCount }
                 $hasUpstream = -not [string]::IsNullOrWhiteSpace([string] $worktree.upstream)
-                $state = if ($inspectionFailed) {
+                $pinnedSnapshot = if (-not $inspectionFailed) {
+                    Get-CommitPinnedSnapshotState `
+                        -Path ([string] $worktree.path) `
+                        -Head ([string] $worktree.head) `
+                        -HasUpstream:$hasUpstream `
+                        -Detached ([bool] $worktree.detached) `
+                        -Ahead $observedAhead `
+                        -Behind $observedBehind `
+                        -DirtyCount $observedDirtyCount `
+                        -Exists ([bool] $worktree.exists) `
+                        -Prunable ([bool] $worktree.prunable)
+                }
+                else {
+                    $null
+                }
+                $actionableBehind = if ($pinnedSnapshot) { 0 } else { $behind }
+                $state = if ($pinnedSnapshot) {
+                    $distance = if ($pinnedSnapshot.detached) {
+                        'detached 且无 upstream'
+                    }
+                    elseif ($behind -gt 0) {
+                        "远端领先 $behind"
+                    }
+                    else {
+                        '与当前远端引用同位'
+                    }
+                    "历史审计快照固定于 ``$($pinnedSnapshot.commit_prefix)``，$distance，不自动同步"
+                }
+                elseif ($inspectionFailed) {
                     'worktree 检查失败（状态未知）'
                 }
                 elseif (-not $worktree.exists -or $worktree.prunable) {
@@ -653,7 +754,7 @@ function Resolve-CloneStatuses {
 
                 $queueReasons = [System.Collections.Generic.List[string]]::new()
                 if ($worktree.prunable) { $queueReasons.Add('prunable worktree') }
-                if ($worktree.detached) { $queueReasons.Add('detached worktree') }
+                if ($worktree.detached -and -not $pinnedSnapshot) { $queueReasons.Add('detached worktree') }
                 if ($admission.remote_mode -eq 'cached') { $queueReasons.Add('cached 远端引用') }
                 foreach ($errorReason in $repoErrorReasons) { $queueReasons.Add($errorReason) }
                 $nextAction = if ($repoErrorReasons.Count -gt 0) {
@@ -662,8 +763,11 @@ function Resolve-CloneStatuses {
                 elseif ($worktree.prunable) {
                     '清理或恢复 prunable worktree 元数据'
                 }
+                elseif ($pinnedSnapshot) {
+                    '保持提交固定审计快照；需要新证据时创建新审计副本'
+                }
                 else {
-                    Get-RepoNextAction -Visibility ([string] $repo.visibility) -HasUpstream:$hasUpstream -Ahead $ahead -Behind $behind -DirtyCount $dirtyCount
+                    Get-RepoNextAction -Visibility ([string] $repo.visibility) -HasUpstream:$hasUpstream -Ahead $ahead -Behind $actionableBehind -DirtyCount $dirtyCount
                 }
 
                 [pscustomobject]@{
@@ -671,12 +775,15 @@ function Resolve-CloneStatuses {
                     Branch = [string] $worktree.branch
                     Upstream = [string] $worktree.upstream
                     Ahead = $ahead
-                    Behind = $behind
+                    Behind = $actionableBehind
                     DirtyCount = $dirtyCount
                     State = $state
                     NextAction = $nextAction
                     IsDirty = $dirtyCount -gt 0
-                    NeedsReview = $inspectionFailed -or $repoErrorReasons.Count -gt 0 -or $worktree.prunable -or (-not $hasUpstream) -or $ahead -gt 0 -or $behind -gt 0 -or $dirtyCount -gt 0
+                    IsPinnedSnapshot = [bool] $pinnedSnapshot
+                    PinnedSnapshotCommit = if ($pinnedSnapshot) { [string] $pinnedSnapshot.commit_prefix } else { $null }
+                    PinnedObservedBehind = if ($pinnedSnapshot -and $null -ne $pinnedSnapshot.observed_behind) { [int] $pinnedSnapshot.observed_behind } else { $null }
+                    NeedsReview = $inspectionFailed -or $repoErrorReasons.Count -gt 0 -or $worktree.prunable -or ((-not $hasUpstream) -and -not $pinnedSnapshot) -or $ahead -gt 0 -or $actionableBehind -gt 0 -or $dirtyCount -gt 0
                     QueueReasons = @($queueReasons)
                     RemoteMode = $admission.remote_mode
                 }
@@ -725,7 +832,7 @@ function Write-GitHubIndexDocuments {
     $localRows = @($Rows | Where-Object { $_.HasLocalClone } | Sort-Object NameWithOwner)
     $missingRows = @($Rows | Where-Object { -not $_.HasLocalClone } | Sort-Object NameWithOwner)
     $queueRows = @($Rows | Where-Object { $_.HasLocalClone -and $_.NeedsReview } | Sort-Object NameWithOwner)
-    $syncedRows = @($Rows | Where-Object { $_.HasLocalClone -and -not $_.NeedsReview } | Sort-Object NameWithOwner)
+    $noActionRows = @($Rows | Where-Object { $_.HasLocalClone -and -not $_.NeedsReview } | Sort-Object NameWithOwner)
     $dirtyRows = @($Rows | Where-Object { $_.DirtyCount -gt 0 } | Sort-Object NameWithOwner)
 
     $overviewLines = @(
@@ -814,13 +921,13 @@ function Write-GitHubIndexDocuments {
         '',
         "更新时间：$date",
         '',
-        '## 已同步',
+        '## 无行动项',
         ''
     )
-    if ($syncedRows.Count -gt 0) {
-        $branchLines += New-MarkdownTable -Headers @('仓库', '本地路径', '分支状态') -Properties @('NameWithOwner', 'LocalPath', 'LocalState') -Rows $syncedRows
+    if ($noActionRows.Count -gt 0) {
+        $branchLines += New-MarkdownTable -Headers @('仓库', '本地路径', '分支状态') -Properties @('NameWithOwner', 'LocalPath', 'LocalState') -Rows $noActionRows
     } else {
-        $branchLines += '当前没有已同步的本地 clone。'
+        $branchLines += '当前没有无需行动的本地 clone。'
     }
     $branchLines += ''
     $branchLines += '## 仍需处理'
@@ -830,7 +937,7 @@ function Write-GitHubIndexDocuments {
     } else {
         $branchLines += '| 仓库 | 分支 | 原因 |'
         $branchLines += '|---|---|---|'
-        $branchLines += '| 无 | - | 当前已发现本地 clone 的仓库均已同步 |'
+        $branchLines += '| 无 | - | 当前已发现本地 clone 的仓库均无待处理项 |'
     }
     Set-TextFile -Path (Join-Path $RepoRoot '02_同步诊断/分支与远端诊断.md') -Lines $branchLines
 

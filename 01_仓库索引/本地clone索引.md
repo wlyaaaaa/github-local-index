@@ -32,7 +32,7 @@
 | wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit<br>V:\Personal\Worktrees\TimeAudit-clipboard-history | `codex/full-audit-hardening-docs` 已同步，`0/0`（cached）<br>`codex/clipboard-history` 无 upstream，脏工作区 1 项（cached） |
+| wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit<br>V:\Personal\Worktrees\TimeAudit-clipboard-history | `codex/full-audit-hardening-docs` 已同步，`0/0`（cached）<br>`codex/clipboard-history` 无 upstream，脏工作区 6 项（cached） |
 | wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/vault-tool | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/video-scaffold | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0`（cached） |

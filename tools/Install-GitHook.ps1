@@ -24,7 +24,7 @@ $hookContent = @'
 
 # Public repository secret gate. Keep this file ASCII and deterministic.
 blacklist_paths='(^|/)(99_private|secrets?)(/|$)|private[_-]?key|client[_-]?secret|\.env$|\.(pem|key|p12|pfx)$'
-secret_patterns='-----BEGIN[ A-Z]+PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}'
+secret_patterns='-----BEGIN[ A-Z]+PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|sk-(proj-|svcacct-)?[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{35}|L[S]0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t|L[S]0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ|L[S]0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0t|L[S]0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0'
 
 git diff --cached --name-only --diff-filter=ACMRT -z | while IFS= read -r -d '' file; do
     [ -z "$file" ] && continue

@@ -379,6 +379,38 @@ if ($hookParameters -contains 'RepoPath') {
         & git -C $hookRepo reset -- 'plus-prefixed-secret.txt' 2>&1 | Out-Null
         Remove-Item -LiteralPath (Join-Path $hookRepo 'plus-prefixed-secret.txt') -Force
 
+        $encodedPrivateKeyHeader = 'LS0tLS1CRUdJTi' + 'BQUklWQVRFIEtFWS0tLS0t'
+        Set-Content -LiteralPath (Join-Path $hookRepo 'encoded-material.txt') -Value ('payload=' + $encodedPrivateKeyHeader) -Encoding utf8
+        & git -C $hookRepo add -- 'encoded-material.txt' 2>&1 | Out-Null
+        $encodedPrivateKeyOutput = @(& git -C $hookRepo commit -m 'must block encoded private key' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks a Base64-encoded PEM private-key header'
+        Assert-True (($encodedPrivateKeyOutput -join "`n") -match 'Blocked staged content') 'encoded private-key rejection is caused by the content gate'
+        & git -C $hookRepo reset -- 'encoded-material.txt' 2>&1 | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo 'encoded-material.txt') -Force
+
+        $syntheticOpenAiKey = ('sk-' + 'proj-' + ('B' * 32))
+        Set-Content -LiteralPath (Join-Path $hookRepo 'openai-key.txt') -Value $syntheticOpenAiKey -Encoding utf8
+        & git -C $hookRepo add -- 'openai-key.txt' 2>&1 | Out-Null
+        $openAiKeyOutput = @(& git -C $hookRepo commit -m 'must block OpenAI key' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks a high-confidence OpenAI API key shape'
+        Assert-True (($openAiKeyOutput -join "`n") -match 'Blocked staged content') 'OpenAI key rejection is caused by the content gate'
+        & git -C $hookRepo reset -- 'openai-key.txt' 2>&1 | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo 'openai-key.txt') -Force
+
+        $syntheticGoogleApiKey = ('AI' + 'za' + ('C' * 35))
+        Set-Content -LiteralPath (Join-Path $hookRepo 'google-api-key.txt') -Value $syntheticGoogleApiKey -Encoding utf8
+        & git -C $hookRepo add -- 'google-api-key.txt' 2>&1 | Out-Null
+        $googleApiKeyOutput = @(& git -C $hookRepo commit -m 'must block Google API key' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks a high-confidence Google API key shape'
+        Assert-True (($googleApiKeyOutput -join "`n") -match 'Blocked staged content') 'Google API key rejection is caused by the content gate'
+        & git -C $hookRepo reset -- 'google-api-key.txt' 2>&1 | Out-Null
+        Remove-Item -LiteralPath (Join-Path $hookRepo 'google-api-key.txt') -Force
+
+        Set-Content -LiteralPath (Join-Path $hookRepo 'safe-base64.txt') -Value 'U29tZSBwdWJsaWMgZG9jdW1lbnRhdGlvbiBmaXh0dXJlLg==' -Encoding utf8
+        & git -C $hookRepo add -- 'safe-base64.txt' 2>&1 | Out-Null
+        $safeBase64Output = @(& git -C $hookRepo commit -m 'allow ordinary Base64' 2>&1)
+        Assert-Equal 0 $LASTEXITCODE 'hook does not block ordinary Base64 content'
+
         $typeChangeBlob = [string]($syntheticSecret | & git -C $hookRepo hash-object -w --stdin)
         Assert-Equal 0 $LASTEXITCODE 'creates a synthetic secret blob for the type-change fixture'
         $typeChangeBlob = $typeChangeBlob.Trim()

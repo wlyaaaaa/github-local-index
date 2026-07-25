@@ -1,5 +1,5 @@
 ' Read-only hidden launcher for the GitHubLocalIndex consistency task.
-Dim fso, shell, here, repoRoot, checkScript, command, whereCode, exitCode
+Dim fso, shell, here, repoRoot, checkScript, receiptPath, command, whereCode, exitCode
 
 Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
@@ -14,13 +14,14 @@ End If
 here = fso.GetParentFolderName(WScript.ScriptFullName)
 repoRoot = fso.GetParentFolderName(here)
 checkScript = here & "\Test-GitHubLocalIndexConsistency.ps1"
+receiptPath = repoRoot & "\99_private\runtime\github-index-consistency-last.json"
 shell.CurrentDirectory = repoRoot
 
 whereCode = shell.Run("cmd.exe /d /c where pwsh.exe >nul 2>nul", 0, True)
 If whereCode <> 0 Then
     WScript.Quit 3
 End If
-command = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File """ & checkScript & """ -SkipFetch"
+command = "pwsh.exe -NoProfile -ExecutionPolicy Bypass -File """ & checkScript & """ -SkipFetch -ReceiptPath """ & receiptPath & """"
 
 exitCode = shell.Run(command, 0, True)
 WScript.Quit exitCode

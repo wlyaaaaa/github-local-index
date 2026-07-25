@@ -4,7 +4,8 @@
     [string[]] $ScanRoots = @(),
     [switch] $SkipFetch,
     [switch] $Strict,
-    [switch] $KeepGenerated
+    [switch] $KeepGenerated,
+    [string] $ReceiptPath
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -182,6 +183,81 @@ function Remove-GitHubLocalIndexConsistencyTempRoot {
     Remove-Item -LiteralPath $resolvedTemp -Recurse -Force
 }
 
+function Resolve-GitHubLocalIndexConsistencyReceiptPath {
+    param(
+        [Parameter(Mandatory = $true)] [string] $RepoRoot,
+        [Parameter(Mandatory = $true)] [string] $ReceiptPath
+    )
+
+    $resolvedRepoRoot = [System.IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
+    $privateRoot = [System.IO.Path]::GetFullPath((Join-Path $resolvedRepoRoot '99_private')).TrimEnd('\', '/')
+    $resolvedReceipt = [System.IO.Path]::GetFullPath($ReceiptPath)
+    $privatePrefix = $privateRoot + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedReceipt.StartsWith($privatePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Consistency receipt must remain under the ignored 99_private directory.'
+    }
+    if ([System.IO.Path]::GetExtension($resolvedReceipt) -ine '.json') {
+        throw 'Consistency receipt must use a .json filename.'
+    }
+    return $resolvedReceipt
+}
+
+function Write-GitHubLocalIndexConsistencyReceipt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $RepoRoot,
+        [Parameter(Mandatory = $true)] [string] $ReceiptPath,
+        [Parameter(Mandatory = $true)] [object] $Receipt
+    )
+
+    $resolvedReceipt = Resolve-GitHubLocalIndexConsistencyReceiptPath -RepoRoot $RepoRoot -ReceiptPath $ReceiptPath
+    $receiptDirectory = Split-Path -Parent $resolvedReceipt
+    if (-not (Test-Path -LiteralPath $receiptDirectory -PathType Container)) {
+        New-Item -ItemType Directory -Path $receiptDirectory -Force | Out-Null
+    }
+
+    $tempPath = Join-Path $receiptDirectory ('.' + (Split-Path -Leaf $resolvedReceipt) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        $json = $Receipt | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($tempPath, $json + "`n", [System.Text.UTF8Encoding]::new($false))
+        [System.IO.File]::Move($tempPath, $resolvedReceipt, $true)
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
+            Remove-Item -LiteralPath $tempPath -Force
+        }
+    }
+}
+
+function New-GitHubLocalIndexConsistencyReceipt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [ValidateSet('success', 'drift', 'error')] [string] $Outcome,
+        [Parameter(Mandatory = $true)] [ValidateSet(0, 1, 2)] [int] $ExitCode,
+        [object] $Result,
+        [string] $ErrorCategory,
+        [string] $ErrorMessage
+    )
+
+    [pscustomobject][ordered]@{
+        schema = 'github-local-index.consistency-receipt.v1'
+        task_key = 'github_local_index_consistency'
+        observed_at = [DateTime]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+        outcome = $Outcome
+        exit_code = $ExitCode
+        strict = if ($Result) { [bool] $Result.Strict } else { $null }
+        compared = if ($Result) { [int] $Result.Compared } else { $null }
+        drift_count = if ($Result) { [int] $Result.DriftCount } else { $null }
+        stable_drift_count = if ($Result) { [int] $Result.StableDriftCount } else { $null }
+        volatile_drift_count = if ($Result) { [int] $Result.VolatileDriftCount } else { $null }
+        drift_files = if ($Result) { @($Result.DriftFiles) } else { @() }
+        stable_drift_files = if ($Result) { @($Result.StableDriftFiles) } else { @() }
+        volatile_drift_files = if ($Result) { @($Result.VolatileDriftFiles) } else { @() }
+        error_category = if ([string]::IsNullOrWhiteSpace($ErrorCategory)) { $null } else { $ErrorCategory }
+        error_message = if ([string]::IsNullOrWhiteSpace($ErrorMessage)) { $null } else { $ErrorMessage }
+    }
+}
+
 function Invoke-GitHubLocalIndexConsistencyCheck {
     param(
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
@@ -265,15 +341,31 @@ function Write-GitHubLocalIndexConsistencyResult {
 if ($MyInvocation.InvocationName -ne '.') {
     try {
         $result = Invoke-GitHubLocalIndexConsistencyCheck -RepoRoot $RepoRoot -Owner $Owner -ScanRoots $ScanRoots -SkipFetch:$SkipFetch -Strict:$Strict -KeepGenerated:$KeepGenerated
-        Write-GitHubLocalIndexConsistencyResult -Result $result
-        if ($result.IsConsistent) {
-            exit 0
+        $exitCode = if ($result.IsConsistent) { 0 } else { 1 }
+        $outcome = if ($result.IsConsistent) { 'success' } else { 'drift' }
+        if (-not [string]::IsNullOrWhiteSpace($ReceiptPath)) {
+            $receipt = New-GitHubLocalIndexConsistencyReceipt -Outcome $outcome -ExitCode $exitCode -Result $result
+            Write-GitHubLocalIndexConsistencyReceipt -RepoRoot $RepoRoot -ReceiptPath $ReceiptPath -Receipt $receipt
         }
-
-        exit 1
+        Write-GitHubLocalIndexConsistencyResult -Result $result
+        exit $exitCode
     }
     catch {
-        Write-Error $_.Exception.Message
+        $errorMessage = $_.Exception.Message
+        if (-not [string]::IsNullOrWhiteSpace($ReceiptPath)) {
+            try {
+                $receipt = New-GitHubLocalIndexConsistencyReceipt `
+                    -Outcome 'error' `
+                    -ExitCode 2 `
+                    -ErrorCategory 'consistency_check_failed' `
+                    -ErrorMessage $errorMessage
+                Write-GitHubLocalIndexConsistencyReceipt -RepoRoot $RepoRoot -ReceiptPath $ReceiptPath -Receipt $receipt
+            }
+            catch {
+                Write-Error "Consistency receipt publication failed: $($_.Exception.Message)"
+            }
+        }
+        Write-Error $errorMessage
         exit 2
     }
 }

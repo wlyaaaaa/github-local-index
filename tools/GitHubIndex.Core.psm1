@@ -1,6 +1,14 @@
 Set-StrictMode -Version Latest
 
 $script:AdmissionSchema = 'github-local-index.project-admission.v1'
+$script:ExternalGovernanceRepositories = @('wlyaaaaa/PersonalOS')
+$script:PublicExposurePolicyPath = Join-Path $PSScriptRoot 'PublicExposurePolicy.psd1'
+$script:PublicExposurePolicy = Import-PowerShellDataFile -LiteralPath $script:PublicExposurePolicyPath
+if ([string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex) -or
+    [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.EnvPathRegex) -or
+    [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AllowedTemplateRegex)) {
+    throw 'Public exposure policy is missing a required path expression.'
+}
 
 function Invoke-ExternalCommandResult {
     [CmdletBinding()]
@@ -104,6 +112,25 @@ function ConvertTo-GitHubRepoSlug {
     return $null
 }
 
+function Test-IsExternallyGovernedGitHubRepository {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Repo)
+
+    $normalized = ConvertTo-GitHubRepoSlug $Repo
+    return $normalized -and @($script:ExternalGovernanceRepositories | Where-Object { $_ -ieq $normalized }).Count -gt 0
+}
+
+function Test-IsExternallyGovernedLocalPath {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+    $components = @(($Path -replace '/', '\') -split '\\' | Where-Object { $_ })
+    return @($components | Where-Object { $_ -match '(?i)personal(?:os|so)' }).Count -gt 0
+}
+
 function ConvertTo-PublicGitHubRemoteUrl {
     [CmdletBinding()]
     param([AllowNull()] [string] $Value)
@@ -200,7 +227,13 @@ function Test-PublicExposurePath {
         return $false
     }
     $normalized = $Path.Trim(' ', '"') -replace '\\', '/'
-    return $normalized -match '(?i)(^|/)(99_private|secrets?)(/|$)|(^|/)(\.env(?:\..*)?|[^/]*(?:private[_-]?key|client[_-]?secret)[^/]*)$|\.(?:pem|key|p12|pfx)$'
+    if ($normalized -match ('(?i)' + [string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex)) {
+        return $true
+    }
+    if ($normalized -notmatch ('(?i)' + [string] $script:PublicExposurePolicy.EnvPathRegex)) {
+        return $false
+    }
+    return $normalized -notmatch ('(?i)' + [string] $script:PublicExposurePolicy.AllowedTemplateRegex)
 }
 
 function ConvertFrom-GitStatusPorcelainV1Z {
@@ -457,7 +490,7 @@ function Get-IndexedProjectFacts {
         return [pscustomobject]@{
             visibility = $matches['visibility'].Trim().ToUpperInvariant()
             default_branch = $matches['branch'].Trim(' ', '`')
-            paths = $paths
+            paths = if (Test-IsExternallyGovernedGitHubRepository -Repo $Repo) { @() } else { $paths }
         }
     }
 
@@ -485,6 +518,118 @@ function Resolve-AdmissionRepoPath {
     }
 
     return [pscustomobject]@{ path = $null; ambiguous = $true }
+}
+
+function Resolve-AdmissionVisibilityValue {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return [pscustomobject]@{
+            present = $false
+            valid = $true
+            value = $null
+        }
+    }
+
+    $normalized = $Value.Trim().ToUpperInvariant()
+    [pscustomobject]@{
+        present = $true
+        valid = $normalized -in @('PUBLIC', 'PRIVATE', 'INTERNAL')
+        value = if ($normalized -in @('PUBLIC', 'PRIVATE', 'INTERNAL')) { $normalized } else { $null }
+    }
+}
+
+function ConvertTo-AdmissionTargetRef {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+
+    $normalized = $Value.Trim()
+    if ($normalized -match '^[0-9a-fA-F]{40}$') {
+        return $normalized.ToLowerInvariant()
+    }
+    if ($normalized.StartsWith('refs/', [System.StringComparison]::Ordinal)) {
+        return $normalized
+    }
+    return "refs/heads/$normalized"
+}
+
+function Resolve-AdmissionTargetScope {
+    [CmdletBinding()]
+    param(
+        [object[]] $Worktrees = @(),
+        [string] $TargetWorktree,
+        [string] $TargetRef
+    )
+
+    $hasTargetWorktree = -not [string]::IsNullOrWhiteSpace($TargetWorktree)
+    $hasTargetRef = -not [string]::IsNullOrWhiteSpace($TargetRef)
+    if (-not $hasTargetWorktree -and -not $hasTargetRef) {
+        return [pscustomobject]@{
+            target_worktree = $null
+            target_ref = $null
+            decision_worktrees = @($Worktrees)
+            reasons = @()
+        }
+    }
+
+    $normalizedTargetWorktree = if ($hasTargetWorktree) { ConvertTo-NormalizedGitPath $TargetWorktree } else { $null }
+    $normalizedTargetRef = if ($hasTargetRef) { ConvertTo-AdmissionTargetRef $TargetRef } else { $null }
+    $selected = @($Worktrees)
+    $reasons = [System.Collections.Generic.List[string]]::new()
+
+    if ($hasTargetWorktree) {
+        $selected = @($selected | Where-Object { ([string] $_.path) -ieq $normalizedTargetWorktree })
+        if ($selected.Count -eq 0) {
+            $reasons.Add('target_worktree_not_found')
+        }
+    }
+
+    if ($hasTargetRef -and $selected.Count -gt 0) {
+        $refMatches = @($selected | Where-Object {
+            if ($normalizedTargetRef -match '^refs/heads/(?<branch>.+)$') {
+                return ([string] $_.branch) -ceq $matches['branch']
+            }
+            if ($normalizedTargetRef -match '^[0-9a-f]{40}$') {
+                return ([string] $_.head) -ieq $normalizedTargetRef
+            }
+            return $false
+        })
+        if ($refMatches.Count -eq 0) {
+            $reasons.Add($(if ($hasTargetWorktree) { 'target_scope_mismatch' } else { 'target_ref_not_found' }))
+        }
+        $selected = $refMatches
+    }
+
+    if ($selected.Count -gt 1) {
+        $reasons.Add('target_scope_ambiguous')
+        $selected = @()
+    }
+    if ($selected.Count -eq 1 -and (-not $selected[0].exists -or $selected[0].prunable)) {
+        $reasons.Add('target_worktree_unavailable')
+    }
+
+    $resolvedTargetWorktree = if ($selected.Count -eq 1) { [string] $selected[0].path } else { $normalizedTargetWorktree }
+    $resolvedTargetRef = $normalizedTargetRef
+    if (-not $resolvedTargetRef -and $selected.Count -eq 1) {
+        $resolvedTargetRef = if (-not [string]::IsNullOrWhiteSpace([string] $selected[0].branch)) {
+            "refs/heads/$([string] $selected[0].branch)"
+        }
+        else {
+            [string] $selected[0].head
+        }
+    }
+
+    [pscustomobject]@{
+        target_worktree = $resolvedTargetWorktree
+        target_ref = $resolvedTargetRef
+        decision_worktrees = @($selected)
+        reasons = @($reasons)
+    }
 }
 
 function New-AdmissionError {
@@ -537,6 +682,10 @@ function New-ProjectAdmissionRecord {
         [AllowNull()] [string] $LocalRoot,
         [AllowNull()] [string] $GitCommonDir,
         [ValidateSet('cached', 'live')] [string] $RemoteMode = 'cached',
+        [ValidateSet('cached', 'live')] [string] $MetadataMode = 'cached',
+        [ValidateSet('cached', 'live')] [string] $RefsMode = 'cached',
+        [AllowNull()] [string] $TargetWorktree,
+        [AllowNull()] [string] $TargetRef,
         [ValidateSet('proceed', 'warn', 'block')] [string] $Decision = 'block',
         [ValidateSet('proceed', 'warn', 'block')] [string] $PushDecision = 'block',
         [ValidateSet('none', 'normal', 'fetch_recheck', 'clean_or_stage_explicitly', 'set_upstream', 'update_then_recheck', 'reconcile_then_recheck', 'resolve_public_exposure', 'resolve_admission_block')] [string] $PushStrategy = 'resolve_admission_block',
@@ -548,13 +697,17 @@ function New-ProjectAdmissionRecord {
     [pscustomobject][ordered]@{
         schema = $script:AdmissionSchema
         observed_utc = $ObservedUtc
-        repo = $Repo
-        remote_url = $RemoteUrl
-        visibility = $Visibility
-        default_branch = $DefaultBranch
-        local_root = $LocalRoot
-        git_common_dir = $GitCommonDir
+        repo = if ([string]::IsNullOrWhiteSpace($Repo)) { $null } else { $Repo }
+        remote_url = if ([string]::IsNullOrWhiteSpace($RemoteUrl)) { $null } else { $RemoteUrl }
+        visibility = if ([string]::IsNullOrWhiteSpace($Visibility)) { $null } else { $Visibility }
+        default_branch = if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { $null } else { $DefaultBranch }
+        local_root = if ([string]::IsNullOrWhiteSpace($LocalRoot)) { $null } else { $LocalRoot }
+        git_common_dir = if ([string]::IsNullOrWhiteSpace($GitCommonDir)) { $null } else { $GitCommonDir }
         remote_mode = $RemoteMode
+        metadata_mode = $MetadataMode
+        refs_mode = $RefsMode
+        target_worktree = if ([string]::IsNullOrWhiteSpace($TargetWorktree)) { $null } else { $TargetWorktree }
+        target_ref = if ([string]::IsNullOrWhiteSpace($TargetRef)) { $null } else { $TargetRef }
         decision = $Decision
         push_decision = $PushDecision
         push_strategy = $PushStrategy
@@ -573,12 +726,17 @@ function Get-ProjectAdmissionRecord {
         [string] $DefaultBranch,
         [string] $IndexRoot,
         [switch] $Fetch,
+        [switch] $LiveMetadata,
+        [switch] $RefreshRefs,
+        [string] $TargetWorktree,
+        [string] $TargetRef,
         [scriptblock] $FetchInvoker,
         [scriptblock] $GitHubInvoker
     )
 
     $observedUtc = [DateTime]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     $normalizedRepo = ConvertTo-GitHubRepoSlug $Repo
+    $isExternalGovernance = Test-IsExternallyGovernedGitHubRepository -Repo $normalizedRepo
     $reasons = [System.Collections.Generic.List[string]]::new()
     $errors = [System.Collections.Generic.List[object]]::new()
     $worktrees = @()
@@ -587,24 +745,54 @@ function Get-ProjectAdmissionRecord {
     $localRoot = $null
     $gitCommonDir = $null
     $remoteMode = 'cached'
+    $metadataMode = 'cached'
+    $refsMode = 'cached'
+    $useLiveMetadata = [bool] ($LiveMetadata -or $Fetch)
+    $useRefreshRefs = [bool] ($RefreshRefs -or $Fetch)
+    $visibilityWasSupplied = -not [string]::IsNullOrWhiteSpace($Visibility)
+    $visibilityInvalidObserved = $false
 
     if (-not $normalizedRepo) {
         $reasons.Add('invalid_repo')
+    }
+    elseif ($isExternalGovernance) {
+        $reasons.Add('external_governance_excluded')
+    }
+
+    if ($visibilityWasSupplied) {
+        $visibilityResolution = Resolve-AdmissionVisibilityValue -Value $Visibility
+        if ($visibilityResolution.valid) {
+            $Visibility = $visibilityResolution.value
+        }
+        else {
+            $Visibility = $null
+            $visibilityInvalidObserved = $true
+        }
     }
 
     $facts = $null
     if ($normalizedRepo -and -not [string]::IsNullOrWhiteSpace($IndexRoot)) {
         $facts = Get-IndexedProjectFacts -IndexRoot $IndexRoot -Repo $normalizedRepo
     }
-    if ([string]::IsNullOrWhiteSpace($Visibility) -and $facts) {
-        $Visibility = $facts.visibility
+    if (-not $visibilityWasSupplied -and $facts) {
+        $visibilityResolution = Resolve-AdmissionVisibilityValue -Value ([string] $facts.visibility)
+        if ($visibilityResolution.valid) {
+            $Visibility = $visibilityResolution.value
+        }
+        else {
+            $Visibility = $null
+            $visibilityInvalidObserved = $true
+        }
     }
     if ([string]::IsNullOrWhiteSpace($DefaultBranch) -and $facts) {
         $DefaultBranch = $facts.default_branch
     }
 
     $candidates = @()
-    if (-not [string]::IsNullOrWhiteSpace($RepoPath)) {
+    if ($isExternalGovernance) {
+        $candidates = @()
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($RepoPath)) {
         $candidates = @($RepoPath)
     }
     elseif ($facts) {
@@ -649,43 +837,72 @@ function Get-ProjectAdmissionRecord {
         }
     }
 
-    if ($Fetch -and -not [string]::IsNullOrWhiteSpace($RepoPath)) {
-        $fetchResult = if ($FetchInvoker) { & $FetchInvoker $RepoPath } else { Invoke-GitCommandResult -Path $RepoPath -Arguments @('fetch', '--prune', 'origin') }
-        $metadataResult = if ($GitHubInvoker) {
-            & $GitHubInvoker $normalizedRepo
-        }
-        else {
-            Invoke-ExternalCommandResult -FilePath 'gh.exe' -ArgumentList @('repo', 'view', $normalizedRepo, '--json', 'nameWithOwner,visibility,defaultBranchRef,url')
-        }
-
-        $metadata = $null
-        if ($metadataResult.exit_code -eq 0) {
-            try {
-                $metadata = $metadataResult.stdout | ConvertFrom-Json -ErrorAction Stop
-                $metadataRepo = ConvertTo-GitHubRepoSlug ([string] $metadata.nameWithOwner)
-                if (-not $metadataRepo -or $metadataRepo -ine $normalizedRepo) {
-                    $metadata = $null
-                    $errors.Add((New-AdmissionError -Category 'github_metadata_mismatch' -ExitCode 1))
+    if ($useRefreshRefs -and -not $isExternalGovernance) {
+        if (-not [string]::IsNullOrWhiteSpace($RepoPath)) {
+            $fetchResult = if ($FetchInvoker) {
+                & $FetchInvoker $RepoPath
+            }
+            else {
+                Invoke-GitCommandResult -Path $RepoPath -Arguments @('fetch', '--prune', 'origin')
+            }
+            if ($fetchResult.exit_code -eq 0) {
+                try {
+                    $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
+                    $refsMode = 'live'
+                }
+                catch {
+                    $errors.Add((New-AdmissionError -Category 'post_fetch_worktree_inspection_failed' -ExitCode 1))
+                    $reasons.Add('live_evidence_unavailable')
                 }
             }
-            catch {
-                $metadata = $null
-                $errors.Add((New-AdmissionError -Category 'github_metadata_invalid' -ExitCode 1))
+            else {
+                $errors.Add((New-AdmissionError -Category 'fetch_failed' -ExitCode ([int] $fetchResult.exit_code)))
+                $reasons.Add('live_evidence_unavailable')
             }
         }
         else {
-            $errors.Add((New-AdmissionError -Category 'github_metadata_failed' -ExitCode ([int] $metadataResult.exit_code)))
+            $reasons.Add('live_evidence_unavailable')
         }
+    }
 
-        if ($fetchResult.exit_code -ne 0) {
-            $errors.Add((New-AdmissionError -Category 'fetch_failed' -ExitCode ([int] $fetchResult.exit_code)))
-        }
+    if ($useLiveMetadata) {
+        if ($normalizedRepo) {
+            $metadataResult = if ($GitHubInvoker) {
+                & $GitHubInvoker $normalizedRepo
+            }
+            else {
+                Invoke-ExternalCommandResult -FilePath 'gh.exe' -ArgumentList @('repo', 'view', $normalizedRepo, '--json', 'nameWithOwner,visibility,defaultBranchRef,url')
+            }
 
-        if ($fetchResult.exit_code -eq 0 -and $metadata) {
-            try {
-                $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
-                $remoteMode = 'live'
-                $Visibility = ([string] $metadata.visibility).ToUpperInvariant()
+            $metadata = $null
+            if ($metadataResult.exit_code -eq 0) {
+                try {
+                    $metadata = $metadataResult.stdout | ConvertFrom-Json -ErrorAction Stop
+                    $metadataRepo = ConvertTo-GitHubRepoSlug ([string] $metadata.nameWithOwner)
+                    if (-not $metadataRepo -or $metadataRepo -ine $normalizedRepo) {
+                        $metadata = $null
+                        $errors.Add((New-AdmissionError -Category 'github_metadata_mismatch' -ExitCode 1))
+                    }
+                }
+                catch {
+                    $metadata = $null
+                    $errors.Add((New-AdmissionError -Category 'github_metadata_invalid' -ExitCode 1))
+                }
+            }
+            else {
+                $errors.Add((New-AdmissionError -Category 'github_metadata_failed' -ExitCode ([int] $metadataResult.exit_code)))
+            }
+
+            if ($metadata) {
+                $metadataMode = 'live'
+                $visibilityResolution = Resolve-AdmissionVisibilityValue -Value ([string] $metadata.visibility)
+                if ($visibilityResolution.valid) {
+                    $Visibility = $visibilityResolution.value
+                }
+                else {
+                    $Visibility = $null
+                    $visibilityInvalidObserved = $true
+                }
                 if ($metadata.defaultBranchRef -and $metadata.defaultBranchRef.name) {
                     $DefaultBranch = [string] $metadata.defaultBranchRef.name
                 }
@@ -696,8 +913,7 @@ function Get-ProjectAdmissionRecord {
                     }
                 }
             }
-            catch {
-                $errors.Add((New-AdmissionError -Category 'post_fetch_worktree_inspection_failed' -ExitCode 1))
+            else {
                 $reasons.Add('live_evidence_unavailable')
             }
         }
@@ -705,30 +921,67 @@ function Get-ProjectAdmissionRecord {
             $reasons.Add('live_evidence_unavailable')
         }
     }
-    elseif ($Fetch) {
-        $reasons.Add('live_evidence_unavailable')
+
+    if ($metadataMode -eq 'live' -and $refsMode -eq 'live') {
+        $remoteMode = 'live'
     }
 
-    $Visibility = if ([string]::IsNullOrWhiteSpace($Visibility)) { $null } else { $Visibility.Trim().ToUpperInvariant() }
+    $finalVisibilityResolution = Resolve-AdmissionVisibilityValue -Value $Visibility
+    if ($finalVisibilityResolution.valid) {
+        $Visibility = $finalVisibilityResolution.value
+    }
+    else {
+        $Visibility = $null
+        $visibilityInvalidObserved = $true
+    }
     $DefaultBranch = if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { $null } else { $DefaultBranch.Trim() }
-    if (-not $Visibility) { $reasons.Add('visibility_unknown') }
+    if ($visibilityInvalidObserved) {
+        $reasons.Add('visibility_invalid')
+        $errors.Add((New-AdmissionError -Category 'visibility_invalid' -ExitCode 1))
+    }
+    elseif (-not $Visibility) {
+        $reasons.Add('visibility_unknown')
+    }
     if (-not $DefaultBranch) { $reasons.Add('default_branch_unknown') }
 
+    $targetScope = Resolve-AdmissionTargetScope -Worktrees @($worktrees) -TargetWorktree $TargetWorktree -TargetRef $TargetRef
+    foreach ($targetReason in @($targetScope.reasons)) {
+        $reasons.Add([string] $targetReason)
+    }
+    $decisionWorktrees = @($targetScope.decision_worktrees)
+
     if ($remoteMode -eq 'cached') { $reasons.Add('cached_observation') }
-    if (@($worktrees | Where-Object { $_.dirty_count -gt 0 }).Count -gt 0) { $reasons.Add('dirty_worktree') }
-    if (@($worktrees | Where-Object { $_.exists -and [string]::IsNullOrWhiteSpace([string] $_.upstream) }).Count -gt 0) { $reasons.Add('no_upstream') }
-    if (@($worktrees | Where-Object prunable).Count -gt 0) { $reasons.Add('prunable_worktree') }
-    if (@($worktrees | Where-Object detached).Count -gt 0) { $reasons.Add('detached_worktree') }
-    if (@($worktrees | Where-Object inspection_error).Count -gt 0) {
+    if (@($decisionWorktrees | Where-Object { $_.dirty_count -gt 0 }).Count -gt 0) { $reasons.Add('dirty_worktree') }
+    if (@($decisionWorktrees | Where-Object { $_.exists -and [string]::IsNullOrWhiteSpace([string] $_.upstream) }).Count -gt 0) { $reasons.Add('no_upstream') }
+    if (@($decisionWorktrees | Where-Object prunable).Count -gt 0) { $reasons.Add('prunable_worktree') }
+    if (@($decisionWorktrees | Where-Object detached).Count -gt 0) { $reasons.Add('detached_worktree') }
+    if (@($decisionWorktrees | Where-Object inspection_error).Count -gt 0) {
         $reasons.Add('worktree_inspection_error')
         $errors.Add((New-AdmissionError -Category 'worktree_inspection_failed' -ExitCode 1))
     }
-    if ($Visibility -eq 'PUBLIC' -and @($worktrees | Where-Object public_exposure_conflict).Count -gt 0) {
+    if ($Visibility -eq 'PUBLIC' -and @($decisionWorktrees | Where-Object public_exposure_conflict).Count -gt 0) {
         $reasons.Add('public_exposure_conflict')
     }
 
     $reasonArray = @($reasons | Sort-Object -Unique)
-    $blockingReasons = @('invalid_repo', 'missing_repo_path', 'ambiguous_repo_path', 'remote_mismatch', 'public_exposure_conflict', 'live_evidence_unavailable', 'visibility_unknown', 'default_branch_unknown', 'worktree_inspection_error')
+    $blockingReasons = @(
+        'invalid_repo',
+        'missing_repo_path',
+        'ambiguous_repo_path',
+        'remote_mismatch',
+        'public_exposure_conflict',
+        'live_evidence_unavailable',
+        'visibility_unknown',
+        'visibility_invalid',
+        'default_branch_unknown',
+        'worktree_inspection_error',
+        'target_worktree_not_found',
+        'target_ref_not_found',
+        'target_scope_mismatch',
+        'target_scope_ambiguous',
+        'target_worktree_unavailable',
+        'external_governance_excluded'
+    )
     $decision = if (@($reasonArray | Where-Object { $_ -in $blockingReasons }).Count -gt 0) {
         'block'
     }
@@ -738,7 +991,7 @@ function Get-ProjectAdmissionRecord {
     else {
         'proceed'
     }
-    $pushGuidance = Get-ProjectPushGuidance -AdmissionDecision $decision -Reasons $reasonArray -RemoteMode $remoteMode -Worktrees $worktrees
+    $pushGuidance = Get-ProjectPushGuidance -AdmissionDecision $decision -Reasons $reasonArray -RemoteMode $remoteMode -Worktrees $decisionWorktrees
 
     New-ProjectAdmissionRecord `
         -ObservedUtc $observedUtc `
@@ -749,6 +1002,10 @@ function Get-ProjectAdmissionRecord {
         -LocalRoot $localRoot `
         -GitCommonDir $gitCommonDir `
         -RemoteMode $remoteMode `
+        -MetadataMode $metadataMode `
+        -RefsMode $refsMode `
+        -TargetWorktree $targetScope.target_worktree `
+        -TargetRef $targetScope.target_ref `
         -Decision $decision `
         -PushDecision $pushGuidance.decision `
         -PushStrategy $pushGuidance.strategy `
@@ -761,9 +1018,12 @@ Export-ModuleMember -Function @(
     'Invoke-ExternalCommandResult',
     'Invoke-GitCommandResult',
     'ConvertTo-GitHubRepoSlug',
+    'Test-IsExternallyGovernedGitHubRepository',
+    'Test-IsExternallyGovernedLocalPath',
     'ConvertTo-PublicGitHubRemoteUrl',
     'ConvertFrom-GitWorktreePorcelain',
     'ConvertFrom-GitStatusPorcelainV1Z',
+    'Test-PublicExposurePath',
     'Get-GitRepositoryWorktrees',
     'Get-IndexedProjectFacts',
     'New-ProjectAdmissionRecord',

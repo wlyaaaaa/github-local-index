@@ -7,5 +7,6 @@
 | GitHub 仓库 | 可见性 | 当前决策 |
 | --- | --- | --- |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | 需要时统一 clone，或标记远端存档 |
+| wlyaaaaa/PersonalOS | PRIVATE | 不行动；由外部治理 owner 维护 |
 
 说明：`Key` 仓库可 clone 到受管私有路径，但 checkout 只允许密文和公开安全说明；解密明文、口令与密钥文件不得进入仓库。

@@ -202,7 +202,9 @@ function Get-RepoStateText {
 function Get-GitConfigPaths {
     param([string[]] $Roots)
 
-    $existingRoots = @($Roots | Where-Object { Test-Path -LiteralPath $_ })
+    $existingRoots = @($Roots |
+        Where-Object { -not (Test-IsExternallyGovernedLocalPath -Path $_) } |
+        Where-Object { Test-Path -LiteralPath $_ })
     if ($existingRoots.Count -eq 0) {
         return @()
     }
@@ -217,18 +219,18 @@ function Get-GitConfigPaths {
     if (Get-Command rg -ErrorAction SilentlyContinue) {
         $args = @('--files', '--hidden', '--no-ignore')
         $args += $existingRoots
-        $args += @('-g', '**/.git/config', '-g', '!**/node_modules/**', '-g', '!**/.cache/**')
+        $args += @(
+            '-g', '**/.git/config',
+            '-g', '!**/node_modules/**',
+            '-g', '!**/.cache/**',
+            '--iglob', '!**/*personalos*/**',
+            '--iglob', '!**/*personalso*/**'
+        )
         $rgConfigs = @(& rg @args 2>$null | Where-Object { -not (Test-IsTransientGitConfigPath $_) })
         return @(@($rootConfigs) + $rgConfigs | Sort-Object -Unique)
     }
 
-    $paths = foreach ($root in $existingRoots) {
-        Get-ChildItem -LiteralPath $root -Recurse -Force -Filter config -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '\\\.git\\config$' -and -not (Test-IsTransientGitConfigPath $_.FullName) } |
-            Select-Object -ExpandProperty FullName
-    }
-
-    return @(@($rootConfigs) + @($paths) | Sort-Object -Unique)
+    return @($rootConfigs | Sort-Object -Unique)
 }
 
 function Test-IsTransientGitConfigPath {
@@ -278,7 +280,9 @@ function Get-RepoPathFromConfigPath {
 function Get-GitRepositorySeedPaths {
     param([string[]] $Roots)
 
-    $existingRoots = @($Roots | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+    $existingRoots = @($Roots |
+        Where-Object { -not (Test-IsExternallyGovernedLocalPath -Path $_) } |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Container })
     if ($existingRoots.Count -eq 0) {
         return @()
     }
@@ -302,19 +306,20 @@ function Get-GitRepositorySeedPaths {
                 '-g', '**/.git',
                 '-g', '**/.git/config',
                 '-g', '!**/node_modules/**',
-                '-g', '!**/.cache/**'
+                '-g', '!**/.cache/**',
+                '--iglob', '!**/*personalos*/**',
+                '--iglob', '!**/*personalso*/**'
             )
             $gitMarkers = @(& rg @arguments 2>$null)
         }
         else {
-            $gitMarkers = @(foreach ($root in $rootsToScan) {
-                Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -eq '.git' -or $_.FullName -match '\\.git\\config$' } |
-                    Select-Object -ExpandProperty FullName
-            })
+            throw 'rg is required for governance-safe repository discovery.'
         }
 
         foreach ($marker in $gitMarkers) {
+            if (Test-IsExternallyGovernedLocalPath -Path ([string] $marker)) {
+                continue
+            }
             $normalized = ([string] $marker) -replace '/', '\'
             $seed = if ($normalized -match '\\.git\\config$') {
                 Split-Path -Parent (Split-Path -Parent $normalized)
@@ -325,7 +330,9 @@ function Get-GitRepositorySeedPaths {
             else {
                 $null
             }
-            if ($seed -and -not (Test-IsTransientClonePath -Path $seed)) {
+            if ($seed -and
+                -not (Test-IsTransientClonePath -Path $seed) -and
+                -not (Test-IsExternallyGovernedLocalPath -Path $seed)) {
                 $seeds.Add([System.IO.Path]::GetFullPath($seed))
             }
         }
@@ -341,7 +348,10 @@ function Get-IndexedCloneScanRoots {
     $roots = [System.Collections.Generic.List[string]]::new()
     if (Test-Path -LiteralPath $indexPath -PathType Leaf) {
         foreach ($line in Get-Content -LiteralPath $indexPath -Encoding utf8) {
-            if ($line -notmatch '^\|\s*[^|]+/[^|]+\|\s*(?<paths>[^|]+?)\s*\|') {
+            if ($line -notmatch '^\|\s*(?<repo>[^|]+/[^|]+?)\s*\|\s*(?<paths>[^|]+?)\s*\|') {
+                continue
+            }
+            if (Test-IsExternallyGovernedGitHubRepository -Repo $matches['repo'].Trim(' ', '`')) {
                 continue
             }
             foreach ($candidate in @($matches['paths'] -split '<br>')) {
@@ -364,10 +374,8 @@ function Get-IndexedCloneScanRoots {
     $canonicalCandidates = @(
         (Join-Path $ownerVolumeRoot '.agents'),
         (Join-Path $ownerVolumeRoot 'PCConfig'),
-        (Join-Path $ownerVolumeRoot 'PersonalOS'),
         (Join-Path $ownerVolumeRoot 'Projects'),
         (Join-Path $ownerVolumeRoot '.worktrees'),
-        (Join-Path $ownerVolumeRoot 'PersonalOS-worktrees'),
         'V:\Personal\Projects',
         'V:\Personal\Worktrees',
         'V:\Work',
@@ -409,7 +417,7 @@ function Get-LocalCloneMap {
     $map = @{}
     $seenCommonDirs = @{}
     foreach ($repoPath in Get-GitRepositorySeedPaths -Roots $Roots) {
-        if (Test-IsTransientClonePath -Path $repoPath) {
+        if ((Test-IsTransientClonePath -Path $repoPath) -or (Test-IsExternallyGovernedLocalPath -Path $repoPath)) {
             continue
         }
 
@@ -448,6 +456,26 @@ function ConvertTo-GitHubIndexRows {
         $name = [string] $repo.nameWithOwner
         $visibility = [string] $repo.visibility
         $defaultBranch = Get-DefaultBranchName -Repository $repo
+        if (Test-IsExternallyGovernedGitHubRepository -Repo $name) {
+            [pscustomobject]@{
+                NameWithOwner = $name
+                Visibility    = $visibility
+                DefaultBranch = $defaultBranch
+                LocalPath     = '外部治理（不读取本地路径）'
+                LocalState    = '仅保留 GitHub 目录事实'
+                NextAction    = '不行动；由外部治理 owner 维护'
+                HasLocalClone = $false
+                NeedsReview   = $false
+                Ahead         = 0
+                Behind        = 0
+                DirtyCount    = 0
+                QueueReason   = ''
+                PushedAt      = $repo.pushedAt
+                UpdatedAt     = $repo.updatedAt
+                Url           = $repo.url
+            }
+            continue
+        }
         $clones = @()
         if ($CloneMap.ContainsKey($name)) {
             $clones = @($CloneMap[$name])

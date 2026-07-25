@@ -97,10 +97,10 @@ $headings = @(
     '失败与降级', '验证证据', '上下文策略', '已知限制', '扩展入口'
 )
 $requiredContent = @{
-    'git.project-admission' = @('git_project|repo_identity|project_entry', 'optional structured evidence', 'decision=block', 'read-only diagnosis', 'cached', 'github-local-index.project-admission.v1')
-    'git.worktree-sync' = @('worktree|dirty|sync|ahead_behind', 'all worktrees', 'fails closed', 'locked', 'prunable')
-    'git.push-publication' = @('push|publication|visibility|public_repo', 'transport readiness', 'candidate commits', '不输出 publication_decision', 'PUBLIC review', '唯一维护')
-    'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '日常项目任务不需要')
+    'git.project-admission' = @('git_project|repo_identity|project_entry', 'optional structured evidence', 'decision=block', 'read-only diagnosis', 'cached', 'github-local-index.project-admission.v1', '-LiveMetadata', '-RefreshRefs', 'PUBLIC|PRIVATE|INTERNAL', 'field_evidence')
+    'git.worktree-sync' = @('worktree|dirty|sync|ahead_behind', 'all worktrees', 'fails closed', 'locked', 'prunable', 'target worktree/ref')
+    'git.push-publication' = @('push|publication|visibility|public_repo', 'transport readiness', 'candidate commits', '不输出 publication_decision', 'PUBLIC review', '唯一维护', 'PublicExposurePolicy.psd1')
+    'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '日常项目任务不需要', 'github_local_index_consistency', 'outcome=error')
     'git.milestone-record' = @('milestone|push_record', 'pure-file', 'idempotent', 'not zero-write', 'no Git transaction', 'no runtime provider/schema')
 }
 

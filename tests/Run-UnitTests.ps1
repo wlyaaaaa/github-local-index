@@ -92,10 +92,20 @@ finally {
 
 $seedDiscovery = Get-Command Get-GitRepositorySeedPaths -ErrorAction SilentlyContinue
 Assert-True ($null -ne $seedDiscovery) 'repository discovery exposes common-dir/worktree seed enumeration'
+Assert-True (Test-IsExternallyGovernedGitHubRepository -Repo 'wlyaaaaa/PersonalOS') 'PersonalOS remote is marked as externally governed'
+Assert-True (Test-IsExternallyGovernedLocalPath -Path 'X:\fixtures\PersonalOS-worktrees\fixture') 'PersonalOS worktree paths are excluded before local discovery'
+Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'V:\Personal\Projects\ordinary-project')) 'ordinary project paths remain discoverable'
 if ($seedDiscovery) {
-    $seedRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-seed-' + [guid]::NewGuid().ToString('N'))
+    # Repository discovery deliberately excludes system-temp clones. Keep this
+    # fixture beside (not inside) the checkout so it exercises a durable future
+    # project root without being mistaken for either transient data or a nested
+    # repository inside the index worktree.
+    $seedRoot = Join-Path (Split-Path -Parent $repoRoot) ('github-index-seed-' + [guid]::NewGuid().ToString('N'))
     $primarySeed = Join-Path $seedRoot 'primary'
     $linkedSeed = Join-Path $seedRoot 'linked-only-scan-root'
+    $futureProjectsRoot = Join-Path $seedRoot 'future-projects'
+    $futureRepo = Join-Path $futureProjectsRoot 'new-repository'
+    $externalFutureRepo = Join-Path $futureProjectsRoot 'PersonalOS-future'
     try {
         & git init --initial-branch=main $primarySeed 2>&1 | Out-Null
         & git -C $primarySeed config user.name 'Seed Test'
@@ -106,6 +116,12 @@ if ($seedDiscovery) {
         & git -C $primarySeed worktree add -b linked-seed $linkedSeed 2>&1 | Out-Null
         $seeds = @(Get-GitRepositorySeedPaths -Roots @($linkedSeed))
         Assert-True ($seeds -contains [System.IO.Path]::GetFullPath($linkedSeed)) 'discovers a linked worktree when its primary checkout is outside scan roots'
+
+        & git init --initial-branch=main $futureRepo 2>&1 | Out-Null
+        & git init --initial-branch=main $externalFutureRepo 2>&1 | Out-Null
+        $futureSeeds = @(Get-GitRepositorySeedPaths -Roots @($futureProjectsRoot))
+        Assert-True ($futureSeeds -contains [System.IO.Path]::GetFullPath($futureRepo)) 'central discovery finds a future repository without per-repo injection'
+        Assert-True (-not ($futureSeeds -contains [System.IO.Path]::GetFullPath($externalFutureRepo))) 'central discovery excludes future externally governed PersonalOS paths before Git inspection'
     }
     finally {
         if (Test-Path -LiteralPath $seedRoot) { Remove-Item -LiteralPath $seedRoot -Recurse -Force }
@@ -204,6 +220,26 @@ Assert-Equal '未发现本地 clone' $keyRow.LocalPath 'marks Key as missing loc
 Assert-True ($keyRow.NextAction -match '受管私有路径') 'keeps Key managed-clone rule'
 Assert-True ($keyRow.NextAction -match '密文') 'limits Key checkout to encrypted artifacts'
 
+$externalRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
+    nameWithOwner = 'wlyaaaaa/PersonalOS'
+    visibility = 'PRIVATE'
+    url = 'https://github.com/wlyaaaaa/PersonalOS'
+    defaultBranchRef = [pscustomobject]@{ name = 'main' }
+    pushedAt = '2026-07-01T00:00:00Z'
+    updatedAt = '2026-07-01T00:00:00Z'
+}) -CloneMap @{
+    'wlyaaaaa/PersonalOS' = @([pscustomobject]@{ Path = 'SHOULD_NOT_BE_EXPOSED' })
+})
+Assert-Equal '外部治理（不读取本地路径）' $externalRows[0].LocalPath 'external governance never publishes or acts on a PersonalOS local path'
+Assert-Equal '不行动；由外部治理 owner 维护' $externalRows[0].NextAction 'external governance remote fact has an explicit no-action decision'
+$externalRecommendation = Get-RepositoryTaskRecommendation `
+    -NameWithOwner 'wlyaaaaa/PersonalOS' `
+    -LocalPath '外部治理（不读取本地路径）' `
+    -Visibility 'PRIVATE' `
+    -ExistingTaskHints @('SHOULD_NOT_BE_USED')
+Assert-Equal '外部治理' $externalRecommendation.Decision 'automation recommendation preserves the external-governance no-action boundary'
+Assert-Equal '无' $externalRecommendation.Frequency 'external governance never creates a task cadence'
+
 $documentRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-docs-' + [guid]::NewGuid().ToString('N'))
 try {
     Write-GitHubIndexDocuments -RepoRoot $documentRoot -Owner 'wlyaaaaa' -Rows $rows
@@ -295,6 +331,8 @@ Assert-True (-not ($updateSource -match 'PCConfig v0\.1|GitHub-indexed 项目迁
 Assert-True ($updateSource -match 'UtcNow\.AddHours\(8\)') 'Git index document date uses China time'
 Assert-True (-not ($updateSource -match 'C:\\Users\\10979|G:\\')) 'index generator derives default scan roots from Git-owned facts'
 Assert-True (-not ($updateSource -match '&\s*git\s+-C\s+\$Path\s+fetch')) 'index generator has no legacy fetch path that discards exit status'
+Assert-True (-not ($updateSource -match "Join-Path\s+\`$ownerVolumeRoot\s+'PersonalOS")) 'default discovery does not seed PersonalOS local roots'
+Assert-True ($updateSource -match 'Test-IsExternallyGovernedLocalPath') 'future repository discovery applies the central external-governance path exclusion'
 
 $refreshPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1'
 $refreshTokens = $null
@@ -321,6 +359,19 @@ $hookParameters = @($hookAst.ParamBlock.Parameters | ForEach-Object { $_.Name.Va
 Assert-True ($hookParameters -contains 'RepoPath') 'hook installer accepts an explicit repository path'
 $hookSource = Get-Content -LiteralPath $hookPath -Raw -Encoding utf8
 Assert-True ($hookSource -match 'rev-parse.+--git-path.+hooks') 'hook installer resolves hooks through Git plumbing'
+$publicExposurePolicyPath = Join-Path $repoRoot 'tools/PublicExposurePolicy.psd1'
+Assert-True (Test-Path -LiteralPath $publicExposurePolicyPath -PathType Leaf) 'hook and ignore gate have one central path policy'
+$publicExposurePolicy = Import-PowerShellDataFile -LiteralPath $publicExposurePolicyPath
+$ignoreCases = @($publicExposurePolicy.Cases)
+$ignoreLines = @(Get-Content -LiteralPath (Join-Path $repoRoot '.gitignore') -Encoding utf8)
+foreach ($pattern in @($publicExposurePolicy.GitIgnorePatterns)) {
+    Assert-True ($ignoreLines -ccontains [string] $pattern) ".gitignore contains canonical policy pattern $pattern"
+}
+foreach ($case in $ignoreCases) {
+    & git -C $repoRoot check-ignore --no-index --quiet -- $case.Path
+    $ignored = $LASTEXITCODE -eq 0
+    Assert-Equal $case.Blocked $ignored ".gitignore classifies $($case.Path)"
+}
 if ($hookParameters -contains 'RepoPath') {
     $hookRepo = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-hook-' + [guid]::NewGuid().ToString('N'))
     try {
@@ -349,6 +400,9 @@ if ($hookParameters -contains 'RepoPath') {
         Assert-True ($installedText -match 'name-only[^\r\n]+-z') 'installed hook requests NUL-delimited staged paths'
         Assert-True ($installedText -match 'diff-filter=ACMRT') 'installed hook excludes pure deletions while retaining staged type changes'
         Assert-True ($installedText -match 'read -r -d') 'installed hook reads staged paths with a NUL delimiter'
+        Assert-True ($installedText.Contains([string] $publicExposurePolicy.AlwaysBlockedPathRegex)) 'installed hook embeds the canonical always-blocked path expression'
+        Assert-True ($installedText.Contains([string] $publicExposurePolicy.EnvPathRegex)) 'installed hook embeds the canonical env-family expression'
+        Assert-True ($installedText.Contains([string] $publicExposurePolicy.AllowedTemplateRegex)) 'installed hook embeds the canonical template exception expression'
         $firstHookHash = (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash
         & pwsh -NoProfile -ExecutionPolicy Bypass -File $hookPath -RepoPath $hookRepo | Out-Null
         Assert-Equal $firstHookHash (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash 'hook installation is byte deterministic'
@@ -362,6 +416,31 @@ if ($hookParameters -contains 'RepoPath') {
         Assert-True (($hookCommitOutput -join "`n") -match 'Blocked staged path') 'hook rejection is caused by the sensitive-path gate'
         & git -C $hookRepo reset -- . 2>&1 | Out-Null
         Remove-Item -LiteralPath (Join-Path $hookRepo '中文 空格') -Recurse -Force
+
+        foreach ($sensitiveEnvPath in @('.env.local', '.env.production', 'service.env', 'service.env.local')) {
+            Set-Content -LiteralPath (Join-Path $hookRepo $sensitiveEnvPath) -Value 'TEST_ONLY=1' -Encoding utf8
+            & git -C $hookRepo add -- $sensitiveEnvPath 2>&1 | Out-Null
+            $envVariantOutput = @(& git -C $hookRepo commit -m "must block $sensitiveEnvPath" 2>&1)
+            Assert-True ($LASTEXITCODE -ne 0) "hook blocks staged path $sensitiveEnvPath"
+            Assert-True (($envVariantOutput -join "`n") -match 'Blocked staged path') "hook path policy rejects $sensitiveEnvPath"
+            & git -C $hookRepo reset -- $sensitiveEnvPath 2>&1 | Out-Null
+            Remove-Item -LiteralPath (Join-Path $hookRepo $sensitiveEnvPath) -Force
+        }
+
+        foreach ($templateEnvPath in @('.env.example', '.env.sample', '.env.template', '.env.dist', 'service.env.example')) {
+            Set-Content -LiteralPath (Join-Path $hookRepo $templateEnvPath) -Value 'TEST_ONLY_PLACEHOLDER=replace-me' -Encoding utf8
+            & git -C $hookRepo add -- $templateEnvPath 2>&1 | Out-Null
+            $templateOutput = @(& git -C $hookRepo commit -m "allow template $templateEnvPath" 2>&1)
+            Assert-Equal 0 $LASTEXITCODE "hook allows public-safe env template path $templateEnvPath"
+        }
+
+        Set-Content -LiteralPath (Join-Path $hookRepo '.env.example') -Value $syntheticSecret -Encoding utf8
+        & git -C $hookRepo add -- '.env.example' 2>&1 | Out-Null
+        $templateSecretOutput = @(& git -C $hookRepo commit -m 'must block secret in env template' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'template path exception does not bypass secret content scanning'
+        Assert-True (($templateSecretOutput -join "`n") -match 'Blocked staged content') 'secret-bearing env template is rejected by the content gate'
+        & git -C $hookRepo reset -- '.env.example' 2>&1 | Out-Null
+        Set-Content -LiteralPath (Join-Path $hookRepo '.env.example') -Value 'TEST_ONLY_PLACEHOLDER=replace-me' -Encoding utf8
 
         Set-Content -LiteralPath (Join-Path $hookRepo 'added-secret.txt') -Value $syntheticSecret -Encoding utf8
         & git -C $hookRepo add -- 'added-secret.txt' 2>&1 | Out-Null
@@ -435,6 +514,14 @@ if ($hookParameters -contains 'RepoPath') {
         & git -C $hookRepo mv -- 'secrets/rename-fixture.txt' 'safe-renamed-fixture.txt' 2>&1 | Out-Null
         $safeRenameOutput = @(& git -C $hookRepo commit -m 'allow safe destination rename' 2>&1)
         Assert-Equal 0 $LASTEXITCODE 'hook allows renaming a sensitive source path to a safe destination'
+
+        Set-Content -LiteralPath (Join-Path $hookRepo 'rename-into-sensitive.txt') -Value 'rename destination fixture' -Encoding utf8
+        & git -C $hookRepo add -- 'rename-into-sensitive.txt'
+        & git -C $hookRepo commit -m 'rename destination fixture' | Out-Null
+        & git -C $hookRepo mv -- 'rename-into-sensitive.txt' '.env.production'
+        $sensitiveRenameOutput = @(& git -C $hookRepo commit -m 'must block sensitive rename destination' 2>&1)
+        Assert-True ($LASTEXITCODE -ne 0) 'hook blocks renaming a safe path into .env.production'
+        Assert-True (($sensitiveRenameOutput -join "`n") -match 'Blocked staged path') 'hook evaluates the rename destination with the central path policy'
     }
     finally {
         if (Test-Path -LiteralPath $hookRepo) { Remove-Item -LiteralPath $hookRepo -Recurse -Force }
@@ -464,8 +551,37 @@ Assert-True ($hiddenLauncherSource -match 'Test-GitHubLocalIndexConsistency\.ps1
 Assert-True (-not ($hiddenLauncherSource -match 'Refresh-GitHubLocalIndex\.ps1')) 'hidden task launcher cannot call the write refresh wrapper'
 Assert-True (-not ($hiddenLauncherSource -match '(?i)powershell\.exe')) 'hidden task launcher never falls back to unsupported Windows PowerShell 5.1'
 Assert-True ($hiddenLauncherSource -match 'If whereCode <> 0 Then\s*WScript\.Quit [1-9]') 'hidden task launcher exits nonzero when pwsh is unavailable'
+Assert-True ($hiddenLauncherSource -match '-ReceiptPath') 'hidden task launcher requests an actionable structured receipt'
+Assert-True ($hiddenLauncherSource -match '99_private\\runtime\\github-index-consistency-last\.json') 'hidden task receipt stays in the ignored private runtime area'
 
 $consistencySource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1') -Raw -Encoding utf8
+$consistencyCommand = Get-Command Invoke-GitHubLocalIndexConsistencyCheck -ErrorAction SilentlyContinue
+$receiptWriter = Get-Command Write-GitHubLocalIndexConsistencyReceipt -ErrorAction SilentlyContinue
+Assert-True ($null -ne $receiptWriter) 'consistency checker exposes an atomic owner-local receipt writer'
+Assert-True ($consistencySource -match '\[string\]\s*\$ReceiptPath') 'consistency CLI accepts an explicit private receipt path'
+if ($receiptWriter) {
+    $receiptRepoRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-receipt-' + [guid]::NewGuid().ToString('N'))
+    $receiptPath = Join-Path $receiptRepoRoot '99_private\runtime\github-index-consistency-last.json'
+    try {
+        $receipt = [pscustomobject][ordered]@{
+            schema = 'github-local-index.consistency-receipt.v1'
+            task_key = 'github_local_index_consistency'
+            observed_at = '2026-07-25T00:00:00.0000000Z'
+            outcome = 'drift'
+            exit_code = 1
+            drift_files = @('fixture.md')
+        }
+        Write-GitHubLocalIndexConsistencyReceipt -RepoRoot $receiptRepoRoot -ReceiptPath $receiptPath -Receipt $receipt
+        $receiptJson = Get-Content -LiteralPath $receiptPath -Raw -Encoding utf8 | ConvertFrom-Json
+        Assert-Equal 'github_local_index_consistency' $receiptJson.task_key 'receipt exposes the stable PCConfig task key'
+        Assert-Equal 'drift' $receiptJson.outcome 'receipt preserves the actionable task outcome'
+        Assert-Equal 'fixture.md' @($receiptJson.drift_files)[0] 'receipt preserves drift file names'
+        Assert-Equal 0 @(Get-ChildItem -LiteralPath (Split-Path -Parent $receiptPath) -Filter '*.tmp' -Force).Count 'atomic receipt publication leaves no temp file'
+    }
+    finally {
+        if (Test-Path -LiteralPath $receiptRepoRoot) { Remove-Item -LiteralPath $receiptRepoRoot -Recurse -Force }
+    }
+}
 Assert-True (-not ($consistencySource -match 'C:\\Users\\10979|G:\\')) 'consistency checker does not embed machine scan roots'
 Assert-True ($consistencySource.Contains(". (Join-Path `$RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot `$RepoRoot -Owner `$Owner -ScanRoots `$ScanRoots -SkipFetch:`$SkipFetch")) 'consistency checker preserves every caller-selected generator parameter when dot-sourcing the generator'
 

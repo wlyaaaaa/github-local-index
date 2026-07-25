@@ -24,7 +24,7 @@
 - `05_规则与模板/`：公开发布与脱敏规则。
 - `tools/Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`：按需取得当前仓库身份、worktree、同步与 transport 的结构化证据，schema 保持 `github-local-index.project-admission.v1`。
 
-admission provider 在身份、同步、worktree、visibility 或推送条件不清楚时很有价值；已有新鲜可靠证据时可以跳过。其 transport 结论不是写入授权，更不是公开发布授权；`decision=block` 仍允许只读调查原因。
+admission provider 在身份、同步、worktree、visibility 或推送条件不清楚时很有价值；已有新鲜可靠证据时可以跳过。`-LiveMetadata` 是无 fetch 的只读查询，`-RefreshRefs` 才刷新 refs，旧 `-Fetch` 兼容两者；多 worktree 仓库可用 target worktree/ref 精确限定 transport 判断。其结论不是写入或 publication 授权。
 
 ## 公开与私有边界
 
@@ -46,10 +46,10 @@ Git transport readiness 与内容 publication 是两个不同判断。完整且�
 
 ## 维护工具
 
-- `tools/Get-ProjectAdmission.ps1`：单仓库结构化事实；`-Fetch` 请求 live 远端证据。
+- `tools/Get-ProjectAdmission.ps1`：单仓库结构化事实；`-LiveMetadata` / `-RefreshRefs` 分离取证，`-Fetch` 保持兼容。
 - `tools/Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读预览索引生成结果。
 - `tools/Update-GitHubIndex.ps1`：在确需更新公开快照时重建相关 Markdown。
-- `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：诊断生成快照与当前索引的漂移。
+- `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：诊断生成快照漂移；计划任务把 success/drift/error 原子写入 `99_private` receipt。
 - `tools/Install-GitHook.ps1`：首次安装或修复本仓库的防泄漏 Hook，不是每任务步骤。
 - `tools/Add-PushRecord.ps1`：幂等写入明确里程碑；不执行 Git transaction。
 - `tests/Run-UnitTests.ps1`、`tests/Test-ProjectAdmission.ps1`、`tests/Test-ControlPlaneContracts.ps1`：验证工具行为与稳定合同。

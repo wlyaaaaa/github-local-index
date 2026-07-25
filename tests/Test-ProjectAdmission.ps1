@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $modulePath = Join-Path $repoRoot 'tools/GitHubIndex.Core.psm1'
 $cliPath = Join-Path $repoRoot 'tools/Get-ProjectAdmission.ps1'
+$publicExposurePolicyPath = Join-Path $repoRoot 'tools/PublicExposurePolicy.psd1'
 $script:Failures = 0
 
 function Assert-Equal {
@@ -40,12 +41,29 @@ function Invoke-TestGit {
 
 Assert-True (Test-Path -LiteralPath $modulePath -PathType Leaf) 'admission core module exists'
 Assert-True (Test-Path -LiteralPath $cliPath -PathType Leaf) 'admission CLI exists'
-if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf) -or -not (Test-Path -LiteralPath $cliPath -PathType Leaf)) {
+Assert-True (Test-Path -LiteralPath $publicExposurePolicyPath -PathType Leaf) 'central public-exposure policy exists'
+if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $cliPath -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $publicExposurePolicyPath -PathType Leaf)) {
     throw "$script:Failures test(s) failed"
 }
 
 Import-Module $modulePath -Force
 $admissionModule = Get-Module GitHubIndex.Core
+
+$publicExposurePolicy = Import-PowerShellDataFile -LiteralPath $publicExposurePolicyPath
+$publicExposureCases = @($publicExposurePolicy.Cases)
+$publicExposurePathCommand = & $admissionModule { Get-Command Test-PublicExposurePath -ErrorAction SilentlyContinue }
+Assert-True ($null -ne $publicExposurePathCommand) 'admission core exposes the central public-exposure path classifier'
+if ($publicExposurePathCommand) {
+    foreach ($case in $publicExposureCases) {
+        $actual = & $admissionModule {
+            param($Path)
+            Test-PublicExposurePath -Path $Path
+        } $case.Path
+        Assert-Equal $case.Blocked $actual "public-exposure policy classifies $($case.Path)"
+    }
+}
 
 $statusParser = Get-Command ConvertFrom-GitStatusPorcelainV1Z -ErrorAction SilentlyContinue
 Assert-True ($null -ne $statusParser) 'admission core exposes a NUL-delimited status parser'
@@ -195,8 +213,9 @@ try {
     Assert-Equal 'https://github.com/example/project.git' $cached.remote_url 'keeps the real configured remote URL in cached admission JSON'
     $requiredAdmissionProperties = @(
         'schema', 'observed_utc', 'repo', 'remote_url', 'visibility', 'default_branch',
-        'local_root', 'git_common_dir', 'remote_mode', 'decision', 'push_decision',
-        'push_strategy', 'reasons', 'errors', 'worktrees'
+        'local_root', 'git_common_dir', 'remote_mode', 'metadata_mode', 'refs_mode',
+        'target_worktree', 'target_ref', 'decision', 'push_decision', 'push_strategy',
+        'reasons', 'errors', 'worktrees'
     )
     foreach ($propertyName in $requiredAdmissionProperties) {
         Assert-True ($cached.PSObject.Properties.Name -contains $propertyName) "normal admission JSON contains $propertyName"
@@ -231,6 +250,73 @@ try {
     Assert-Equal 'clean_or_stage_explicitly' $cached.push_strategy 'dirty worktree takes precedence over cached evidence'
     Assert-True ([datetimeoffset]::Parse($cached.observed_utc).Offset -eq [timespan]::Zero) 'timestamps observation in UTC'
 
+    $invalidVisibility = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'UNLISTED' -DefaultBranch 'main'
+    Assert-Equal 'block' $invalidVisibility.decision 'invalid visibility fails closed'
+    Assert-True ($invalidVisibility.reasons -contains 'visibility_invalid') 'invalid visibility has a stable blocking reason'
+    Assert-True ($null -eq $invalidVisibility.visibility) 'invalid visibility never escapes the PUBLIC/PRIVATE/INTERNAL output enum'
+    $internalVisibility = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'INTERNAL' -DefaultBranch 'main'
+    Assert-Equal 'INTERNAL' $internalVisibility.visibility 'INTERNAL is accepted as the third closed-enum visibility'
+    Assert-True (-not ($internalVisibility.reasons -contains 'visibility_invalid')) 'valid INTERNAL visibility is not rejected'
+
+    $externalGovernance = Get-ProjectAdmissionRecord `
+        -Repo 'wlyaaaaa/PersonalOS' `
+        -RepoPath $primaryPath `
+        -Visibility 'PRIVATE' `
+        -DefaultBranch 'main'
+    Assert-Equal 'block' $externalGovernance.decision 'external governance blocks local admission actions'
+    Assert-True ($externalGovernance.reasons -contains 'external_governance_excluded') 'external governance has a stable blocking reason'
+    Assert-True ($null -eq $externalGovernance.local_root) 'external governance ignores an explicitly supplied local path before Git inspection'
+    Assert-Equal 0 @($externalGovernance.worktrees).Count 'external governance returns no local worktree evidence'
+
+    $admissionParameters = (Get-Command Get-ProjectAdmissionRecord).Parameters.Keys
+    Assert-True ($admissionParameters -contains 'LiveMetadata') 'admission exposes a read-only live metadata switch'
+    Assert-True ($admissionParameters -contains 'RefreshRefs') 'admission exposes an explicit refs refresh switch'
+    Assert-True ($admissionParameters -contains 'TargetWorktree') 'admission exposes an exact target worktree selector'
+    Assert-True ($admissionParameters -contains 'TargetRef') 'admission exposes an exact target ref selector'
+    if ($admissionParameters -contains 'TargetWorktree') {
+        $targetedByWorktree = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -RepoPath $primaryPath `
+            -Visibility 'PUBLIC' `
+            -DefaultBranch 'main' `
+            -TargetWorktree $primaryPath
+        Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) $targetedByWorktree.target_worktree 'target worktree is normalized in output'
+        Assert-True (-not ($targetedByWorktree.reasons -contains 'no_upstream')) 'unrelated no-upstream worktrees do not pollute a targeted decision'
+        Assert-True (-not ($targetedByWorktree.reasons -contains 'prunable_worktree')) 'unrelated prunable worktrees do not pollute a targeted decision'
+        Assert-True (-not ($targetedByWorktree.reasons -contains 'detached_worktree')) 'unrelated detached worktrees do not pollute a targeted decision'
+        Assert-Equal 4 @($targetedByWorktree.worktrees).Count 'targeted decisions retain all worktrees as evidence'
+    }
+    if ($admissionParameters -contains 'TargetRef') {
+        $targetedByRef = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -RepoPath $primaryPath `
+            -Visibility 'PUBLIC' `
+            -DefaultBranch 'main' `
+            -TargetRef 'refs/heads/main'
+        Assert-Equal 'refs/heads/main' $targetedByRef.target_ref 'target ref is normalized in output'
+        Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) $targetedByRef.target_worktree 'target ref resolves to its exact worktree'
+        Assert-True (-not ($targetedByRef.reasons -contains 'no_upstream')) 'unrelated worktrees do not pollute a target-ref decision'
+
+        $missingTargetRef = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -RepoPath $primaryPath `
+            -Visibility 'PUBLIC' `
+            -DefaultBranch 'main' `
+            -TargetRef 'refs/heads/does-not-exist'
+        Assert-Equal 'block' $missingTargetRef.decision 'unknown target ref fails closed'
+        Assert-True ($missingTargetRef.reasons -contains 'target_ref_not_found') 'unknown target ref has a stable reason'
+
+        $mismatchedTargetScope = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -RepoPath $primaryPath `
+            -Visibility 'PUBLIC' `
+            -DefaultBranch 'main' `
+            -TargetWorktree $primaryPath `
+            -TargetRef 'refs/heads/feature'
+        Assert-Equal 'block' $mismatchedTargetScope.decision 'mismatched ref and worktree fail closed'
+        Assert-True ($mismatchedTargetScope.reasons -contains 'target_scope_mismatch') 'mismatched target scope has a stable reason'
+    }
+
     $fetchSuccess = {
         param($path)
         $fetchOutput = @(& git -C $path fetch --prune origin 2>&1)
@@ -239,6 +325,44 @@ try {
     $fetchFailure = { param($path) [pscustomobject]@{ exit_code = 1; stdout = ''; stderr = 'network unavailable' } }
     $ghSuccess = { param($repo) [pscustomobject]@{ exit_code = 0; stdout = '{"nameWithOwner":"example/project","visibility":"PUBLIC","defaultBranchRef":{"name":"main"},"url":"https://github.com/example/project"}'; stderr = '' } }
     $ghFailure = { param($repo) [pscustomobject]@{ exit_code = 1; stdout = ''; stderr = 'not authenticated' } }
+
+    if ($admissionParameters -contains 'LiveMetadata' -and $admissionParameters -contains 'RefreshRefs') {
+        $script:ReadOnlyFetchCalls = 0
+        $readOnlyFetchGuard = {
+            param($path)
+            $script:ReadOnlyFetchCalls++
+            [pscustomobject]@{ exit_code = 99; stdout = ''; stderr = 'fetch must not run' }
+        }
+        $metadataOnly = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -RepoPath $primaryPath `
+            -Visibility 'PRIVATE' `
+            -DefaultBranch 'main' `
+            -LiveMetadata `
+            -FetchInvoker $readOnlyFetchGuard `
+            -GitHubInvoker $ghSuccess
+        Assert-Equal 0 $script:ReadOnlyFetchCalls 'read-only live metadata never invokes git fetch'
+        Assert-Equal 'live' $metadataOnly.metadata_mode 'read-only live metadata is labeled live'
+        Assert-Equal 'cached' $metadataOnly.refs_mode 'read-only live metadata leaves refs cached'
+
+        $script:RefreshMetadataCalls = 0
+        $refreshMetadataGuard = {
+            param($repo)
+            $script:RefreshMetadataCalls++
+            [pscustomobject]@{ exit_code = 99; stdout = ''; stderr = 'metadata must not run' }
+        }
+        $refsOnly = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -RepoPath $primaryPath `
+            -Visibility 'PUBLIC' `
+            -DefaultBranch 'main' `
+            -RefreshRefs `
+            -FetchInvoker $fetchSuccess `
+            -GitHubInvoker $refreshMetadataGuard
+        Assert-Equal 0 $script:RefreshMetadataCalls 'explicit refs refresh never invokes GitHub metadata'
+        Assert-Equal 'cached' $refsOnly.metadata_mode 'refs-only refresh leaves metadata cached'
+        Assert-Equal 'live' $refsOnly.refs_mode 'successful refs refresh is labeled live'
+    }
 
     $live = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchSuccess -GitHubInvoker $ghSuccess
     Assert-Equal 'live' $live.remote_mode 'labels successful fetch and metadata observation live'
@@ -271,9 +395,9 @@ try {
 
     $sensitiveDirectory = Join-Path $primaryPath '中文 空格\嵌套'
     New-Item -ItemType Directory -Path $sensitiveDirectory -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $sensitiveDirectory '.env') -Value 'TEST_ONLY=1' -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $sensitiveDirectory '.env.local') -Value 'TEST_ONLY=1' -Encoding utf8
     $publicConflict = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
-    Assert-Equal 'block' $publicConflict.decision 'blocks nested sensitive paths containing Chinese and spaces'
+    Assert-Equal 'block' $publicConflict.decision 'blocks nested .env variants containing Chinese and spaces'
     Assert-True ($publicConflict.reasons -contains 'public_exposure_conflict') 'reports public exposure conflict reason'
     Assert-Equal 'block' $publicConflict.push_decision 'public exposure conflict blocks push'
     Assert-Equal 'resolve_public_exposure' $publicConflict.push_strategy 'public exposure conflict has a dedicated remediation strategy'
@@ -299,6 +423,14 @@ try {
     Assert-True (-not ($renameRemediation.reasons -contains 'public_exposure_conflict')) 'rename from a sensitive source to a safe destination is remediation'
     Assert-True ($renameRemediation.decision -ne 'block') 'safe-destination rename remains eligible for a remediation commit'
     Invoke-TestGit -Path $primaryPath -Arguments @('commit', '-m', 'rename sensitive fixture safely') | Out-Null
+
+    Set-Content -LiteralPath (Join-Path $primaryPath 'safe-rename-source.txt') -Value 'safe rename source' -Encoding utf8
+    Invoke-TestGit -Path $primaryPath -Arguments @('add', '--', 'safe-rename-source.txt') | Out-Null
+    Invoke-TestGit -Path $primaryPath -Arguments @('commit', '-m', 'safe rename source') | Out-Null
+    Invoke-TestGit -Path $primaryPath -Arguments @('mv', '--', 'safe-rename-source.txt', '.env.production') | Out-Null
+    $renameIntoSensitivePath = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-Equal 'block' $renameIntoSensitivePath.decision 'rename into a sensitive destination fails closed'
+    Assert-True ($renameIntoSensitivePath.reasons -contains 'public_exposure_conflict') 'rename destination is evaluated by the public-exposure policy'
 
     $indexPath = Invoke-TestGit -Path $primaryPath -Arguments @('rev-parse', '--git-path', 'index')
     if (-not [System.IO.Path]::IsPathRooted($indexPath)) { $indexPath = Join-Path $primaryPath $indexPath }

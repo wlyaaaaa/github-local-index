@@ -4,10 +4,14 @@
 param(
     [Parameter(Mandatory = $true)] [string] $Repo,
     [switch] $Fetch,
+    [switch] $LiveMetadata,
+    [switch] $RefreshRefs,
     [switch] $Json,
     [string] $RepoPath,
     [string] $Visibility,
     [string] $DefaultBranch,
+    [string] $TargetWorktree,
+    [string] $TargetRef,
     [string] $IndexRoot = (Split-Path -Parent $PSScriptRoot)
 )
 
@@ -24,7 +28,11 @@ function Invoke-ProjectAdmissionCli {
         -Visibility $Visibility `
         -DefaultBranch $DefaultBranch `
         -IndexRoot $IndexRoot `
-        -Fetch:$Fetch
+        -Fetch:$Fetch `
+        -LiveMetadata:$LiveMetadata `
+        -RefreshRefs:$RefreshRefs `
+        -TargetWorktree $TargetWorktree `
+        -TargetRef $TargetRef
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

@@ -365,6 +365,16 @@ function Get-RepositoryTaskRecommendation {
 
     $hintText = ($ExistingTaskHints -join '；')
 
+    if ($LocalPath -eq '外部治理（不读取本地路径）') {
+        return [pscustomobject]@{
+            Decision  = '外部治理'
+            Frequency = '无'
+            Purpose   = '仅保留 GitHub 远端目录事实'
+            Reason    = '该仓库由外部 AI owner 治理，本索引不读取本地路径或建立任务建议。'
+            Risk      = '不得从远端目录事实推断本地状态或行动。'
+        }
+    }
+
     if ($LocalPath -eq '未发现本地 clone') {
         $risk = '需要先决定是否 clone 到固定目录。'
         if ($NameWithOwner -eq 'wlyaaaaa/Key') {
@@ -487,7 +497,12 @@ function Get-RepositoryRecommendationRows {
 
     $repos = @(Get-IndexedRepositoryRows -RepoRoot $RepoRoot)
     foreach ($repo in $repos) {
-        $hints = @(Get-ExistingTaskHintsForRepository -Repository $repo -TaskRows $TaskRows)
+        $hints = if ($repo.LocalPath -eq '外部治理（不读取本地路径）') {
+            @()
+        }
+        else {
+            @(Get-ExistingTaskHintsForRepository -Repository $repo -TaskRows $TaskRows)
+        }
         $recommendation = Get-RepositoryTaskRecommendation -NameWithOwner $repo.NameWithOwner -LocalPath $repo.LocalPath -Visibility $repo.Visibility -ExistingTaskHints $hints
         [pscustomobject]@{
             Repository        = $repo.NameWithOwner

@@ -60,29 +60,56 @@ function Invoke-ExternalCommandWithRetry {
     }
 
     $lastExitCode = $null
-    $lastOutput = @()
+    $lastStdout = @()
+    $lastStderr = @()
     $lastError = $null
 
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         $global:LASTEXITCODE = 0
+        $stdout = @()
+        $stderr = @()
+        $attemptError = $null
         try {
-            $output = @(& $Command 2>&1)
-            $exitCode = $LASTEXITCODE
+            # Dot-source only inside a disposable child scope: this captures
+            # native $LASTEXITCODE without exposing the retry loop's locals to
+            # the caller-provided script block.
+            $execution = & {
+                param([scriptblock] $CommandToInvoke)
+
+                $global:LASTEXITCODE = 0
+                $capturedOutput = @(. $CommandToInvoke 2>&1)
+                [pscustomobject]@{
+                    exit_code = [int] $global:LASTEXITCODE
+                    output = @($capturedOutput)
+                }
+            } $Command
+            $combinedOutput = @($execution.output)
+            $exitCode = [int] $execution.exit_code
+            foreach ($item in $combinedOutput) {
+                if ($item -is [System.Management.Automation.ErrorRecord]) {
+                    $stderr += [string] $item
+                }
+                else {
+                    $stdout += $item
+                }
+            }
             if ($null -eq $exitCode) {
                 $exitCode = 0
             }
         }
         catch {
-            $output = @($_.Exception.Message)
-            $exitCode = if ($LASTEXITCODE -ne 0) { $LASTEXITCODE } else { 1 }
-            $lastError = $_
+            $stderr = @($_.Exception.Message)
+            $exitCode = if ($global:LASTEXITCODE -ne 0) { $global:LASTEXITCODE } else { 1 }
+            $attemptError = $_
         }
 
         $lastExitCode = $exitCode
-        $lastOutput = $output
+        $lastStdout = $stdout
+        $lastStderr = $stderr
+        $lastError = $attemptError
 
         if ($exitCode -eq 0) {
-            return $output
+            return $stdout
         }
 
         if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) {
@@ -90,9 +117,18 @@ function Invoke-ExternalCommandWithRetry {
         }
     }
 
-    $summary = ($lastOutput | Select-Object -First 3) -join ' '
+    $summaryItems = @(
+        @($lastStderr) + @($lastStdout) |
+            ForEach-Object { ([string] $_).Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -First 3
+    )
+    $summary = $summaryItems -join ' '
     if ([string]::IsNullOrWhiteSpace($summary) -and $lastError) {
         $summary = $lastError.Exception.Message
+    }
+    if ($summary.Length -gt 512) {
+        $summary = $summary.Substring(0, 509) + '...'
     }
 
     throw "$Operation failed after $MaxAttempts attempt(s). Last exit code: $lastExitCode. $summary"

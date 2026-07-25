@@ -60,6 +60,15 @@ $retryResult = Invoke-ExternalCommandWithRetry -Operation 'unit retry success' -
 Assert-Equal 3 $script:RetryAttempts 'retries transient external command failures'
 Assert-Equal 'ok' ($retryResult -join '') 'returns successful retry output'
 
+$jsonStdout = Invoke-ExternalCommandWithRetry -Operation 'unit native stream separation' -MaxAttempts 1 -DelaySeconds 0 -Command {
+    & pwsh -NoProfile -NonInteractive -Command @'
+[Console]::Out.WriteLine('{"status":"ok"}')
+[Console]::Error.WriteLine('Progress: enumerating repositories')
+exit 0
+'@
+}
+Assert-Equal '{"status":"ok"}' ($jsonStdout -join '') 'successful native command returns stdout without stderr progress'
+
 $script:RetryFailureAttempts = 0
 $retryFailureThrown = $false
 try {
@@ -73,6 +82,43 @@ catch {
 }
 Assert-Equal 2 $script:RetryFailureAttempts 'stops retrying after max attempts'
 Assert-True $retryFailureThrown 'retry failure includes operation name'
+
+$script:NativeFailureAttempts = 0
+$nativeFailureMessage = ''
+try {
+    Invoke-ExternalCommandWithRetry -Operation 'unit native bounded failure' -MaxAttempts 2 -DelaySeconds 0 -Command {
+        $script:NativeFailureAttempts++
+        & pwsh -NoProfile -NonInteractive -Command @'
+[Console]::Out.WriteLine('stdout diagnostic')
+[Console]::Error.WriteLine('stderr-marker ' + ('x' * 2000))
+exit 19
+'@
+    } | Out-Null
+}
+catch {
+    $nativeFailureMessage = $_.Exception.Message
+}
+Assert-Equal 2 $script:NativeFailureAttempts 'native failure preserves retry attempts'
+Assert-True ($nativeFailureMessage -match 'Last exit code: 19') 'native failure preserves the final exit code'
+Assert-True ($nativeFailureMessage -match 'stderr-marker') 'native failure retains a stderr summary'
+Assert-True ($nativeFailureMessage.Length -le 768) 'native failure stderr summary is bounded'
+
+$script:IsolationAttempts = 0
+$isolatedResult = Invoke-ExternalCommandWithRetry -Operation 'unit retry scope isolation' -MaxAttempts 2 -DelaySeconds 0 -Command {
+    $script:IsolationAttempts++
+    $attempt = 999
+    $stdout = 'caller mutation'
+    $stderr = 'caller mutation'
+    $lastExitCode = 999
+    if ($script:IsolationAttempts -eq 1) {
+        & pwsh -NoProfile -NonInteractive -Command 'exit 17'
+    }
+    else {
+        & pwsh -NoProfile -NonInteractive -Command '[Console]::Out.WriteLine("isolated"); exit 0'
+    }
+}
+Assert-Equal 2 $script:IsolationAttempts 'caller locals cannot corrupt retry-loop state'
+Assert-Equal 'isolated' ($isolatedResult -join '') 'isolated retry still returns final stdout'
 
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-unit-' + [guid]::NewGuid().ToString('N'))
 try {

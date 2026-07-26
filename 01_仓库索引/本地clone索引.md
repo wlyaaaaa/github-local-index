@@ -13,11 +13,11 @@
 | wlyaaaaa/ChineseASR | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（live） |
-| wlyaaaaa/codex-local-remote | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 85 项（live）<br>必要保留：当前 V1 计划任务使用的干净运行回滚根；owner：PCConfig；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success（live） |
+| wlyaaaaa/codex-local-remote | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 86 项（live）<br>必要保留：当前 V1 计划任务使用的干净运行回滚根；owner：PCConfig；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success（live） |
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（live） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` ahead/behind `1/0`（live） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/Key | V:\Personal\Projects\Key | `main` 已同步，`0/0`（live） |
 | wlyaaaaa/legal-filing-kit | E:\Projects\Tools\legal-filing-kit<br>V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1<br>V:\Personal\Worktrees\legal-filing-kit-1.0-reaudit-859b083<br>V:\Personal\Worktrees\legal-filing-kit-s3-audit-25529a0 | `main` 已同步，`0/0`，脏工作区 3 项（live）<br>历史审计快照固定于 `87dcfd1`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `859b083`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `25529a0`，detached 且无 upstream，不自动同步（cached） |
 | wlyaaaaa/llm-backend-toolkit | V:\Personal\Projects\llm-backend-toolkit<br>V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794<br>V:\Personal\Worktrees\llm-backend-toolkit-cache-review-4bd5081<br>V:\Personal\Worktrees\llm-backend-toolkit-cache-review-df3f17d | `main` 已同步，`0/0`（live）<br>历史审计快照固定于 `25d2794`，detached 且无 upstream，不自动同步（live）<br>历史审计快照固定于 `4bd5081`，detached 且无 upstream，不自动同步（live）<br>历史审计快照固定于 `df3f17d`，detached 且无 upstream，不自动同步（live） |

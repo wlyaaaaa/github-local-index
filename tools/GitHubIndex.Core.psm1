@@ -1,9 +1,71 @@
 Set-StrictMode -Version Latest
 
+function Read-GitArtifactGovernanceRegistry {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw 'Git artifact governance registry is missing.'
+    }
+    try {
+        $registry = Get-Content -LiteralPath $Path -Raw -Encoding utf8 | ConvertFrom-Json
+    }
+    catch {
+        throw 'Git artifact governance registry is not valid JSON.'
+    }
+    if ($null -eq $registry -or
+        $null -eq $registry.PSObject.Properties['schema'] -or
+        [string] $registry.schema -ne 'github-local-index.git-artifact-governance.v1' -or
+        $null -eq $registry.PSObject.Properties['entries'] -or
+        $null -eq $registry.PSObject.Properties['retentions']) {
+        throw 'Git artifact governance registry has an unsupported schema.'
+    }
+
+    $seenRefs = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($entry in @($registry.entries)) {
+        if ([string] $entry.repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or
+            [string]::IsNullOrWhiteSpace([string] $entry.owner) -or
+            $null -eq $entry.PSObject.Properties['refs'] -or @($entry.refs).Count -eq 0) {
+            throw 'Git artifact governance registry contains an invalid owner entry.'
+        }
+        foreach ($ref in @($entry.refs)) {
+            $logicalRef = ([string] $ref).Trim() -replace '^refs/heads/', '' -replace '^origin/', ''
+            if ([string]::IsNullOrWhiteSpace($logicalRef) -or
+                -not $seenRefs.Add("$([string] $entry.repo)|$logicalRef")) {
+                throw 'Git artifact governance registry contains an invalid or duplicate ref.'
+            }
+        }
+    }
+
+    $seenRetentions = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($entry in @($registry.retentions)) {
+        if ([string] $entry.repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or
+            -not [System.IO.Path]::IsPathRooted([string] $entry.path) -or
+            [string] $entry.head -notmatch '^[0-9a-fA-F]{40}$' -or
+            [string] $entry.disposition -ne 'retain' -or
+            [string]::IsNullOrWhiteSpace([string] $entry.owner) -or
+            [string]::IsNullOrWhiteSpace([string] $entry.purpose) -or
+            [string]::IsNullOrWhiteSpace([string] $entry.exit_condition)) {
+            throw 'Git artifact governance registry contains an invalid retention entry.'
+        }
+        $retentionKey = "$([string] $entry.repo)|$([string] $entry.path)|$([string] $entry.head)"
+        if (-not $seenRetentions.Add($retentionKey)) {
+            throw 'Git artifact governance registry contains a duplicate retention entry.'
+        }
+    }
+    return $registry
+}
+
 $script:AdmissionSchema = 'github-local-index.project-admission.v1'
 $script:ExternalGovernanceRepositories = @('wlyaaaaa/PersonalOS')
 $script:PublicExposurePolicyPath = Join-Path $PSScriptRoot 'PublicExposurePolicy.psd1'
 $script:PublicExposurePolicy = Import-PowerShellDataFile -LiteralPath $script:PublicExposurePolicyPath
+$script:GitArtifactGovernancePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config/git-artifact-governance.json'
+$script:GitArtifactGovernance = Read-GitArtifactGovernanceRegistry -Path $script:GitArtifactGovernancePath
 if ([string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex) -or
     [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.EnvPathRegex) -or
     [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AllowedTemplateRegex)) {
@@ -118,6 +180,97 @@ function Test-IsExternallyGovernedGitHubRepository {
 
     $normalized = ConvertTo-GitHubRepoSlug $Repo
     return $normalized -and @($script:ExternalGovernanceRepositories | Where-Object { $_ -ieq $normalized }).Count -gt 0
+}
+
+function Get-GitArtifactGovernance {
+    [CmdletBinding()]
+    param(
+        [AllowNull()] [string] $Repo,
+        [AllowNull()] [string] $Branch
+    )
+
+    $normalizedRepo = ConvertTo-GitHubRepoSlug $Repo
+    if (-not $normalizedRepo -or
+        [string]::IsNullOrWhiteSpace($Branch) -or
+        $null -eq $script:GitArtifactGovernance -or
+        $script:GitArtifactGovernance.schema -ne 'github-local-index.git-artifact-governance.v1') {
+        return $null
+    }
+    $logicalBranch = $Branch.Trim() -replace '^refs/heads/', '' -replace '^origin/', ''
+    foreach ($entry in @($script:GitArtifactGovernance.entries)) {
+        if (-not ([string] $entry.repo).Equals(
+            $normalizedRepo,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            continue
+        }
+        if (@($entry.refs | Where-Object {
+            ([string] $_).Equals($logicalBranch, [System.StringComparison]::OrdinalIgnoreCase)
+        }).Count -eq 0) {
+            continue
+        }
+        return [pscustomobject]@{
+            owner = [string] $entry.owner
+            reason = 'explicit_artifact_owner'
+        }
+    }
+    return $null
+}
+
+function Get-GitArtifactRetention {
+    [CmdletBinding()]
+    param(
+        [AllowNull()] [string] $Repo,
+        [AllowNull()] [string] $Path,
+        [AllowNull()] [string] $Head
+    )
+
+    $normalizedRepo = ConvertTo-GitHubRepoSlug $Repo
+    if (-not $normalizedRepo -or
+        [string]::IsNullOrWhiteSpace($Path) -or
+        $Head -notmatch '^[0-9a-fA-F]{40}$' -or
+        $null -eq $script:GitArtifactGovernance -or
+        $script:GitArtifactGovernance.schema -ne 'github-local-index.git-artifact-governance.v1') {
+        return $null
+    }
+
+    try {
+        $normalizedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/') -replace '/', '\'
+    }
+    catch {
+        return $null
+    }
+
+    foreach ($entry in @($script:GitArtifactGovernance.retentions)) {
+        if (-not ([string] $entry.repo).Equals(
+            $normalizedRepo,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or [string] $entry.disposition -ne 'retain') {
+            continue
+        }
+        try {
+            $entryPath = [System.IO.Path]::GetFullPath([string] $entry.path).TrimEnd('\', '/') -replace '/', '\'
+        }
+        catch {
+            continue
+        }
+        if (-not $entryPath.Equals($normalizedPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+            -not ([string] $entry.head).Equals($Head, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace([string] $entry.owner) -or
+            [string]::IsNullOrWhiteSpace([string] $entry.purpose) -or
+            [string]::IsNullOrWhiteSpace([string] $entry.exit_condition)) {
+            return $null
+        }
+        return [pscustomobject]@{
+            owner = [string] $entry.owner
+            purpose = [string] $entry.purpose
+            exit_condition = [string] $entry.exit_condition
+            reason = 'explicit_necessary_retention'
+        }
+    }
+    return $null
 }
 
 function Test-IsExternallyGovernedLocalPath {
@@ -382,6 +535,339 @@ function Get-GitStatusObservation {
         dirty_summary = $dirtySummary
         public_exposure_conflict = $exposureConflict
         error = $false
+    }
+}
+
+function Get-GitDefaultBranchIntegrationEvidence {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [Parameter(Mandatory = $true)] [string] $DefaultBranch,
+        [Parameter(Mandatory = $true)] [string] $Head,
+        [AllowNull()] [string] $Branch
+    )
+
+    $result = [ordered]@{
+        integration_state = 'unknown'
+        is_default_branch = $false
+        default_ref = if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { $null } else { "refs/heads/$DefaultBranch" }
+        default_head = $null
+        default_only_commits = $null
+        unique_commits_vs_default = $null
+        missing_default_commits = $null
+        patch_equivalent = $null
+        inspection_error = $true
+    }
+    if ([string]::IsNullOrWhiteSpace($DefaultBranch) -or
+        [string]::IsNullOrWhiteSpace($Head) -or
+        -not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return [pscustomobject] $result
+    }
+
+    $localDefaultRef = "refs/heads/$DefaultBranch"
+    $remoteDefaultRef = "refs/remotes/origin/$DefaultBranch"
+    $remoteDefaultResult = Invoke-GitCommandResult -Path $Path -Arguments @(
+        'rev-parse', '--verify', "$remoteDefaultRef^{commit}"
+    )
+    $defaultRef = if ($remoteDefaultResult.exit_code -eq 0 -and
+        $remoteDefaultResult.stdout -match '^[0-9a-fA-F]{40}$') {
+        $remoteDefaultRef
+    }
+    else {
+        $localDefaultRef
+    }
+    $result.default_ref = $defaultRef
+    $defaultResult = if ($defaultRef -eq $remoteDefaultRef) {
+        $remoteDefaultResult
+    }
+    else {
+        Invoke-GitCommandResult -Path $Path -Arguments @('rev-parse', '--verify', "$defaultRef^{commit}")
+    }
+    if ($defaultResult.exit_code -ne 0 -or $defaultResult.stdout -notmatch '^[0-9a-fA-F]{40}$') {
+        return [pscustomobject] $result
+    }
+    $result.default_head = $defaultResult.stdout.ToLowerInvariant()
+    $result.is_default_branch = -not [string]::IsNullOrWhiteSpace($Branch) -and
+        $Branch.Equals($DefaultBranch, [System.StringComparison]::OrdinalIgnoreCase)
+    if ($result.is_default_branch -and
+        $Head.Equals($result.default_head, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $result.integration_state = 'default'
+        $result.default_only_commits = 0
+        $result.unique_commits_vs_default = 0
+        $result.missing_default_commits = 0
+        $result.patch_equivalent = $true
+        $result.inspection_error = $false
+        return [pscustomobject] $result
+    }
+
+    $distanceResult = Invoke-GitCommandResult -Path $Path -Arguments @(
+        'rev-list', '--left-right', '--count', "$defaultRef...$Head"
+    )
+    if ($distanceResult.exit_code -ne 0 -or
+        $distanceResult.stdout -notmatch '^(?<default>\d+)\s+(?<branch>\d+)$') {
+        return [pscustomobject] $result
+    }
+
+    $defaultOnly = [int] $matches['default']
+    $branchOnly = [int] $matches['branch']
+    $result.default_only_commits = $defaultOnly
+    $result.unique_commits_vs_default = $branchOnly
+    $result.inspection_error = $false
+    if ($branchOnly -eq 0) {
+        $result.integration_state = 'merged_ancestry'
+        $result.missing_default_commits = 0
+        $result.patch_equivalent = $true
+        return [pscustomobject] $result
+    }
+
+    $cherryResult = Invoke-GitCommandResult -Path $Path -Arguments @('cherry', $defaultRef, $Head)
+    if ($cherryResult.exit_code -eq 0) {
+        $cherryLines = @(
+            $cherryResult.stdout -split "\r?\n" |
+                ForEach-Object { ([string] $_).Trim() } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+        $plusCount = @($cherryLines | Where-Object { $_ -match '^\+' }).Count
+        $minusCount = @($cherryLines | Where-Object { $_ -match '^-' }).Count
+        if ($plusCount -eq 0 -and $minusCount -gt 0) {
+            $result.integration_state = 'patch_equivalent'
+            $result.missing_default_commits = 0
+            $result.patch_equivalent = $true
+            return [pscustomobject] $result
+        }
+        $result.integration_state = 'unmerged'
+        $result.missing_default_commits = if ($plusCount -gt 0) { $plusCount } else { $branchOnly }
+        $result.patch_equivalent = $false
+        return [pscustomobject] $result
+    }
+
+    $result.integration_state = 'unmerged'
+    $result.missing_default_commits = $branchOnly
+    $result.patch_equivalent = $false
+    return [pscustomobject] $result
+}
+
+function Add-GitDefaultBranchIntegrationEvidence {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [Parameter(Mandatory = $true)] [string] $DefaultBranch,
+        [object[]] $Worktrees = @()
+    )
+
+    foreach ($worktree in @($Worktrees)) {
+        $evidence = if ($worktree.exists -and -not $worktree.prunable -and
+            -not [string]::IsNullOrWhiteSpace([string] $worktree.head)) {
+            Get-GitDefaultBranchIntegrationEvidence `
+                -Path ([string] $worktree.path) `
+                -DefaultBranch $DefaultBranch `
+                -Head ([string] $worktree.head) `
+                -Branch ([string] $worktree.branch)
+        }
+        else {
+            [pscustomobject]@{
+                integration_state = 'unknown'
+                is_default_branch = $false
+                default_ref = "refs/heads/$DefaultBranch"
+                default_head = $null
+                default_only_commits = $null
+                unique_commits_vs_default = $null
+                missing_default_commits = $null
+                patch_equivalent = $null
+                inspection_error = $true
+            }
+        }
+        foreach ($propertyName in @(
+            'integration_state', 'is_default_branch', 'default_ref', 'default_head',
+            'default_only_commits', 'unique_commits_vs_default',
+            'missing_default_commits', 'patch_equivalent'
+        )) {
+            $worktree | Add-Member -NotePropertyName $propertyName -NotePropertyValue $evidence.$propertyName -Force
+        }
+    }
+
+    return @($Worktrees)
+}
+
+function Get-GitRepositoryBranchInventory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [Parameter(Mandatory = $true)] [string] $DefaultBranch,
+        [object[]] $Worktrees = @()
+    )
+
+    if ($Worktrees.Count -eq 0) {
+        $listResult = Invoke-GitCommandResult -Path $Path -Arguments @('worktree', 'list', '--porcelain')
+        if ($listResult.exit_code -eq 0) {
+            $Worktrees = @(ConvertFrom-GitWorktreePorcelain -Text $listResult.stdout | ForEach-Object {
+                [pscustomobject]@{ path = $_.path; branch = $_.listed_branch }
+            })
+        }
+    }
+
+    $branchResult = Invoke-GitCommandResult -Path $Path -Arguments @(
+        'for-each-ref', '--format=%(refname:short)', 'refs/heads'
+    )
+    if ($branchResult.exit_code -ne 0) {
+        throw "Unable to enumerate local branches (exit $($branchResult.exit_code))."
+    }
+
+    $branches = @(foreach ($branchName in @(
+        $branchResult.stdout -split "\r?\n" |
+            ForEach-Object { ([string] $_).Trim() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )) {
+        $headResult = Invoke-GitCommandResult -Path $Path -Arguments @('rev-parse', '--verify', "refs/heads/$branchName")
+        if ($headResult.exit_code -ne 0 -or $headResult.stdout -notmatch '^[0-9a-fA-F]{40}$') {
+            continue
+        }
+        $upstreamResult = Invoke-GitCommandResult -Path $Path -Arguments @(
+            'for-each-ref', '--format=%(upstream:short)', "refs/heads/$branchName"
+        )
+        $upstream = if ($upstreamResult.exit_code -eq 0 -and
+            -not [string]::IsNullOrWhiteSpace($upstreamResult.stdout)) {
+            $upstreamResult.stdout.Trim()
+        }
+        else {
+            $null
+        }
+        $matchingWorktree = @($Worktrees | Where-Object {
+            -not [string]::IsNullOrWhiteSpace([string] $_.branch) -and
+            ([string] $_.branch).Equals($branchName, [System.StringComparison]::OrdinalIgnoreCase)
+        } | Select-Object -First 1)
+        $hasWorktree = $matchingWorktree.Count -gt 0
+        $evidencePath = if ($hasWorktree -and
+            -not [string]::IsNullOrWhiteSpace([string] $matchingWorktree[0].path)) {
+            [string] $matchingWorktree[0].path
+        }
+        else {
+            $Path
+        }
+        $evidence = Get-GitDefaultBranchIntegrationEvidence `
+            -Path $evidencePath `
+            -DefaultBranch $DefaultBranch `
+            -Head $headResult.stdout `
+            -Branch $branchName
+
+        [pscustomobject]@{
+            branch = $branchName
+            ref_kind = 'local'
+            ref_name = "refs/heads/$branchName"
+            head = $headResult.stdout.ToLowerInvariant()
+            upstream = $upstream
+            has_worktree = $hasWorktree
+            worktree_path = if ($hasWorktree) { [string] $matchingWorktree[0].path } else { $null }
+            integration_state = $evidence.integration_state
+            is_default_branch = $evidence.is_default_branch
+            default_only_commits = $evidence.default_only_commits
+            unique_commits_vs_default = $evidence.unique_commits_vs_default
+            missing_default_commits = $evidence.missing_default_commits
+            patch_equivalent = $evidence.patch_equivalent
+            retirement_candidate = (-not $hasWorktree) -and
+                (-not $evidence.is_default_branch) -and
+                $evidence.integration_state -in @('merged_ancestry', 'patch_equivalent')
+        }
+    })
+
+    $remoteBranchResult = Invoke-GitCommandResult -Path $Path -Arguments @(
+        'for-each-ref',
+        '--format=%(refname:short)%09%(objectname)',
+        'refs/remotes/origin'
+    )
+    if ($remoteBranchResult.exit_code -eq 0) {
+        foreach ($line in @(
+            $remoteBranchResult.stdout -split "\r?\n" |
+                ForEach-Object { ([string] $_).Trim() } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )) {
+            if ($line -notmatch '^(?<ref>origin/(?<branch>.+?))\t(?<head>[0-9a-fA-F]{40})$') {
+                continue
+            }
+            $remoteShortRef = [string] $matches['ref']
+            $logicalBranch = [string] $matches['branch']
+            $remoteHead = ([string] $matches['head']).ToLowerInvariant()
+            if ($logicalBranch -eq 'HEAD' -or
+                $logicalBranch.Equals($DefaultBranch, [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+            $sameLocal = @($branches | Where-Object {
+                $_.ref_kind -eq 'local' -and
+                ([string] $_.branch).Equals($logicalBranch, [System.StringComparison]::OrdinalIgnoreCase) -and
+                ([string] $_.head).Equals($remoteHead, [System.StringComparison]::OrdinalIgnoreCase)
+            }).Count -gt 0
+            if ($sameLocal) {
+                continue
+            }
+            $remoteEvidence = Get-GitDefaultBranchIntegrationEvidence `
+                -Path $Path `
+                -DefaultBranch $DefaultBranch `
+                -Head $remoteHead `
+                -Branch $logicalBranch
+            $branches += [pscustomobject]@{
+                branch = $remoteShortRef
+                ref_kind = 'remote_tracking'
+                ref_name = "refs/remotes/$remoteShortRef"
+                head = $remoteHead
+                upstream = $remoteShortRef
+                has_worktree = $false
+                worktree_path = $null
+                integration_state = $remoteEvidence.integration_state
+                is_default_branch = $false
+                default_only_commits = $remoteEvidence.default_only_commits
+                unique_commits_vs_default = $remoteEvidence.unique_commits_vs_default
+                missing_default_commits = $remoteEvidence.missing_default_commits
+                patch_equivalent = $remoteEvidence.patch_equivalent
+                retirement_candidate = $remoteEvidence.integration_state -in @(
+                    'merged_ancestry', 'patch_equivalent'
+                )
+            }
+        }
+    }
+
+    return @($branches | Sort-Object branch)
+}
+
+function Add-GitArtifactGovernanceEvidence {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string] $Repo,
+        [object[]] $Worktrees = @(),
+        [object[]] $Branches = @()
+    )
+
+    foreach ($artifact in @($Worktrees) + @($Branches)) {
+        $branchName = if ($null -ne $artifact.PSObject.Properties['branch']) {
+            [string] $artifact.branch
+        }
+        else {
+            $null
+        }
+        $governance = Get-GitArtifactGovernance -Repo $Repo -Branch $branchName
+        $artifact | Add-Member -NotePropertyName external_governance `
+            -NotePropertyValue ($null -ne $governance) -Force
+        $artifact | Add-Member -NotePropertyName governance_owner `
+            -NotePropertyValue $(if ($governance) { [string] $governance.owner } else { $null }) -Force
+        $artifact | Add-Member -NotePropertyName governance_reason `
+            -NotePropertyValue $(if ($governance) { [string] $governance.reason } else { $null }) -Force
+        $retention = if ($null -ne $artifact.PSObject.Properties['path'] -and
+            $null -ne $artifact.PSObject.Properties['head']) {
+            Get-GitArtifactRetention `
+                -Repo $Repo `
+                -Path ([string] $artifact.path) `
+                -Head ([string] $artifact.head)
+        }
+        else {
+            $null
+        }
+        $artifact | Add-Member -NotePropertyName necessary_retention `
+            -NotePropertyValue ($null -ne $retention) -Force
+        $artifact | Add-Member -NotePropertyName retention_owner `
+            -NotePropertyValue $(if ($retention) { [string] $retention.owner } else { $null }) -Force
+        $artifact | Add-Member -NotePropertyName retention_purpose `
+            -NotePropertyValue $(if ($retention) { [string] $retention.purpose } else { $null }) -Force
+        $artifact | Add-Member -NotePropertyName retention_exit_condition `
+            -NotePropertyValue $(if ($retention) { [string] $retention.exit_condition } else { $null }) -Force
     }
 }
 
@@ -659,6 +1145,16 @@ function Get-ProjectPushGuidance {
     if (@($Worktrees | Where-Object { $null -ne $_.dirty_summary -and $_.dirty_summary.total -gt 0 }).Count -gt 0) {
         return [pscustomobject]@{ decision = 'warn'; strategy = 'clean_or_stage_explicitly' }
     }
+    if (@($Reasons) -contains 'default_branch_missing_commits') {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'integrate_default_branch' }
+    }
+    if (@($Reasons) -contains 'default_branch_integration_unknown') {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'inspect_default_branch_integration' }
+    }
+    if (@($Reasons) -contains 'merged_residual_worktree' -or
+        @($Reasons) -contains 'merged_residual_branch') {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'retire_integrated_branch' }
+    }
     if (@($Worktrees | Where-Object { $_.exists -and $_.sync_state -eq 'no_upstream' }).Count -gt 0) {
         return [pscustomobject]@{ decision = 'warn'; strategy = 'set_upstream' }
     }
@@ -688,10 +1184,11 @@ function New-ProjectAdmissionRecord {
         [AllowNull()] [string] $TargetRef,
         [ValidateSet('proceed', 'warn', 'block')] [string] $Decision = 'block',
         [ValidateSet('proceed', 'warn', 'block')] [string] $PushDecision = 'block',
-        [ValidateSet('none', 'normal', 'fetch_recheck', 'clean_or_stage_explicitly', 'set_upstream', 'update_then_recheck', 'reconcile_then_recheck', 'resolve_public_exposure', 'resolve_admission_block')] [string] $PushStrategy = 'resolve_admission_block',
+        [ValidateSet('none', 'normal', 'fetch_recheck', 'clean_or_stage_explicitly', 'set_upstream', 'update_then_recheck', 'reconcile_then_recheck', 'integrate_default_branch', 'inspect_default_branch_integration', 'retire_integrated_branch', 'resolve_public_exposure', 'resolve_admission_block')] [string] $PushStrategy = 'resolve_admission_block',
         [string[]] $Reasons = @(),
         [object[]] $Errors = @(),
-        [object[]] $Worktrees = @()
+        [object[]] $Worktrees = @(),
+        [object[]] $Branches = @()
     )
 
     [pscustomobject][ordered]@{
@@ -714,6 +1211,7 @@ function New-ProjectAdmissionRecord {
         reasons = @($Reasons)
         errors = @($Errors)
         worktrees = @($Worktrees)
+        branches = @($Branches)
     }
 }
 
@@ -740,6 +1238,7 @@ function Get-ProjectAdmissionRecord {
     $reasons = [System.Collections.Generic.List[string]]::new()
     $errors = [System.Collections.Generic.List[object]]::new()
     $worktrees = @()
+    $branches = @()
     $remoteSlug = $null
     $remoteUrl = $null
     $localRoot = $null
@@ -943,18 +1442,84 @@ function Get-ProjectAdmissionRecord {
         $reasons.Add('visibility_unknown')
     }
     if (-not $DefaultBranch) { $reasons.Add('default_branch_unknown') }
+    if ($DefaultBranch -and -not [string]::IsNullOrWhiteSpace($RepoPath) -and $worktrees.Count -gt 0) {
+        try {
+            $worktrees = @(Add-GitDefaultBranchIntegrationEvidence `
+                -Path $RepoPath -DefaultBranch $DefaultBranch -Worktrees @($worktrees))
+            $branches = @(Get-GitRepositoryBranchInventory `
+                -Path $RepoPath -DefaultBranch $DefaultBranch -Worktrees @($worktrees))
+        }
+        catch {
+            foreach ($worktree in @($worktrees)) {
+                if ($null -eq $worktree.PSObject.Properties['integration_state']) {
+                    $worktree | Add-Member -NotePropertyName integration_state -NotePropertyValue 'unknown' -Force
+                    $worktree | Add-Member -NotePropertyName is_default_branch -NotePropertyValue $false -Force
+                    $worktree | Add-Member -NotePropertyName unique_commits_vs_default -NotePropertyValue $null -Force
+                    $worktree | Add-Member -NotePropertyName missing_default_commits -NotePropertyValue $null -Force
+                }
+            }
+            $reasons.Add('default_branch_integration_unknown')
+            $errors.Add((New-AdmissionError -Category 'default_branch_integration_failed' -ExitCode 1))
+        }
+    }
+    Add-GitArtifactGovernanceEvidence `
+        -Repo $normalizedRepo `
+        -Worktrees @($worktrees) `
+        -Branches @($branches)
 
     $targetScope = Resolve-AdmissionTargetScope -Worktrees @($worktrees) -TargetWorktree $TargetWorktree -TargetRef $TargetRef
     foreach ($targetReason in @($targetScope.reasons)) {
         $reasons.Add([string] $targetReason)
     }
-    $decisionWorktrees = @($targetScope.decision_worktrees)
+    $selectedDecisionWorktrees = @($targetScope.decision_worktrees)
+    if ((-not [string]::IsNullOrWhiteSpace($TargetWorktree) -or
+        -not [string]::IsNullOrWhiteSpace($TargetRef)) -and
+        @($selectedDecisionWorktrees | Where-Object external_governance).Count -gt 0) {
+        $reasons.Add('external_governance_excluded')
+    }
+    $decisionWorktrees = @($selectedDecisionWorktrees | Where-Object { -not $_.external_governance })
 
     if ($remoteMode -eq 'cached') { $reasons.Add('cached_observation') }
     if (@($decisionWorktrees | Where-Object { $_.dirty_count -gt 0 }).Count -gt 0) { $reasons.Add('dirty_worktree') }
     if (@($decisionWorktrees | Where-Object { $_.exists -and [string]::IsNullOrWhiteSpace([string] $_.upstream) }).Count -gt 0) { $reasons.Add('no_upstream') }
     if (@($decisionWorktrees | Where-Object prunable).Count -gt 0) { $reasons.Add('prunable_worktree') }
     if (@($decisionWorktrees | Where-Object detached).Count -gt 0) { $reasons.Add('detached_worktree') }
+    if (@($decisionWorktrees | Where-Object {
+        -not $_.detached -and -not $_.is_default_branch -and $_.integration_state -eq 'unmerged'
+    }).Count -gt 0) {
+        $reasons.Add('default_branch_missing_commits')
+    }
+    if (@($decisionWorktrees | Where-Object {
+        -not $_.detached -and -not $_.is_default_branch -and $_.integration_state -eq 'unknown'
+    }).Count -gt 0) {
+        $reasons.Add('default_branch_integration_unknown')
+    }
+    if (@($decisionWorktrees | Where-Object {
+        -not $_.detached -and -not $_.is_default_branch -and
+        $_.dirty_count -eq 0 -and -not $_.locked -and -not $_.prunable -and
+        $_.integration_state -in @('merged_ancestry', 'patch_equivalent')
+    }).Count -gt 0) {
+        $reasons.Add('merged_residual_worktree')
+    }
+    if ([string]::IsNullOrWhiteSpace($TargetWorktree) -and [string]::IsNullOrWhiteSpace($TargetRef)) {
+        if (@($branches | Where-Object {
+            -not $_.external_governance -and -not $_.has_worktree -and
+            -not $_.is_default_branch -and $_.integration_state -eq 'unmerged'
+        }).Count -gt 0) {
+            $reasons.Add('default_branch_missing_commits')
+        }
+        if (@($branches | Where-Object {
+            -not $_.external_governance -and -not $_.has_worktree -and
+            -not $_.is_default_branch -and $_.integration_state -eq 'unknown'
+        }).Count -gt 0) {
+            $reasons.Add('default_branch_integration_unknown')
+        }
+        if (@($branches | Where-Object {
+            -not $_.external_governance -and $_.retirement_candidate
+        }).Count -gt 0) {
+            $reasons.Add('merged_residual_branch')
+        }
+    }
     if (@($decisionWorktrees | Where-Object inspection_error).Count -gt 0) {
         $reasons.Add('worktree_inspection_error')
         $errors.Add((New-AdmissionError -Category 'worktree_inspection_failed' -ExitCode 1))
@@ -1011,20 +1576,26 @@ function Get-ProjectAdmissionRecord {
         -PushStrategy $pushGuidance.strategy `
         -Reasons $reasonArray `
         -Errors @($errors) `
-        -Worktrees @($worktrees)
+        -Worktrees @($worktrees) `
+        -Branches @($branches)
 }
 
 Export-ModuleMember -Function @(
+    'Read-GitArtifactGovernanceRegistry',
     'Invoke-ExternalCommandResult',
     'Invoke-GitCommandResult',
     'ConvertTo-GitHubRepoSlug',
     'Test-IsExternallyGovernedGitHubRepository',
+    'Get-GitArtifactGovernance',
+    'Get-GitArtifactRetention',
     'Test-IsExternallyGovernedLocalPath',
     'ConvertTo-PublicGitHubRemoteUrl',
     'ConvertFrom-GitWorktreePorcelain',
     'ConvertFrom-GitStatusPorcelainV1Z',
     'Test-PublicExposurePath',
     'Get-GitRepositoryWorktrees',
+    'Get-GitDefaultBranchIntegrationEvidence',
+    'Get-GitRepositoryBranchInventory',
     'Get-IndexedProjectFacts',
     'New-ProjectAdmissionRecord',
     'Get-ProjectAdmissionRecord'

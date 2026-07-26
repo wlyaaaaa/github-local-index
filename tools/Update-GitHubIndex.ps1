@@ -284,6 +284,130 @@ function Get-CommitPinnedSnapshotState {
     }
 }
 
+function Get-RegisteredNecessaryRetentionState {
+    param(
+        [Parameter(Mandatory = $true)] [object] $Worktree,
+        [bool] $InspectionFailed,
+        [AllowNull()] [object] $DirtyCount
+    )
+
+    if ($null -eq $Worktree.PSObject.Properties['necessary_retention'] -or
+        -not [bool] $Worktree.necessary_retention -or
+        $InspectionFailed -or
+        -not [bool] $Worktree.exists -or
+        [bool] $Worktree.prunable -or
+        $null -eq $DirtyCount -or [int] $DirtyCount -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string] $Worktree.retention_owner) -or
+        [string]::IsNullOrWhiteSpace([string] $Worktree.retention_purpose) -or
+        [string]::IsNullOrWhiteSpace([string] $Worktree.retention_exit_condition)) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        owner = [string] $Worktree.retention_owner
+        purpose = [string] $Worktree.retention_purpose
+        exit_condition = [string] $Worktree.retention_exit_condition
+    }
+}
+
+function Get-BranchConvergenceDisposition {
+    param(
+        [ValidateSet('default', 'merged_ancestry', 'patch_equivalent', 'unmerged', 'unknown')]
+        [string] $IntegrationState = 'unknown',
+        [bool] $IsDefaultBranch,
+        [AllowNull()] [object] $DirtyCount,
+        [bool] $HasWorktree = $true,
+        [switch] $PinnedSnapshot,
+        [switch] $Locked,
+        [switch] $Prunable,
+        [switch] $Detached,
+        [bool] $Exists = $true
+    )
+
+    $result = [ordered]@{
+        needs_review = $false
+        retirement_candidate = $false
+        queue_reason = ''
+        next_action = ''
+    }
+    if ($IsDefaultBranch) {
+        return [pscustomobject] $result
+    }
+    if ($PinnedSnapshot) {
+        $result.next_action = '保持提交固定审计快照；需要新证据时创建新审计副本'
+        return [pscustomobject] $result
+    }
+    if (-not $Exists -or $Prunable) {
+        $result.needs_review = $true
+        $result.queue_reason = 'worktree_unavailable'
+        $result.next_action = '清理或恢复 prunable worktree 元数据'
+        return [pscustomobject] $result
+    }
+    if ($Detached) {
+        $result.needs_review = $true
+        $result.queue_reason = 'detached_worktree'
+        $result.next_action = '确认 detached worktree 的保留或收敛用途'
+        return [pscustomobject] $result
+    }
+    if ($HasWorktree -and ($null -eq $DirtyCount -or [int] $DirtyCount -gt 0)) {
+        $result.needs_review = $true
+        $result.queue_reason = if ($null -eq $DirtyCount) {
+            'default_branch_integration_unknown'
+        }
+        else {
+            'active_dirty_worktree'
+        }
+        $result.next_action = if ($null -eq $DirtyCount) {
+            '当前收尾继续追溯默认分支可达性；无法查清则 BLOCK'
+        }
+        else {
+            '保留活跃脏工作区；完成并验证后再整合到默认分支'
+        }
+        return [pscustomobject] $result
+    }
+    if ($Locked) {
+        $result.needs_review = $true
+        $result.queue_reason = 'locked_worktree'
+        $result.next_action = '保留 locked worktree；解除交接依赖后再评审'
+        return [pscustomobject] $result
+    }
+    if ($IntegrationState -eq 'unknown') {
+        $result.needs_review = $true
+        $result.queue_reason = 'default_branch_integration_unknown'
+        $result.next_action = '当前收尾继续追溯 owner、独有内容和默认分支可达性；无法查清则 BLOCK'
+        return [pscustomobject] $result
+    }
+    if ($IntegrationState -eq 'unmerged') {
+        $result.needs_review = $true
+        $result.queue_reason = if ($HasWorktree) {
+            'unintegrated_worktree_commit'
+        }
+        else {
+            'unintegrated_branch_commit'
+        }
+        $result.next_action = '验证后将独有提交整合到仓库实际默认分支'
+        return [pscustomobject] $result
+    }
+    if ($IntegrationState -in @('merged_ancestry', 'patch_equivalent')) {
+        $result.needs_review = $true
+        $result.retirement_candidate = $true
+        $result.queue_reason = if ($HasWorktree) {
+            'merged_residual_worktree'
+        }
+        else {
+            'merged_residual_branch'
+        }
+        $result.next_action = if ($HasWorktree) {
+            '确认无活跃依赖后移除已整合的临时 worktree，再删除分支'
+        }
+        else {
+            '确认无活跃依赖后删除已整合的残留分支'
+        }
+    }
+
+    return [pscustomobject] $result
+}
+
 function Get-GitConfigPaths {
     param([string[]] $Roots)
 
@@ -556,6 +680,7 @@ function ConvertTo-GitHubIndexRows {
                 DirtyCount    = 0
                 PinnedSnapshotCount = 0
                 PinnedObservedBehind = 0
+                NecessaryRetentionCount = 0
                 QueueReason   = ''
                 PushedAt      = $repo.pushedAt
                 UpdatedAt     = $repo.updatedAt
@@ -583,6 +708,7 @@ function ConvertTo-GitHubIndexRows {
                 DirtyCount    = 0
                 PinnedSnapshotCount = 0
                 PinnedObservedBehind = 0
+                NecessaryRetentionCount = 0
                 QueueReason   = ''
                 PushedAt      = $repo.pushedAt
                 UpdatedAt     = $repo.updatedAt
@@ -592,7 +718,7 @@ function ConvertTo-GitHubIndexRows {
         }
 
         $primary = $clones | Select-Object -First 1
-        $paths = ($clones | ForEach-Object { $_.Path }) -join '<br>'
+        $paths = ($clones | ForEach-Object { $_.Path } | Select-Object -Unique) -join '<br>'
         $states = ($clones | ForEach-Object { $_.State }) -join '<br>'
         $actions = ($clones | ForEach-Object { $_.NextAction } | Sort-Object -Unique) -join '<br>'
         $needsReview = @($clones | Where-Object { $_.NeedsReview }).Count -gt 0
@@ -601,6 +727,9 @@ function ConvertTo-GitHubIndexRows {
         $behind = @($clones | Measure-Object -Property Behind -Sum).Sum
         $pinnedSnapshots = @($clones | Where-Object {
             $null -ne $_.PSObject.Properties['IsPinnedSnapshot'] -and [bool] $_.IsPinnedSnapshot
+        })
+        $necessaryRetentions = @($clones | Where-Object {
+            $null -ne $_.PSObject.Properties['IsNecessaryRetention'] -and [bool] $_.IsNecessaryRetention
         })
         $pinnedObservedBehindValues = @($pinnedSnapshots | ForEach-Object {
             if ($null -ne $_.PinnedObservedBehind) { [int] $_.PinnedObservedBehind }
@@ -620,6 +749,7 @@ function ConvertTo-GitHubIndexRows {
             if ($dirtyCount -gt 0) { $reasons += "脏工作区 $dirtyCount 项" }
             if (@($clones | Where-Object {
                 (-not ($null -ne $_.PSObject.Properties['IsPinnedSnapshot'] -and [bool] $_.IsPinnedSnapshot)) -and
+                (-not ($null -ne $_.PSObject.Properties['IsNecessaryRetention'] -and [bool] $_.IsNecessaryRetention)) -and
                 [string]::IsNullOrWhiteSpace([string] $_.Upstream)
             }).Count -gt 0) { $reasons += '无 upstream' }
             foreach ($cloneReason in @($clones | ForEach-Object { @($_.QueueReasons) })) {
@@ -644,6 +774,7 @@ function ConvertTo-GitHubIndexRows {
             DirtyCount    = [int] $dirtyCount
             PinnedSnapshotCount = $pinnedSnapshots.Count
             PinnedObservedBehind = $pinnedObservedBehind
+            NecessaryRetentionCount = $necessaryRetentions.Count
             QueueReason   = $queueReason
             PushedAt      = $repo.pushedAt
             UpdatedAt     = $repo.updatedAt
@@ -728,8 +859,77 @@ function Resolve-CloneStatuses {
                 else {
                     $null
                 }
-                $actionableBehind = if ($pinnedSnapshot) { 0 } else { $behind }
-                $state = if ($pinnedSnapshot) {
+                $externalGovernance = $null -ne $worktree.PSObject.Properties['external_governance'] -and
+                    [bool] $worktree.external_governance
+                $governanceOwner = if ($externalGovernance) {
+                    [string] $worktree.governance_owner
+                }
+                else {
+                    $null
+                }
+                $necessaryRetentionState = Get-RegisteredNecessaryRetentionState `
+                    -Worktree $worktree `
+                    -InspectionFailed:$inspectionFailed `
+                    -DirtyCount $observedDirtyCount
+                $necessaryRetention = $null -ne $necessaryRetentionState
+                $retentionOwner = if ($necessaryRetention) {
+                    [string] $necessaryRetentionState.owner
+                }
+                else {
+                    $null
+                }
+                $retentionPurpose = if ($necessaryRetention) {
+                    [string] $necessaryRetentionState.purpose
+                }
+                else {
+                    $null
+                }
+                $retentionExitCondition = if ($necessaryRetention) {
+                    [string] $necessaryRetentionState.exit_condition
+                }
+                else {
+                    $null
+                }
+                $protectedRetention = [bool] $pinnedSnapshot -or $necessaryRetention
+                $integrationState = if ($null -ne $worktree.PSObject.Properties['integration_state'] -and
+                    -not [string]::IsNullOrWhiteSpace([string] $worktree.integration_state)) {
+                    [string] $worktree.integration_state
+                }
+                else {
+                    'unknown'
+                }
+                $isDefaultBranch = $null -ne $worktree.PSObject.Properties['is_default_branch'] -and
+                    [bool] $worktree.is_default_branch
+                $missingDefaultCommits = if ($null -ne $worktree.PSObject.Properties['missing_default_commits']) {
+                    $worktree.missing_default_commits
+                }
+                else {
+                    $null
+                }
+                $uniqueCommitsVsDefault = if ($null -ne $worktree.PSObject.Properties['unique_commits_vs_default']) {
+                    $worktree.unique_commits_vs_default
+                }
+                else {
+                    $null
+                }
+                $convergence = Get-BranchConvergenceDisposition `
+                    -IntegrationState $integrationState `
+                    -IsDefaultBranch:$isDefaultBranch `
+                    -DirtyCount $observedDirtyCount `
+                    -HasWorktree:$true `
+                    -PinnedSnapshot:$protectedRetention `
+                    -Locked:([bool] $worktree.locked) `
+                    -Prunable:([bool] $worktree.prunable) `
+                    -Detached:([bool] $worktree.detached) `
+                    -Exists ([bool] $worktree.exists)
+                $actionableBehind = if ($protectedRetention) { 0 } else { $behind }
+                $state = if ($externalGovernance) {
+                    "``$([string] $worktree.branch)`` 由 $governanceOwner 外部 owner 治理，不纳入 Codex 收敛判断"
+                }
+                elseif ($necessaryRetention) {
+                    "必要保留：$retentionPurpose；owner：$retentionOwner；退出条件：$retentionExitCondition"
+                }
+                elseif ($pinnedSnapshot) {
                     $distance = if ($pinnedSnapshot.detached) {
                         'detached 且无 upstream'
                     }
@@ -750,21 +950,54 @@ function Resolve-CloneStatuses {
                 else {
                     Get-RepoStateText -Branch ([string] $worktree.branch) -HasUpstream:$hasUpstream -Ahead $ahead -Behind $behind -DirtyCount $dirtyCount
                 }
+                if (-not $externalGovernance -and -not $protectedRetention -and
+                    -not $isDefaultBranch -and -not $worktree.detached) {
+                    if ($integrationState -eq 'unmerged') {
+                        $missingText = if ($null -ne $missingDefaultCommits) { [int] $missingDefaultCommits } else { '?' }
+                        $state += "，默认分支缺少 $missingText 个提交"
+                    }
+                    elseif ($integrationState -in @('merged_ancestry', 'patch_equivalent')) {
+                        $state += '，内容已由默认分支吸收'
+                    }
+                    elseif ($integrationState -eq 'unknown') {
+                        $state += '，默认分支整合状态未知'
+                    }
+                }
                 $state += "（$($admission.remote_mode)）"
 
                 $queueReasons = [System.Collections.Generic.List[string]]::new()
-                if ($worktree.prunable) { $queueReasons.Add('prunable worktree') }
-                if ($worktree.detached -and -not $pinnedSnapshot) { $queueReasons.Add('detached worktree') }
-                if ($admission.remote_mode -eq 'cached') { $queueReasons.Add('cached 远端引用') }
-                foreach ($errorReason in $repoErrorReasons) { $queueReasons.Add($errorReason) }
-                $nextAction = if ($repoErrorReasons.Count -gt 0) {
+                if (-not $externalGovernance) {
+                    if ($worktree.prunable) { $queueReasons.Add('prunable worktree') }
+                    if ($worktree.detached -and -not $protectedRetention) { $queueReasons.Add('detached worktree') }
+                    if (-not [string]::IsNullOrWhiteSpace([string] $convergence.queue_reason)) {
+                        $queueReasons.Add([string] $convergence.queue_reason)
+                    }
+                    if (-not $protectedRetention -and $integrationState -eq 'unmerged' -and
+                        $convergence.queue_reason -ne 'unintegrated_worktree_commit') {
+                        $queueReasons.Add('unintegrated_worktree_commit')
+                    }
+                    if (-not $necessaryRetention -and $admission.remote_mode -eq 'cached') {
+                        $queueReasons.Add('cached 远端引用')
+                    }
+                    foreach ($errorReason in $repoErrorReasons) { $queueReasons.Add($errorReason) }
+                }
+                $nextAction = if ($externalGovernance) {
+                    "无；由 $governanceOwner owner 管理"
+                }
+                elseif ($repoErrorReasons.Count -gt 0) {
                     '远端观察失败；当前仅使用 cached 引用，需人工复查'
                 }
                 elseif ($worktree.prunable) {
                     '清理或恢复 prunable worktree 元数据'
                 }
+                elseif ($necessaryRetention) {
+                    "保持必要保留；退出条件：$retentionExitCondition"
+                }
                 elseif ($pinnedSnapshot) {
                     '保持提交固定审计快照；需要新证据时创建新审计副本'
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace([string] $convergence.next_action)) {
+                    [string] $convergence.next_action
                 }
                 else {
                     Get-RepoNextAction -Visibility ([string] $repo.visibility) -HasUpstream:$hasUpstream -Ahead $ahead -Behind $actionableBehind -DirtyCount $dirtyCount
@@ -773,19 +1006,135 @@ function Resolve-CloneStatuses {
                 [pscustomobject]@{
                     Path = $worktree.path
                     Branch = [string] $worktree.branch
-                    Upstream = [string] $worktree.upstream
-                    Ahead = $ahead
-                    Behind = $actionableBehind
-                    DirtyCount = $dirtyCount
+                    Upstream = if ($externalGovernance) { '[external-owner]' } else { [string] $worktree.upstream }
+                    Ahead = if ($externalGovernance) { 0 } else { $ahead }
+                    Behind = if ($externalGovernance) { 0 } else { $actionableBehind }
+                    DirtyCount = if ($externalGovernance) { 0 } else { $dirtyCount }
                     State = $state
                     NextAction = $nextAction
-                    IsDirty = $dirtyCount -gt 0
+                    IsDirty = (-not $externalGovernance) -and $dirtyCount -gt 0
                     IsPinnedSnapshot = [bool] $pinnedSnapshot
                     PinnedSnapshotCommit = if ($pinnedSnapshot) { [string] $pinnedSnapshot.commit_prefix } else { $null }
                     PinnedObservedBehind = if ($pinnedSnapshot -and $null -ne $pinnedSnapshot.observed_behind) { [int] $pinnedSnapshot.observed_behind } else { $null }
-                    NeedsReview = $inspectionFailed -or $repoErrorReasons.Count -gt 0 -or $worktree.prunable -or ((-not $hasUpstream) -and -not $pinnedSnapshot) -or $ahead -gt 0 -or $actionableBehind -gt 0 -or $dirtyCount -gt 0
+                    IsNecessaryRetention = $necessaryRetention
+                    RetentionOwner = $retentionOwner
+                    RetentionPurpose = $retentionPurpose
+                    RetentionExitCondition = $retentionExitCondition
+                    IntegrationState = $integrationState
+                    IsDefaultBranch = $isDefaultBranch
+                    UniqueCommitsVsDefault = $uniqueCommitsVsDefault
+                    MissingDefaultCommits = $missingDefaultCommits
+                    RetirementCandidate = (-not $externalGovernance) -and
+                        (-not $necessaryRetention) -and [bool] $convergence.retirement_candidate
+                    NeedsReview = (-not $externalGovernance) -and (
+                        $inspectionFailed -or $repoErrorReasons.Count -gt 0 -or
+                        $worktree.prunable -or ((-not $hasUpstream) -and -not $protectedRetention) -or
+                        $ahead -gt 0 -or $actionableBehind -gt 0 -or
+                        $dirtyCount -gt 0 -or [bool] $convergence.needs_review
+                    )
                     QueueReasons = @($queueReasons)
                     RemoteMode = $admission.remote_mode
+                    ExternalGovernance = $externalGovernance
+                    GovernanceOwner = $governanceOwner
+                }
+            }
+            foreach ($branchRecord in @($admission.branches | Where-Object {
+                -not $_.has_worktree -and -not $_.is_default_branch
+            })) {
+                $branchIntegrationState = if ([string]::IsNullOrWhiteSpace([string] $branchRecord.integration_state)) {
+                    'unknown'
+                }
+                else {
+                    [string] $branchRecord.integration_state
+                }
+                $branchExternalGovernance = $null -ne $branchRecord.PSObject.Properties['external_governance'] -and
+                    [bool] $branchRecord.external_governance
+                $branchGovernanceOwner = if ($branchExternalGovernance) {
+                    [string] $branchRecord.governance_owner
+                }
+                else {
+                    $null
+                }
+                $branchConvergence = Get-BranchConvergenceDisposition `
+                    -IntegrationState $branchIntegrationState `
+                    -IsDefaultBranch:$false `
+                    -DirtyCount 0 `
+                    -HasWorktree:$false
+                $branchRefLabel = if ($branchRecord.ref_kind -eq 'remote_tracking') {
+                    'remote-tracking branch ref'
+                }
+                else {
+                    '本地 branch ref'
+                }
+                $branchState = if ($branchExternalGovernance) {
+                    "``$($branchRecord.branch)`` 由 $branchGovernanceOwner 外部 owner 治理，不纳入 Codex 收敛判断"
+                }
+                elseif ($branchIntegrationState -eq 'unmerged') {
+                    $missingText = if ($null -ne $branchRecord.missing_default_commits) {
+                        [int] $branchRecord.missing_default_commits
+                    }
+                    else {
+                        '?'
+                    }
+                    "``$($branchRecord.branch)`` 仅有 $branchRefLabel，默认分支缺少 $missingText 个提交"
+                }
+                elseif ($branchIntegrationState -in @('merged_ancestry', 'patch_equivalent')) {
+                    "``$($branchRecord.branch)`` 仅有 $branchRefLabel，内容已由默认分支吸收"
+                }
+                else {
+                    "``$($branchRecord.branch)`` 仅有 $branchRefLabel，默认分支整合状态未知"
+                }
+                $branchState += "（$($admission.remote_mode)）"
+                $branchQueueReasons = [System.Collections.Generic.List[string]]::new()
+                if (-not $branchExternalGovernance) {
+                    if (-not [string]::IsNullOrWhiteSpace([string] $branchConvergence.queue_reason)) {
+                        $branchQueueReasons.Add([string] $branchConvergence.queue_reason)
+                    }
+                    if ($admission.remote_mode -eq 'cached') { $branchQueueReasons.Add('cached 远端引用') }
+                    foreach ($errorReason in $repoErrorReasons) { $branchQueueReasons.Add($errorReason) }
+                }
+
+                [pscustomobject]@{
+                    Path = $clone.Path
+                    Branch = [string] $branchRecord.branch
+                    Upstream = if ($branchExternalGovernance) {
+                        '[external-owner]'
+                    }
+                    else {
+                        [string] $branchRecord.upstream
+                    }
+                    Ahead = 0
+                    Behind = 0
+                    DirtyCount = 0
+                    State = $branchState
+                    NextAction = if ($branchExternalGovernance) {
+                        "无；由 $branchGovernanceOwner owner 管理"
+                    }
+                    else {
+                        [string] $branchConvergence.next_action
+                    }
+                    IsDirty = $false
+                    IsPinnedSnapshot = $false
+                    PinnedSnapshotCommit = $null
+                    PinnedObservedBehind = $null
+                    IsNecessaryRetention = $false
+                    RetentionOwner = $null
+                    RetentionPurpose = $null
+                    RetentionExitCondition = $null
+                    IntegrationState = $branchIntegrationState
+                    IsDefaultBranch = $false
+                    UniqueCommitsVsDefault = $branchRecord.unique_commits_vs_default
+                    MissingDefaultCommits = $branchRecord.missing_default_commits
+                    RetirementCandidate = (-not $branchExternalGovernance) -and
+                        [bool] $branchConvergence.retirement_candidate
+                    NeedsReview = (-not $branchExternalGovernance) -and (
+                        $repoErrorReasons.Count -gt 0 -or [bool] $branchConvergence.needs_review
+                    )
+                    QueueReasons = @($branchQueueReasons)
+                    RemoteMode = $admission.remote_mode
+                    IsBranchOnly = $true
+                    ExternalGovernance = $branchExternalGovernance
+                    GovernanceOwner = $branchGovernanceOwner
                 }
             }
         }

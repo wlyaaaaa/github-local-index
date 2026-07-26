@@ -1,6 +1,6 @@
 # 我的 GitHub 项目管理指南
 
-> 面向用户的产品与设计说明｜更新：2026-07-13（中国时间 UTC+8）
+> 面向用户的产品与设计说明｜更新：2026-07-26（中国时间 UTC+8）
 
 GitHub 总索引把这台电脑上分散的 Git 仓库变成可查询的公开安全视图：项目在哪里、远端和可见性是什么、分支与 worktree 状态怎样，以及准备发布时应关注哪些风险。它是能力和证据来源，不是每个项目任务必须逐站通过的流水线。
 
@@ -51,6 +51,9 @@ flowchart TB
 - 本地仓库路径、Git 根、remote 和 GitHub identity；
 - visibility、当前分支、默认分支与 upstream；
 - 全部 worktree 的 staged、unstaged、untracked、conflicted 状态；
+- 本地及 `origin/*` branch inventory，以及各分支相对实际远端默认分支的 `default`、`merged_ancestry`、`patch_equivalent`、`unmerged` 或 `unknown`；
+- `config\git-artifact-governance.json` 中 exact-match 的跨 owner ref；它们保留为证据，但不会被误报成 Codex 应整合或删除的分支；
+- 同一 registry 中同时精确匹配 repo、绝对路径和 HEAD 的必要保留 worktree；它必须写明 owner、用途和退出条件，路径、提交或 clean 健康一旦漂移就重新进入处理队列；
 - ahead、behind、diverged、no-upstream 等 transport 条件；
 - cached 或 live 的证据新鲜度。
 
@@ -69,7 +72,7 @@ provider 的结论需要按边界解释：
 - `decision` 表示 provider 是否取得足够的项目进入证据；`block` 应停止基于该证据的写入和直接 transport，但只读诊断可以继续。
 - `push_decision` / `push_strategy` 只描述 Git transport readiness。
 - V1 不提供 `publication_decision`，也不授予外部写入。
-- cached、unknown 或冲突结果要结合风险决定补充什么证据，不能自动当成安全或失败的全部结论。
+- cached、unknown 或冲突结果要继续补取 owner、独有内容、默认分支可达性与 PR/release/交接证据；对个人仓库，`unknown` 只能是删除前的瞬时保护，不能成为长期“先留着”状态。
 
 需要时可运行：
 

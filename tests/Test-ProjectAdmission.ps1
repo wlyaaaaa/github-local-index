@@ -115,6 +115,113 @@ if ($syncStateCommand) {
     }
 }
 
+$integrationEvidenceCommand = Get-Command Get-GitDefaultBranchIntegrationEvidence -ErrorAction SilentlyContinue
+$branchInventoryCommand = Get-Command Get-GitRepositoryBranchInventory -ErrorAction SilentlyContinue
+$artifactGovernanceCommand = Get-Command Get-GitArtifactGovernance -ErrorAction SilentlyContinue
+$artifactRetentionCommand = Get-Command Get-GitArtifactRetention -ErrorAction SilentlyContinue
+$artifactRegistryReaderCommand = Get-Command Read-GitArtifactGovernanceRegistry -ErrorAction SilentlyContinue
+Assert-True ($null -ne $integrationEvidenceCommand) 'admission core exposes default-branch integration evidence'
+Assert-True ($null -ne $branchInventoryCommand) 'admission core exposes local branch inventory'
+Assert-True ($null -ne $artifactGovernanceCommand) 'admission core exposes explicit artifact-owner governance'
+Assert-True ($null -ne $artifactRetentionCommand) 'admission core exposes explicit necessary-retention evidence'
+Assert-True ($null -ne $artifactRegistryReaderCommand) 'artifact registry exposes a fail-closed reader'
+$registryTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+    'github-index-registry-' + [guid]::NewGuid().ToString('N')
+)
+try {
+    New-Item -ItemType Directory -Path $registryTestRoot | Out-Null
+    $missingRegistryBlocked = $false
+    try {
+        Read-GitArtifactGovernanceRegistry -Path (Join-Path $registryTestRoot 'missing.json') | Out-Null
+    }
+    catch {
+        $missingRegistryBlocked = $true
+    }
+    Assert-True $missingRegistryBlocked 'missing artifact registry fails closed'
+    $wrongSchemaPath = Join-Path $registryTestRoot 'wrong-schema.json'
+    Set-Content -LiteralPath $wrongSchemaPath -Value '{"schema":"wrong","entries":[],"retentions":[]}' -Encoding utf8
+    $wrongSchemaBlocked = $false
+    try {
+        Read-GitArtifactGovernanceRegistry -Path $wrongSchemaPath | Out-Null
+    }
+    catch {
+        $wrongSchemaBlocked = $true
+    }
+    Assert-True $wrongSchemaBlocked 'wrong artifact registry schema fails closed'
+    $invalidEntryPath = Join-Path $registryTestRoot 'invalid-entry.json'
+    Set-Content -LiteralPath $invalidEntryPath -Value @'
+{"schema":"github-local-index.git-artifact-governance.v1","entries":[{"repo":"wlyaaaaa/.agents","owner":"","refs":["codex/example"]}],"retentions":[]}
+'@ -Encoding utf8
+    $invalidEntryBlocked = $false
+    try {
+        Read-GitArtifactGovernanceRegistry -Path $invalidEntryPath | Out-Null
+    }
+    catch {
+        $invalidEntryBlocked = $true
+    }
+    Assert-True $invalidEntryBlocked 'invalid artifact owner entry fails closed'
+    $duplicateRefPath = Join-Path $registryTestRoot 'duplicate-ref.json'
+    Set-Content -LiteralPath $duplicateRefPath -Value @'
+{"schema":"github-local-index.git-artifact-governance.v1","entries":[{"repo":"wlyaaaaa/.agents","owner":"PersonalOS","refs":["codex/example","origin/codex/example"]}],"retentions":[]}
+'@ -Encoding utf8
+    $duplicateRefBlocked = $false
+    try {
+        Read-GitArtifactGovernanceRegistry -Path $duplicateRefPath | Out-Null
+    }
+    catch {
+        $duplicateRefBlocked = $true
+    }
+    Assert-True $duplicateRefBlocked 'duplicate normalized artifact ref fails closed'
+}
+finally {
+    if (Test-Path -LiteralPath $registryTestRoot) {
+        Remove-Item -LiteralPath $registryTestRoot -Recurse -Force
+    }
+}
+$personalOSArtifact = Get-GitArtifactGovernance `
+    -Repo 'wlyaaaaa/.agents' `
+    -Branch 'origin/codex/personalos-beacon-receipt'
+Assert-Equal 'PersonalOS' $personalOSArtifact.owner 'artifact registry identifies the explicit PersonalOS owner'
+Assert-True ($null -eq (Get-GitArtifactGovernance `
+    -Repo 'wlyaaaaa/.agents' `
+    -Branch 'codex/ordinary-feature')) 'artifact registry does not suppress ordinary future feature branches'
+$governedEvidence = & $admissionModule {
+    $worktree = [pscustomobject]@{ branch = 'codex/personalos-beacon-receipt' }
+    $branch = [pscustomobject]@{ branch = 'origin/codex/personalos-beacon-receipt' }
+    Add-GitArtifactGovernanceEvidence `
+        -Repo 'wlyaaaaa/.agents' `
+        -Worktrees @($worktree) `
+        -Branches @($branch)
+    [pscustomobject]@{ worktree = $worktree; branch = $branch }
+}
+Assert-True $governedEvidence.worktree.external_governance 'worktree evidence marks the explicit external owner'
+Assert-True $governedEvidence.branch.external_governance 'remote branch evidence marks the explicit external owner'
+$runtimeRetention = Get-GitArtifactRetention `
+    -Repo 'wlyaaaaa/codex-local-remote' `
+    -Path 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' `
+    -Head '2a76e3638e4d22db63e07389810dc47c1d1b03c3'
+Assert-Equal 'PCConfig' $runtimeRetention.owner 'retention registry identifies the live runtime evidence owner'
+Assert-True (-not [string]::IsNullOrWhiteSpace($runtimeRetention.exit_condition)) `
+    'necessary retention always carries an explicit exit condition'
+Assert-True ($null -eq (Get-GitArtifactRetention `
+    -Repo 'wlyaaaaa/codex-local-remote' `
+    -Path 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' `
+    -Head '0000000000000000000000000000000000000000')) `
+    'retention registry never suppresses a path whose pinned commit changed'
+$retentionEvidence = & $admissionModule {
+    $worktree = [pscustomobject]@{
+        branch = ''
+        path = 'V:\Personal\Worktrees\codex-local-remote-v1-rollback'
+        head = '2a76e3638e4d22db63e07389810dc47c1d1b03c3'
+    }
+    Add-GitArtifactGovernanceEvidence `
+        -Repo 'wlyaaaaa/codex-local-remote' `
+        -Worktrees @($worktree)
+    $worktree
+}
+Assert-True $retentionEvidence.necessary_retention 'worktree evidence marks an exact necessary retention'
+Assert-Equal 'PCConfig' $retentionEvidence.retention_owner 'worktree evidence preserves retention owner'
+
 $pushGuidanceCommand = & $admissionModule { Get-Command Get-ProjectPushGuidance -ErrorAction SilentlyContinue }
 Assert-True ($null -ne $pushGuidanceCommand) 'admission core exposes a private push guidance classifier'
 if ($pushGuidanceCommand) {
@@ -205,6 +312,19 @@ try {
     $aheadWorktrees = @(Get-GitRepositoryWorktrees -Path $primaryPath)
     Assert-Equal 'ahead' ($aheadWorktrees | Where-Object branch -eq 'feature').sync_state 'real worktree fixture produces ahead'
     Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--unset-upstream', 'feature') | Out-Null
+    Invoke-TestGit -Path $linkedPath -Arguments @('push', '-u', 'origin', 'feature') | Out-Null
+    Invoke-TestGit -Path $linkedPath -Arguments @(
+        'push', 'origin', 'feature:refs/heads/codex/remote-unmerged'
+    ) | Out-Null
+    Invoke-TestGit -Path $primaryPath -Arguments @(
+        'push', 'origin', 'main:refs/heads/codex/remote-integrated'
+    ) | Out-Null
+    foreach ($remoteFixtureBranch in @('codex/remote-unmerged', 'codex/remote-integrated')) {
+        Invoke-TestGit -Path $primaryPath -Arguments @(
+            'fetch', 'origin',
+            "refs/heads/$remoteFixtureBranch`:refs/remotes/origin/$remoteFixtureBranch"
+        ) | Out-Null
+    }
 
     $cached = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
     Assert-Equal 'github-local-index.project-admission.v1' $cached.schema 'uses versioned admission schema'
@@ -215,7 +335,7 @@ try {
         'schema', 'observed_utc', 'repo', 'remote_url', 'visibility', 'default_branch',
         'local_root', 'git_common_dir', 'remote_mode', 'metadata_mode', 'refs_mode',
         'target_worktree', 'target_ref', 'decision', 'push_decision', 'push_strategy',
-        'reasons', 'errors', 'worktrees'
+        'reasons', 'errors', 'worktrees', 'branches'
     )
     foreach ($propertyName in $requiredAdmissionProperties) {
         Assert-True ($cached.PSObject.Properties.Name -contains $propertyName) "normal admission JSON contains $propertyName"
@@ -246,6 +366,22 @@ try {
     Assert-True ($cached.reasons -contains 'dirty_worktree') 'reports dirty worktree reason'
     Assert-True ($cached.reasons -contains 'no_upstream') 'reports no-upstream reason'
     Assert-True ($cached.reasons -contains 'prunable_worktree') 'reports prunable worktree reason'
+    $cachedFeature = $cached.worktrees | Where-Object branch -eq 'feature'
+    Assert-Equal 'in_sync' $cachedFeature.sync_state 'feature can be fully synchronized with its own upstream'
+    Assert-Equal 'unmerged' $cachedFeature.integration_state 'feature synchronized to its upstream remains unmerged from default'
+    Assert-Equal 1 $cachedFeature.missing_default_commits 'reports commits visible only from the feature worktree'
+    Assert-True ($cached.reasons -contains 'default_branch_missing_commits') 'admission reports default branch missing feature commits'
+    Assert-True (@($cached.branches | Where-Object branch -eq 'feature').Count -eq 1) 'admission retains local branch integration inventory'
+    Assert-True (@($cached.branches | Where-Object {
+        $_.branch -eq 'origin/codex/remote-unmerged' -and
+        $_.ref_kind -eq 'remote_tracking' -and
+        $_.integration_state -eq 'unmerged'
+    }).Count -eq 1) 'admission detects a remote-only branch whose commit is missing from default'
+    Assert-True (@($cached.branches | Where-Object {
+        $_.branch -eq 'origin/codex/remote-integrated' -and
+        $_.ref_kind -eq 'remote_tracking' -and
+        $_.retirement_candidate
+    }).Count -eq 1) 'admission detects an integrated remote-only branch as a retirement candidate'
     Assert-Equal 'warn' $cached.push_decision 'cached dirty admission warns before direct push'
     Assert-Equal 'clean_or_stage_explicitly' $cached.push_strategy 'dirty worktree takes precedence over cached evidence'
     Assert-True ([datetimeoffset]::Parse($cached.observed_utc).Offset -eq [timespan]::Zero) 'timestamps observation in UTC'
@@ -378,6 +514,137 @@ try {
     $divergedWorktrees = @(Get-GitRepositoryWorktrees -Path $primaryPath)
     Assert-Equal 'diverged' ($divergedWorktrees | Where-Object branch -eq 'feature').sync_state 'real worktree fixture produces diverged'
     Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--unset-upstream', 'feature') | Out-Null
+
+    $integrationPath = Join-Path $tempRoot 'integration'
+    Invoke-TestGit -Path $tempRoot -Arguments @('init', '--initial-branch=main', $integrationPath) | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('config', 'user.name', 'Integration Test') | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('config', 'user.email', 'integration@example.invalid') | Out-Null
+    Set-Content -LiteralPath (Join-Path $integrationPath 'base.txt') -Value 'base' -Encoding utf8
+    Invoke-TestGit -Path $integrationPath -Arguments @('add', 'base.txt') | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('commit', '-m', 'base') | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('switch', '-c', 'feature-equivalent') | Out-Null
+    Set-Content -LiteralPath (Join-Path $integrationPath 'feature.txt') -Value 'feature' -Encoding utf8
+    Invoke-TestGit -Path $integrationPath -Arguments @('add', 'feature.txt') | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('commit', '-m', 'feature patch') | Out-Null
+    $featureEquivalentHead = Invoke-TestGit -Path $integrationPath -Arguments @('rev-parse', 'HEAD')
+    Invoke-TestGit -Path $integrationPath -Arguments @('switch', 'main') | Out-Null
+    Set-Content -LiteralPath (Join-Path $integrationPath 'main-only.txt') -Value 'main only' -Encoding utf8
+    Invoke-TestGit -Path $integrationPath -Arguments @('add', 'main-only.txt') | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('commit', '-m', 'main only') | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('cherry-pick', $featureEquivalentHead) | Out-Null
+    Invoke-TestGit -Path $integrationPath -Arguments @('branch', 'merged-residual') | Out-Null
+
+    $patchEquivalent = Get-GitDefaultBranchIntegrationEvidence `
+        -Path $integrationPath -DefaultBranch 'main' -Head $featureEquivalentHead -Branch 'feature-equivalent'
+    Assert-Equal 'patch_equivalent' $patchEquivalent.integration_state 'detects a feature patch absorbed under a different commit'
+    Assert-Equal 0 $patchEquivalent.missing_default_commits 'patch-equivalent feature leaves no content missing from default'
+    $integrationBranches = @(Get-GitRepositoryBranchInventory -Path $integrationPath -DefaultBranch 'main')
+    Assert-True (@($integrationBranches | Where-Object {
+        $_.branch -eq 'merged-residual' -and $_.integration_state -eq 'merged_ancestry' -and $_.retirement_candidate
+    }).Count -eq 1) 'detects an integrated local branch without a worktree as a retirement candidate'
+    $unknownIntegration = Get-GitDefaultBranchIntegrationEvidence `
+        -Path $integrationPath -DefaultBranch 'missing-default' -Head $featureEquivalentHead -Branch 'feature-equivalent'
+    Assert-Equal 'unknown' $unknownIntegration.integration_state 'missing default ref fails closed as unknown'
+
+    $singleBranchPath = Join-Path $tempRoot 'single-snapshot-branch'
+    Invoke-TestGit -Path $tempRoot -Arguments @(
+        'init', '--initial-branch=codex/snapshot', $singleBranchPath
+    ) | Out-Null
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('config', 'user.name', 'Snapshot Test') | Out-Null
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('config', 'user.email', 'snapshot@example.invalid') | Out-Null
+    Set-Content -LiteralPath (Join-Path $singleBranchPath 'snapshot.txt') -Value 'snapshot' -Encoding utf8
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('add', 'snapshot.txt') | Out-Null
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('commit', '-m', 'snapshot') | Out-Null
+    $singleSnapshotHead = Invoke-TestGit -Path $singleBranchPath -Arguments @('rev-parse', 'HEAD')
+    Set-Content -LiteralPath (Join-Path $singleBranchPath 'successor.txt') -Value 'successor' -Encoding utf8
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('add', 'successor.txt') | Out-Null
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('commit', '-m', 'successor') | Out-Null
+    $singleRemoteHead = Invoke-TestGit -Path $singleBranchPath -Arguments @('rev-parse', 'HEAD')
+    Invoke-TestGit -Path $singleBranchPath -Arguments @(
+        'update-ref', 'refs/remotes/origin/codex/snapshot', $singleRemoteHead
+    ) | Out-Null
+    Invoke-TestGit -Path $singleBranchPath -Arguments @('reset', '--hard', $singleSnapshotHead) | Out-Null
+    Invoke-TestGit -Path $singleBranchPath -Arguments @(
+        'remote', 'add', 'origin', 'https://github.com/example/single-snapshot.git'
+    ) | Out-Null
+    $singleBranchInventory = @(
+        Get-GitRepositoryBranchInventory -Path $singleBranchPath -DefaultBranch 'main'
+    )
+    Assert-Equal 2 $singleBranchInventory.Count `
+        'single local branch plus a different remote-tracking tip remains an array'
+    Assert-Equal 1 @($singleBranchInventory | Where-Object ref_kind -eq 'local').Count `
+        'single-branch inventory preserves the local snapshot ref'
+    Assert-Equal 1 @($singleBranchInventory | Where-Object ref_kind -eq 'remote_tracking').Count `
+        'single-branch inventory appends the distinct remote-tracking ref'
+    Assert-True (@($singleBranchInventory | Where-Object integration_state -eq 'unknown').Count -eq 2) `
+        'missing default ref stays explicitly unknown without throwing'
+    $singleBranchAdmission = Get-ProjectAdmissionRecord `
+        -Repo 'example/single-snapshot' `
+        -RepoPath $singleBranchPath `
+        -Visibility 'PRIVATE' `
+        -DefaultBranch 'main'
+    Assert-True (@($singleBranchAdmission.errors | Where-Object {
+        $_.category -eq 'default_branch_integration_failed'
+    }).Count -eq 0) 'single-branch inventory no longer becomes a provider failure'
+
+    $remoteGateBarePath = Join-Path $tempRoot 'remote-gate.git'
+    $remoteGatePath = Join-Path $tempRoot 'remote-gate'
+    Invoke-TestGit -Path $tempRoot -Arguments @('init', '--bare', $remoteGateBarePath) | Out-Null
+    & git clone $remoteGateBarePath $remoteGatePath 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'failed to clone remote default gate fixture' }
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('config', 'user.name', 'Remote Gate Test') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('config', 'user.email', 'remote-gate@example.invalid') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('switch', '-c', 'main') | Out-Null
+    Set-Content -LiteralPath (Join-Path $remoteGatePath 'base.txt') -Value 'base' -Encoding utf8
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('add', 'base.txt') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('commit', '-m', 'base') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('push', '-u', 'origin', 'main') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('switch', '-c', 'gate-feature') | Out-Null
+    Set-Content -LiteralPath (Join-Path $remoteGatePath 'gate.txt') -Value 'gate' -Encoding utf8
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('add', 'gate.txt') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('commit', '-m', 'gate feature') | Out-Null
+    $remoteGateTarget = Invoke-TestGit -Path $remoteGatePath -Arguments @('rev-parse', 'HEAD')
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('switch', 'main') | Out-Null
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('merge', '--ff-only', 'gate-feature') | Out-Null
+    $beforeRemotePush = Get-GitDefaultBranchIntegrationEvidence `
+        -Path $remoteGatePath -DefaultBranch 'main' -Head $remoteGateTarget -Branch 'gate-feature'
+    Assert-Equal 'refs/remotes/origin/main' $beforeRemotePush.default_ref 'completion gate compares with the actual remote default ref'
+    Assert-Equal 'unmerged' $beforeRemotePush.integration_state 'local default reachability alone does not pass before the remote default is pushed'
+    Invoke-TestGit -Path $remoteGatePath -Arguments @('push', 'origin', 'main') | Out-Null
+    $afterRemotePush = Get-GitDefaultBranchIntegrationEvidence `
+        -Path $remoteGatePath -DefaultBranch 'main' -Head $remoteGateTarget -Branch 'gate-feature'
+    Assert-Equal 'merged_ancestry' $afterRemotePush.integration_state 'remote default reachability passes after normal push'
+    Assert-Equal 0 $afterRemotePush.missing_default_commits 'pushed default branch contains the target commit'
+
+    $ownerBoundaryPath = Join-Path $tempRoot 'artifact-owner-boundary'
+    Invoke-TestGit -Path $tempRoot -Arguments @('init', '--initial-branch=main', $ownerBoundaryPath) | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('config', 'user.name', 'Owner Boundary Test') | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('config', 'user.email', 'owner-boundary@example.invalid') | Out-Null
+    Set-Content -LiteralPath (Join-Path $ownerBoundaryPath 'main.txt') -Value 'main' -Encoding utf8
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('add', 'main.txt') | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('commit', '-m', 'main') | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @(
+        'switch', '-c', 'codex/personalos-beacon-receipt'
+    ) | Out-Null
+    Set-Content -LiteralPath (Join-Path $ownerBoundaryPath 'owner.txt') -Value 'external owner' -Encoding utf8
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('add', 'owner.txt') | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('commit', '-m', 'external owner fixture') | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @('switch', 'main') | Out-Null
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @(
+        'remote', 'add', 'origin', 'https://github.com/wlyaaaaa/.agents.git'
+    ) | Out-Null
+    $ownerBoundaryAdmission = Get-ProjectAdmissionRecord `
+        -Repo 'wlyaaaaa/.agents' `
+        -RepoPath $ownerBoundaryPath `
+        -Visibility 'PRIVATE' `
+        -DefaultBranch 'main'
+    $protectedOwnerBranch = $ownerBoundaryAdmission.branches | Where-Object {
+        $_.branch -eq 'codex/personalos-beacon-receipt'
+    }
+    Assert-True $protectedOwnerBranch.external_governance 'admission preserves explicit cross-owner branch evidence'
+    Assert-Equal 'PersonalOS' $protectedOwnerBranch.governance_owner 'admission reports the explicit artifact owner'
+    Assert-True (-not ($ownerBoundaryAdmission.reasons -contains 'default_branch_missing_commits')) `
+        'cross-owner branch commits do not become Codex default-branch integration actions'
 
     $failedFetch = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchFailure -GitHubInvoker $ghSuccess
     Assert-Equal 'cached' $failedFetch.remote_mode 'falls back to cached when fetch fails'

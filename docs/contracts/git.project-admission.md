@@ -13,13 +13,13 @@ owner: E:\GitHub总索引
 运行时结构化入口是 `tools/Get-ProjectAdmission.ps1 -Json`，schema 保持 `github-local-index.project-admission.v1`；当前 `.git` 与远端证据比旧 Markdown 快照更有权威。PersonalOS 仅保留 GitHub 目录事实，禁止本 provider 读取其本地路径或给出行动建议。
 
 ## 核心机制
-provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTERNAL` 闭集，非法值 fail closed。`-LiveMetadata` 只读查询 GitHub 且 never fetch；`-RefreshRefs` 才运行 `git fetch`；兼容 `-Fetch` 等价于两者。`-TargetWorktree` / `-TargetRef` 让顶层 decision 只使用精确目标，仍保留全部 worktree 作为证据。
+provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTERNAL` 闭集，非法值 fail closed。`-LiveMetadata` 只读查询 GitHub 且 never fetch；`-RefreshRefs` 才运行 `git fetch`；兼容 `-Fetch` 等价于两者。`-TargetWorktree` / `-TargetRef` 让顶层 decision 只使用精确目标，仍保留全部 worktree 与 branch inventory 作为证据，并比较 target 与实际 remote default branch reachability。exact artifact-owner registry 只排除明确跨 owner ref，不隐藏普通未来分支；exact necessary-retention registry 只为同时匹配 repo、路径和 HEAD 的已查明保留项附带 owner、用途与退出条件，不把名称猜测当作保留依据。
 
 ## 输出合同
-输出仓库 identity、定位、visibility、worktrees、sync、`metadata_mode`、`refs_mode`、目标作用域及 transport 结论；`push_decision` / `push_strategy` 不构成写入或 publication 授权。
+输出仓库 identity、定位、visibility、worktrees、branches、artifact governance、necessary retention、default-branch integration、sync、`metadata_mode`、`refs_mode`、目标作用域及 transport 结论；`push_decision` / `push_strategy` 不构成写入或 publication 授权。
 
 ## 失败与降级
-provider、schema、identity 不明确或证据仍为 cached 时保留限制；`decision=block` 阻止依赖不足证据的写入和直接 transport，但保留 read-only diagnosis。
+provider、schema、identity 不明确或证据仍为 cached 时保留限制；artifact registry 缺失、JSON/schema 无效、owner/ref/retention entry 不完整或重复时在模块加载阶段 fail closed，避免静默失去 owner 边界。`decision=block` 阻止依赖不足证据的写入和直接 transport，但保留 read-only diagnosis。
 
 ## 验证证据
 `tests/Test-ProjectAdmission.ps1` 验证 V1 schema、visibility 闭集、只读 metadata、refs refresh、ref/worktree scope、外部治理排除与兼容 `-Fetch`。

@@ -174,6 +174,69 @@ if ($pinnedSnapshotClassifier) {
         -HasUpstream $false -Detached $true -Ahead 0 -Behind 1 -DirtyCount 0 -Exists $true -Prunable $false)) 'detached snapshot with contradictory behind evidence remains actionable'
 }
 
+$necessaryRetentionClassifier = Get-Command Get-RegisteredNecessaryRetentionState -ErrorAction SilentlyContinue
+Assert-True ($null -ne $necessaryRetentionClassifier) 'explicit necessary-retention classifier exists'
+if ($necessaryRetentionClassifier) {
+    $registeredRuntime = [pscustomobject]@{
+        necessary_retention = $true
+        exists = $true
+        prunable = $false
+        retention_owner = 'PCConfig'
+        retention_purpose = 'live runtime rollback'
+        retention_exit_condition = 'accepted replacement runtime'
+    }
+    $runtimeRetention = Get-RegisteredNecessaryRetentionState `
+        -Worktree $registeredRuntime -InspectionFailed:$false -DirtyCount 0
+    Assert-Equal 'PCConfig' $runtimeRetention.owner 'healthy exact retention is non-actionable'
+    Assert-True ($null -eq (Get-RegisteredNecessaryRetentionState `
+        -Worktree $registeredRuntime -InspectionFailed:$false -DirtyCount 1)) `
+        'dirty registered retention becomes actionable again'
+    Assert-True ($null -eq (Get-RegisteredNecessaryRetentionState `
+        -Worktree $registeredRuntime -InspectionFailed:$true -DirtyCount 0)) `
+        'uninspectable registered retention fails closed'
+    $missingExitRuntime = $registeredRuntime.PSObject.Copy()
+    $missingExitRuntime.retention_exit_condition = ''
+    Assert-True ($null -eq (Get-RegisteredNecessaryRetentionState `
+        -Worktree $missingExitRuntime -InspectionFailed:$false -DirtyCount 0)) `
+        'retention without an exit condition is never suppressed'
+}
+
+$convergenceClassifier = Get-Command Get-BranchConvergenceDisposition -ErrorAction SilentlyContinue
+Assert-True ($null -ne $convergenceClassifier) 'default-branch convergence classifier exists'
+if ($convergenceClassifier) {
+    $unintegrated = Get-BranchConvergenceDisposition `
+        -IntegrationState 'unmerged' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$true
+    Assert-True $unintegrated.needs_review 'clean feature with commits missing from default requires review'
+    Assert-Equal 'unintegrated_worktree_commit' $unintegrated.queue_reason 'classifies worktree-only commits'
+    Assert-True (-not $unintegrated.retirement_candidate) 'unintegrated feature is never a retirement candidate'
+
+    $mergedWorktree = Get-BranchConvergenceDisposition `
+        -IntegrationState 'merged_ancestry' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$true
+    Assert-True $mergedWorktree.retirement_candidate 'clean merged worktree becomes a retirement candidate'
+    Assert-Equal 'merged_residual_worktree' $mergedWorktree.queue_reason 'classifies merged residual worktree'
+
+    $mergedBranch = Get-BranchConvergenceDisposition `
+        -IntegrationState 'patch_equivalent' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$false
+    Assert-True $mergedBranch.retirement_candidate 'patch-equivalent branch without worktree becomes a retirement candidate'
+    Assert-Equal 'merged_residual_branch' $mergedBranch.queue_reason 'classifies merged residual branch'
+
+    $dirtyMerged = Get-BranchConvergenceDisposition `
+        -IntegrationState 'merged_ancestry' -IsDefaultBranch:$false -DirtyCount 1 -HasWorktree:$true
+    Assert-True (-not $dirtyMerged.retirement_candidate) 'dirty merged worktree is never auto-cleanable'
+    Assert-Equal 'active_dirty_worktree' $dirtyMerged.queue_reason 'dirty worktree remains an active-work queue item'
+
+    $pinnedMerged = Get-BranchConvergenceDisposition `
+        -IntegrationState 'merged_ancestry' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$true -PinnedSnapshot
+    Assert-True (-not $pinnedMerged.needs_review) 'pinned snapshot takes precedence over convergence cleanup'
+    Assert-True (-not $pinnedMerged.retirement_candidate) 'pinned snapshot is never a retirement candidate'
+
+    $unknownConvergence = Get-BranchConvergenceDisposition `
+        -IntegrationState 'unknown' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$true
+    Assert-True $unknownConvergence.needs_review 'unknown integration state fails closed'
+    Assert-Equal 'default_branch_integration_unknown' $unknownConvergence.queue_reason 'unknown state has a stable queue reason'
+    Assert-True ($unknownConvergence.next_action -match '继续追溯.*BLOCK') 'unknown state cannot become a permanent keep-for-later outcome'
+}
+
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-unit-' + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot '.git') | Out-Null
@@ -485,6 +548,23 @@ Assert-True (-not ($updateSource -match 'C:\\Users\\10979|G:\\')) 'index generat
 Assert-True (-not ($updateSource -match '&\s*git\s+-C\s+\$Path\s+fetch')) 'index generator has no legacy fetch path that discards exit status'
 Assert-True (-not ($updateSource -match "Join-Path\s+\`$ownerVolumeRoot\s+'PersonalOS")) 'default discovery does not seed PersonalOS local roots'
 Assert-True ($updateSource -match 'Test-IsExternallyGovernedLocalPath') 'future repository discovery applies the central external-governance path exclusion'
+Assert-True ($updateSource -match 'external_governance') 'index generator consumes explicit artifact-owner evidence'
+Assert-True ($updateSource -match 'necessary_retention') 'index generator consumes explicit necessary-retention evidence'
+Assert-True ($updateSource -match '不纳入 Codex 收敛判断') 'externally governed artifacts do not become Codex cleanup recommendations'
+$artifactGovernancePath = Join-Path $repoRoot 'config/git-artifact-governance.json'
+Assert-True (Test-Path -LiteralPath $artifactGovernancePath -PathType Leaf) 'explicit Git artifact-owner registry exists'
+$artifactGovernance = Get-Content -LiteralPath $artifactGovernancePath -Raw -Encoding utf8 | ConvertFrom-Json
+Assert-Equal 'github-local-index.git-artifact-governance.v1' $artifactGovernance.schema 'artifact-owner registry has a stable schema'
+Assert-True (@($artifactGovernance.entries | Where-Object {
+    $_.repo -eq 'wlyaaaaa/.agents' -and $_.owner -eq 'PersonalOS'
+}).Count -eq 1) 'artifact-owner registry protects explicit PersonalOS refs without suppressing the whole .agents repository'
+Assert-True (@($artifactGovernance.retentions | Where-Object {
+    $_.repo -eq 'wlyaaaaa/codex-local-remote' -and
+    $_.path -eq 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' -and
+    $_.head -eq '2a76e3638e4d22db63e07389810dc47c1d1b03c3' -and
+    $_.owner -eq 'PCConfig' -and
+    -not [string]::IsNullOrWhiteSpace([string] $_.exit_condition)
+}).Count -eq 1) 'artifact registry pins the exact runtime rollback with owner and exit condition'
 
 $refreshPath = Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1'
 $refreshTokens = $null

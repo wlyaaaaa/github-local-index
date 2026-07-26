@@ -134,6 +134,38 @@ function Invoke-ExternalCommandWithRetry {
     throw "$Operation failed after $MaxAttempts attempt(s). Last exit code: $lastExitCode. $summary"
 }
 
+function Invoke-GitFetchWithRetry {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Path,
+        [int] $MaxAttempts = 3,
+        [int] $DelaySeconds = 2,
+        [scriptblock] $Invoker
+    )
+
+    if ($MaxAttempts -lt 1) {
+        throw 'MaxAttempts must be at least 1.'
+    }
+    $lastResult = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $lastResult = if ($Invoker) {
+            & $Invoker $Path
+        }
+        else {
+            Invoke-GitCommandResult -Path $Path -Arguments @('fetch', '--prune', 'origin')
+        }
+        if ($null -eq $lastResult -or $null -eq $lastResult.PSObject.Properties['exit_code']) {
+            throw 'Git fetch invoker returned an invalid result.'
+        }
+        if ([int] $lastResult.exit_code -eq 0) {
+            return $lastResult
+        }
+        if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+    return $lastResult
+}
+
 function Get-DefaultBranchName {
     param([object] $Repository)
 
@@ -281,6 +313,40 @@ function Get-CommitPinnedSnapshotState {
         commit_prefix = $commitPrefix.ToLowerInvariant()
         observed_behind = if ($HasUpstream) { [int] $Behind } else { $null }
         detached = [bool] $Detached
+    }
+}
+
+function Get-CommitPinnedClonePreflight {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    try {
+        $worktrees = @(Get-GitRepositoryWorktrees -Path $Path)
+        if ($worktrees.Count -ne 1) {
+            return $null
+        }
+        $worktree = $worktrees[0]
+        $normalizedObservedPath = [System.IO.Path]::GetFullPath([string] $worktree.path).TrimEnd('\', '/')
+        $normalizedRequestedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+        if (-not $normalizedObservedPath.Equals(
+            $normalizedRequestedPath,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            return $null
+        }
+        $hasUpstream = -not [string]::IsNullOrWhiteSpace([string] $worktree.upstream)
+        return Get-CommitPinnedSnapshotState `
+            -Path ([string] $worktree.path) `
+            -Head ([string] $worktree.head) `
+            -HasUpstream:$hasUpstream `
+            -Detached ([bool] $worktree.detached) `
+            -Ahead $worktree.ahead `
+            -Behind $worktree.behind `
+            -DirtyCount $worktree.dirty_count `
+            -Exists ([bool] $worktree.exists) `
+            -Prunable ([bool] $worktree.prunable)
+    }
+    catch {
+        return $null
     }
 }
 
@@ -814,7 +880,8 @@ function Resolve-CloneStatuses {
     param(
         [hashtable] $CloneMap,
         [object[]] $Repositories,
-        [switch] $SkipFetch
+        [switch] $SkipFetch,
+        [scriptblock] $FetchInvoker
     )
 
     foreach ($repo in $Repositories) {
@@ -826,12 +893,37 @@ function Resolve-CloneStatuses {
         $resolved = foreach ($clone in @($CloneMap[$name])) {
             $metadataJson = $repo | ConvertTo-Json -Depth 6 -Compress
             $metadataInvoker = { param($slug) [pscustomobject]@{ exit_code = 0; stdout = $metadataJson; stderr = '' } }.GetNewClosure()
+            $pinnedPreflight = if (-not $SkipFetch) {
+                Get-CommitPinnedClonePreflight -Path $clone.Path
+            }
+            else {
+                $null
+            }
+            $shouldRefreshRefs = (-not $SkipFetch) -and $null -eq $pinnedPreflight
+            $fetchResult = if ($shouldRefreshRefs) {
+                Invoke-GitFetchWithRetry -Path $clone.Path -Invoker $FetchInvoker
+            }
+            else {
+                $null
+            }
+            $admissionFetchInvoker = if ($null -ne $fetchResult) {
+                $capturedFetchResult = $fetchResult
+                {
+                    param($path)
+                    $capturedFetchResult
+                }.GetNewClosure()
+            }
+            else {
+                $null
+            }
             $admission = Get-ProjectAdmissionRecord `
                 -Repo $name `
                 -RepoPath $clone.Path `
                 -Visibility ([string] $repo.visibility) `
                 -DefaultBranch (Get-DefaultBranchName -Repository $repo) `
-                -Fetch:(-not $SkipFetch) `
+                -LiveMetadata:(-not $SkipFetch) `
+                -RefreshRefs:$shouldRefreshRefs `
+                -FetchInvoker $admissionFetchInvoker `
                 -GitHubInvoker $metadataInvoker
 
             $repoErrorReasons = @($admission.errors | ForEach-Object { [string] $_.category })
@@ -976,7 +1068,7 @@ function Resolve-CloneStatuses {
                         $convergence.queue_reason -ne 'unintegrated_worktree_commit') {
                         $queueReasons.Add('unintegrated_worktree_commit')
                     }
-                    if (-not $necessaryRetention -and $admission.remote_mode -eq 'cached') {
+                    if (-not $protectedRetention -and $admission.remote_mode -eq 'cached') {
                         $queueReasons.Add('cached 远端引用')
                     }
                     foreach ($errorReason in $repoErrorReasons) { $queueReasons.Add($errorReason) }

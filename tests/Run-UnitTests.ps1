@@ -103,6 +103,143 @@ Assert-True ($nativeFailureMessage -match 'Last exit code: 19') 'native failure 
 Assert-True ($nativeFailureMessage -match 'stderr-marker') 'native failure retains a stderr summary'
 Assert-True ($nativeFailureMessage.Length -le 768) 'native failure stderr summary is bounded'
 
+$script:FetchRetryAttempts = 0
+$fetchRetryResult = Invoke-GitFetchWithRetry `
+    -Path 'C:\fixture' `
+    -MaxAttempts 2 `
+    -DelaySeconds 0 `
+    -Invoker {
+        param($path)
+        $script:FetchRetryAttempts++
+        if ($script:FetchRetryAttempts -eq 1) {
+            [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'transient connection failure' }
+        }
+        else {
+            [pscustomobject]@{ exit_code = 0; stdout = ''; stderr = '' }
+        }
+    }
+Assert-Equal 2 $script:FetchRetryAttempts 'Git refs refresh retries one transient failure'
+Assert-Equal 0 $fetchRetryResult.exit_code 'Git refs refresh returns the successful retry evidence'
+$script:FetchFailureAttempts = 0
+$fetchFailureResult = Invoke-GitFetchWithRetry `
+    -Path 'C:\fixture' `
+    -MaxAttempts 2 `
+    -DelaySeconds 0 `
+    -Invoker {
+        param($path)
+        $script:FetchFailureAttempts++
+        [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'persistent failure' }
+    }
+Assert-Equal 2 $script:FetchFailureAttempts 'Git refs refresh keeps retries bounded'
+Assert-Equal 128 $fetchFailureResult.exit_code 'persistent Git refs failure remains explicit for fail-closed admission'
+
+$resolveRetryRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+    'github-index-resolve-retry-' + [guid]::NewGuid().ToString('N')
+)
+try {
+    & git init --initial-branch=main $resolveRetryRoot *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'failed to initialize resolve retry fixture' }
+    & git -C $resolveRetryRoot config user.name 'Resolve Retry Test'
+    & git -C $resolveRetryRoot config user.email 'resolve-retry@example.invalid'
+    Set-Content -LiteralPath (Join-Path $resolveRetryRoot 'fixture.txt') -Value 'fixture' -Encoding utf8
+    & git -C $resolveRetryRoot add fixture.txt
+    & git -C $resolveRetryRoot commit -m 'fixture' *> $null
+    & git -C $resolveRetryRoot remote add origin https://github.com/example/retry.git
+    $resolveRetryMap = @{
+        'example/retry' = @(
+            [pscustomobject]@{ Path = $resolveRetryRoot; CommonDir = (Join-Path $resolveRetryRoot '.git') }
+        )
+    }
+    $resolveRetryRepo = [pscustomobject]@{
+        nameWithOwner = 'example/retry'
+        visibility = 'PRIVATE'
+        url = 'https://github.com/example/retry'
+        defaultBranchRef = [pscustomobject]@{ name = 'main' }
+        pushedAt = '2026-07-26T00:00:00Z'
+        updatedAt = '2026-07-26T00:00:00Z'
+    }
+    $script:ResolveRetryAttempts = 0
+    Resolve-CloneStatuses `
+        -CloneMap $resolveRetryMap `
+        -Repositories @($resolveRetryRepo) `
+        -FetchInvoker {
+            param($path)
+            $script:ResolveRetryAttempts++
+            if ($script:ResolveRetryAttempts -eq 1) {
+                [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'transient failure' }
+            }
+            else {
+                [pscustomobject]@{ exit_code = 0; stdout = ''; stderr = '' }
+            }
+        }
+    $resolvedRetryClone = @($resolveRetryMap['example/retry'])[0]
+    Assert-Equal 2 $script:ResolveRetryAttempts 'clone resolver performs the bounded fetch retry in its own scope'
+    Assert-Equal 'live' $resolvedRetryClone.RemoteMode 'clone resolver hands successful fetch evidence across the module boundary'
+    Assert-True (-not (@($resolvedRetryClone.QueueReasons) -contains 'fetch_failed')) `
+        'successful retry does not leave a stale fetch_failed action'
+}
+finally {
+    if (Test-Path -LiteralPath $resolveRetryRoot) {
+        Remove-Item -LiteralPath $resolveRetryRoot -Recurse -Force
+    }
+}
+
+$pinnedPreflightContainer = Join-Path ([System.IO.Path]::GetTempPath()) (
+    'github-index-pinned-preflight-' + [guid]::NewGuid().ToString('N')
+)
+try {
+    New-Item -ItemType Directory -Path $pinnedPreflightContainer | Out-Null
+    $pinnedSeed = Join-Path $pinnedPreflightContainer 'seed'
+    & git init --initial-branch=main $pinnedSeed *> $null
+    & git -C $pinnedSeed config user.name 'Pinned Preflight Test'
+    & git -C $pinnedSeed config user.email 'pinned-preflight@example.invalid'
+    Set-Content -LiteralPath (Join-Path $pinnedSeed 'fixture.txt') -Value 'fixture' -Encoding utf8
+    & git -C $pinnedSeed add fixture.txt
+    & git -C $pinnedSeed commit -m 'fixture' *> $null
+    $pinnedHead = (& git -C $pinnedSeed rev-parse HEAD).Trim()
+    $pinnedPrefix = $pinnedHead.Substring(0, 7)
+    $pinnedClonePath = Join-Path $pinnedPreflightContainer "demo-audit-$pinnedPrefix"
+    Move-Item -LiteralPath $pinnedSeed -Destination $pinnedClonePath
+    & git -C $pinnedClonePath remote add origin https://github.com/example/pinned.git
+    & git -C $pinnedClonePath switch --detach $pinnedHead *> $null
+    & git -C $pinnedClonePath branch -D main *> $null
+    $pinnedPreflight = Get-CommitPinnedClonePreflight -Path $pinnedClonePath
+    Assert-Equal $pinnedPrefix $pinnedPreflight.commit_prefix `
+        'clean detached audit clone is recognized before refs refresh'
+    $pinnedResolveMap = @{
+        'example/pinned' = @(
+            [pscustomobject]@{ Path = $pinnedClonePath; CommonDir = (Join-Path $pinnedClonePath '.git') }
+        )
+    }
+    $pinnedResolveRepo = [pscustomobject]@{
+        nameWithOwner = 'example/pinned'
+        visibility = 'PRIVATE'
+        url = 'https://github.com/example/pinned'
+        defaultBranchRef = [pscustomobject]@{ name = 'main' }
+        pushedAt = '2026-07-26T00:00:00Z'
+        updatedAt = '2026-07-26T00:00:00Z'
+    }
+    $script:PinnedFetchAttempts = 0
+    Resolve-CloneStatuses `
+        -CloneMap $pinnedResolveMap `
+        -Repositories @($pinnedResolveRepo) `
+        -FetchInvoker {
+            param($path)
+            $script:PinnedFetchAttempts++
+            [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'must not run' }
+        }
+    $resolvedPinnedClone = @($pinnedResolveMap['example/pinned'])[0]
+    Assert-Equal 0 $script:PinnedFetchAttempts 'commit-pinned clone skips automatic refs fetch'
+    Assert-True $resolvedPinnedClone.IsPinnedSnapshot 'commit-pinned clone remains explicit in generated evidence'
+    Assert-True (-not (@($resolvedPinnedClone.QueueReasons) -contains 'fetch_failed')) `
+        'intentional pinned refs cache never becomes a fetch failure'
+}
+finally {
+    if (Test-Path -LiteralPath $pinnedPreflightContainer) {
+        Remove-Item -LiteralPath $pinnedPreflightContainer -Recurse -Force
+    }
+}
+
 $script:IsolationAttempts = 0
 $isolatedResult = Invoke-ExternalCommandWithRetry -Operation 'unit retry scope isolation' -MaxAttempts 2 -DelaySeconds 0 -Command {
     $script:IsolationAttempts++

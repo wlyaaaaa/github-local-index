@@ -13,13 +13,13 @@ owner: E:\GitHub总索引
 refresh wrapper、索引生成器与 consistency checker 是维护入口；当前 Git/GitHub 事实高于生成 Markdown 的观察快照。
 
 ## 核心机制
-Fast 保留为既有调用方的 compatibility mode，避免 tracked Markdown rebuild 但可能写 private log；CheckOnly 使用 system temp 比较并清理；完整 refresh 才重建 tracked Markdown。中央 discovery 持续发现新仓，但在枚举和 Git 命令前排除 PersonalOS 本地路径。
+Fast 保留为既有调用方的 compatibility mode，避免 tracked Markdown rebuild 但可能写 private log；CheckOnly 使用 system temp 比较并清理；完整 refresh 才重建 tracked Markdown。完整 refresh 对普通 clone 的 Git refs fetch 最多尝试三次，吸收短暂连接失败但不无限等待；已验证的独立 commit-pinned snapshot 只刷新 GitHub metadata，不自动 fetch refs。中央 discovery 持续发现新仓，但在枚举和 Git 命令前排除 PersonalOS 本地路径。
 
 ## 输出合同
 Fast 返回 V1 admission 兼容结果，CheckOnly 返回 drift 诊断，完整刷新返回生成结果；三者都不自动 stage、commit 或 push。hidden CheckOnly 原子写入忽略目录中的 `github-local-index.consistency-receipt.v1`，含 `task_key=github_local_index_consistency`、`observed_at`、`outcome`、`exit_code` 与 drift files。
 
 ## 失败与降级
-刷新或比较失败时写 `outcome=error` receipt，不把 unknown 解释为一致，也不自动发布生成材料；缺失或陈旧 receipt 可由 PCConfig runtime health 映射为 missing/stale。
+两次 fetch 都失败时保留 cached 标记与 `fetch_failed` 行动项；刷新或比较失败时写 `outcome=error` receipt，不把 unknown 解释为一致，也不自动发布生成材料；缺失或陈旧 receipt 可由 PCConfig runtime health 映射为 missing/stale。
 
 ## 验证证据
 `tests/Run-UnitTests.ps1` 验证 compatibility mode、system temp、receipt 原子性、外部治理排除、仓库树写入边界与生成器行为。

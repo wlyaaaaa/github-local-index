@@ -19,7 +19,7 @@ Fast 保留为既有调用方的 compatibility mode，避免 tracked Markdown re
 Fast 返回 V1 admission 兼容结果，CheckOnly 返回 drift 诊断，完整刷新返回生成结果；三者都不自动 stage、commit 或 push。hidden CheckOnly 原子写入忽略目录中的 `github-local-index.consistency-receipt.v1`，含 `task_key=github_local_index_consistency`、`observed_at`、`outcome`、`exit_code` 与 drift files。
 
 ## 失败与降级
-两次 fetch 都失败时保留 cached 标记与 `fetch_failed` 行动项；刷新或比较失败时写 `outcome=error` receipt，不把 unknown 解释为一致，也不自动发布生成材料；缺失或陈旧 receipt 可由 PCConfig runtime health 映射为 missing/stale。
+三次 fetch 都失败时保留 cached 标记与 `fetch_failed` 行动项；刷新或比较失败时写 `outcome=error` receipt，不把 unknown 解释为一致，也不自动发布生成材料；缺失或陈旧 receipt 可由 PCConfig runtime health 映射为 missing/stale。
 
 ## 验证证据
 `tests/Run-UnitTests.ps1` 验证 compatibility mode、system temp、receipt 原子性、外部治理排除、仓库树写入边界与生成器行为。

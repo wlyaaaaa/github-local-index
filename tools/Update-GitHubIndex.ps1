@@ -1016,7 +1016,7 @@ function Resolve-CloneStatuses {
                     -Exists ([bool] $worktree.exists)
                 $actionableBehind = if ($protectedRetention) { 0 } else { $behind }
                 $state = if ($externalGovernance) {
-                    "``$([string] $worktree.branch)`` 由 $governanceOwner 外部 owner 治理，不纳入 Codex 收敛判断"
+                    "``$([string] $worktree.branch)`` 由 $governanceOwner 专门 owner 治理，不纳入 Codex 收敛判断"
                 }
                 elseif ($necessaryRetention) {
                     "必要保留：$retentionPurpose；owner：$retentionOwner；退出条件：$retentionExitCondition"
@@ -1159,7 +1159,7 @@ function Resolve-CloneStatuses {
                     '本地 branch ref'
                 }
                 $branchState = if ($branchExternalGovernance) {
-                    "``$($branchRecord.branch)`` 由 $branchGovernanceOwner 外部 owner 治理，不纳入 Codex 收敛判断"
+                    "``$($branchRecord.branch)`` 由 $branchGovernanceOwner 专门 owner 治理，不纳入 Codex 收敛判断"
                 }
                 elseif ($branchIntegrationState -eq 'unmerged') {
                     $missingText = if ($null -ne $branchRecord.missing_default_commits) {

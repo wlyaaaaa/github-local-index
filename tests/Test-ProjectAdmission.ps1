@@ -185,6 +185,11 @@ Assert-Equal 'PersonalOS' $personalOSArtifact.owner 'artifact registry identifie
 Assert-True ($null -eq (Get-GitArtifactGovernance `
     -Repo 'wlyaaaaa/.agents' `
     -Branch 'codex/ordinary-feature')) 'artifact registry does not suppress ordinary future feature branches'
+$secretBrokerBackupArtifact = Get-GitArtifactGovernance `
+    -Repo 'wlyaaaaa/PCConfig' `
+    -Branch 'origin/secret-broker-backup'
+Assert-Equal 'PCConfig Secret Broker' $secretBrokerBackupArtifact.owner `
+    'artifact registry separates the contract-defined encrypted backup stream from default-branch feature convergence'
 $governedEvidence = & $admissionModule {
     $worktree = [pscustomobject]@{ branch = 'codex/personalos-beacon-receipt' }
     $branch = [pscustomobject]@{ branch = 'origin/codex/personalos-beacon-receipt' }

@@ -20,6 +20,13 @@
         "codex/s8-wp4-personalos-runtime",
         "codex/s9-wp4-release"
       ]
+    },
+    {
+      "repo": "wlyaaaaa/PCConfig",
+      "owner": "PCConfig Secret Broker",
+      "refs": [
+        "secret-broker-backup"
+      ]
     }
   ],
   "retentions": [

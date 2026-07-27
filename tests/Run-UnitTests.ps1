@@ -695,6 +695,11 @@ Assert-Equal 'github-local-index.git-artifact-governance.v1' $artifactGovernance
 Assert-True (@($artifactGovernance.entries | Where-Object {
     $_.repo -eq 'wlyaaaaa/.agents' -and $_.owner -eq 'PersonalOS'
 }).Count -eq 1) 'artifact-owner registry protects explicit PersonalOS refs without suppressing the whole .agents repository'
+Assert-True (@($artifactGovernance.entries | Where-Object {
+    $_.repo -eq 'wlyaaaaa/PCConfig' -and
+    $_.owner -eq 'PCConfig Secret Broker' -and
+    @($_.refs) -contains 'secret-broker-backup'
+}).Count -eq 1) 'artifact-owner registry classifies the contract-defined encrypted backup stream separately from feature convergence'
 Assert-True (@($artifactGovernance.retentions | Where-Object {
     $_.repo -eq 'wlyaaaaa/codex-local-remote' -and
     $_.path -eq 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' -and

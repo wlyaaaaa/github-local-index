@@ -19,7 +19,7 @@
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
-| wlyaaaaa/Key | PRIVATE | main | V:\Personal\Projects\Key | `main` ahead/behind `0/3`，脏工作区 1 项（cached） | 先同步远端变更，再决定是否提交或推送 |
+| wlyaaaaa/Key | PRIVATE | main | V:\Personal\Projects\Key | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/legal-filing-kit | PRIVATE | main | E:\Projects\Tools\legal-filing-kit<br>V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1<br>V:\Personal\Worktrees\legal-filing-kit-1.0-reaudit-859b083<br>V:\Personal\Worktrees\legal-filing-kit-s3-audit-25529a0 | `main` 已同步，`0/0`，脏工作区 3 项（cached）<br>历史审计快照固定于 `87dcfd1`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `859b083`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `25529a0`，detached 且无 upstream，不自动同步（cached） | 保持提交固定审计快照；需要新证据时创建新审计副本<br>私有仓库按备份需求确认后提交 |
 | wlyaaaaa/llm-backend-toolkit | PUBLIC | main | V:\Personal\Projects\llm-backend-toolkit<br>V:\Personal\Worktrees\llm-backend-toolkit-cache-review-25d2794<br>V:\Personal\Worktrees\llm-backend-toolkit-cache-review-4bd5081<br>V:\Personal\Worktrees\llm-backend-toolkit-cache-review-df3f17d | `main` 已同步，`0/0`（cached）<br>历史审计快照固定于 `25d2794`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `4bd5081`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `df3f17d`，detached 且无 upstream，不自动同步（cached） | 保持提交固定审计快照；需要新证据时创建新审计副本<br>正常维护 |
 | wlyaaaaa/LocalOCR | PUBLIC | main | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`（cached） | 正常维护 |

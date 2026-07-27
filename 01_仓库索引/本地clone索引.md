@@ -1,19 +1,19 @@
 # 本地 Clone 索引
 
-更新时间：2026-07-27
+更新时间：2026-07-28
 
 ## 已确认本地位置
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | C:\Users\10979\.codex\worktrees\9993\.agents<br>E:\.agents<br>E:\.worktrees\personalos-s8-wp4\agents<br>V:\Personal\Worktrees\agents-s9-beta-total-deadline<br>V:\Personal\Worktrees\agents-s9-health-route-doc | `codex/personalos-beacon-receipt` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`main` 已同步，`0/0`（cached）<br>`codex/s8-wp4-personalos-router` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/s9-beta-total-deadline` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/s9-health-route-doc` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached） |
+| wlyaaaaa/.agents | C:\Users\10979\.codex\worktrees\9993\.agents<br>E:\.agents<br>E:\.worktrees\personalos-s8-wp4\agents<br>V:\Personal\Worktrees\agents-s9-beta-total-deadline<br>V:\Personal\Worktrees\agents-s9-health-route-doc | `codex/personalos-beacon-receipt` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`main` 已同步，`0/0`，脏工作区 4 项（cached）<br>`codex/s8-wp4-personalos-router` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/s9-beta-total-deadline` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/s9-health-route-doc` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached） |
 | wlyaaaaa/ai-cli-profile-manager | E:\Projects\Tools\ai-cli-profile-manager | `main` 已同步，`0/0`，脏工作区 2 项（cached） |
 | wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/ai-llm-job-prep | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/ChineseASR | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/claude-memory | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/codex-app-power-user-playbook | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（cached） |
-| wlyaaaaa/codex-local-remote | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`，脏工作区 152 项（cached）<br>必要保留：当前 V1 计划任务使用的干净运行回滚根；owner：PCConfig；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success（cached） |
+| wlyaaaaa/codex-local-remote | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`（cached）<br>必要保留：当前 V1 计划任务使用的干净运行回滚根；owner：PCConfig；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success（cached） |
 | wlyaaaaa/codex-memory | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
@@ -24,13 +24,13 @@
 | wlyaaaaa/LocalOCR | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/OpenClawGateway | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`，脏工作区 9 项（cached）<br>`codex/personalos-shadow-root-fact` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`origin/secret-broker-backup` 仅有 remote-tracking branch ref，默认分支缺少 4 个提交（cached） |
+| wlyaaaaa/OpenClawGateway | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0`，脏工作区 9 项（cached） |
+| wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`（cached）<br>`codex/personalos-shadow-root-fact` 由 PersonalOS 外部 owner 治理，不纳入 Codex 收敛判断（cached）<br>`origin/secret-broker-backup` 仅有 remote-tracking branch ref，默认分支缺少 4 个提交（cached） |
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/rtx5090d-ollama-agent-bundle | E:\Projects\Tools\rtx5090d-ollama-agent-bundle | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/Scripts | E:\Projects\Tools\Scripts | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`（cached） |
+| wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`，脏工作区 8 项（cached） |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`（cached） |

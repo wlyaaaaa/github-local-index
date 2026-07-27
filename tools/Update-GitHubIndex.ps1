@@ -784,7 +784,16 @@ function ConvertTo-GitHubIndexRows {
         }
 
         $primary = $clones | Select-Object -First 1
-        $paths = ($clones | ForEach-Object { $_.Path } | Select-Object -Unique) -join '<br>'
+        $publishableClones = @($clones | Where-Object {
+            $null -eq $_.PSObject.Properties['ExternalGovernance'] -or
+            -not [bool] $_.ExternalGovernance
+        })
+        $paths = if ($publishableClones.Count -gt 0) {
+            ($publishableClones | ForEach-Object { $_.Path } | Select-Object -Unique) -join '<br>'
+        }
+        else {
+            '专门 owner 治理（不公开本地路径）'
+        }
         $states = ($clones | ForEach-Object { $_.State }) -join '<br>'
         $actions = ($clones | ForEach-Object { $_.NextAction } | Sort-Object -Unique) -join '<br>'
         $needsReview = @($clones | Where-Object { $_.NeedsReview }).Count -gt 0

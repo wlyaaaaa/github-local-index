@@ -505,6 +505,20 @@ $cloneMap = @{
             NextAction = 'review worktree'
             IsDirty = $true
             NeedsReview = $true
+        },
+        [pscustomobject]@{
+            Path = 'V:\Personal\Worktrees\personal-os-artifact'
+            Branch = 'codex/personalos-beacon-receipt'
+            Upstream = '[external-owner]'
+            Ahead = 0
+            Behind = 0
+            DirtyCount = 0
+            State = 'PersonalOS owner artifact'
+            NextAction = 'external owner'
+            IsDirty = $false
+            NeedsReview = $false
+            ExternalGovernance = $true
+            QueueReasons = @()
         }
     )
 }
@@ -516,6 +530,8 @@ Assert-True ($demoRow.QueueReason -match 'ahead 1') 'queue aggregates ahead reas
 Assert-True ($demoRow.QueueReason -match 'behind 2') 'queue aggregates behind reason'
 Assert-True ($demoRow.QueueReason -match '脏工作区 3 项') 'queue aggregates dirty reason'
 Assert-True ($demoRow.QueueReason -match '无 upstream') 'queue preserves no-upstream reason from a secondary worktree'
+Assert-True (-not $demoRow.LocalPath.Contains('personal-os-artifact')) 'shared repositories never publish externally governed worktree paths'
+Assert-True ($demoRow.LocalState.Contains('PersonalOS owner artifact')) 'shared repositories retain owner classification without publishing the worktree path'
 Assert-Equal '未发现本地 clone' $keyRow.LocalPath 'marks Key as missing local clone'
 Assert-True ($keyRow.NextAction -match '受管私有路径') 'keeps Key managed-clone rule'
 Assert-True ($keyRow.NextAction -match '密文') 'limits Key checkout to encrypted artifacts'

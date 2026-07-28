@@ -671,7 +671,8 @@ function Test-IsTransientClonePath {
     $normalized = $Path -replace '/', '\'
     $transientPatterns = @(
         '\AppData\Local\Temp\',
-        '\Documents\Codex\'
+        '\Documents\Codex\',
+        '\.codex\worktrees\'
     )
 
     foreach ($pattern in $transientPatterns) {
@@ -681,6 +682,66 @@ function Test-IsTransientClonePath {
     }
 
     return $false
+}
+
+function Get-GitHubIndexPublishableDirtyCount {
+    param([string] $Path)
+
+    $repoRoot = [System.IO.Path]::GetFullPath(
+        (Split-Path -Parent $PSScriptRoot)
+    ).TrimEnd('\', '/')
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    if ($resolvedPath -ine $repoRoot) {
+        return $null
+    }
+
+    $generatedPaths = @(
+        '00_总览\GitHub总览.md',
+        '00_总览\当前同步看板.md',
+        '01_仓库索引\GitHub仓库索引.md',
+        '01_仓库索引\本地clone索引.md',
+        '01_仓库索引\未发现本地clone.md',
+        '02_同步诊断\未推送队列.md',
+        '02_同步诊断\工作区脏状态.md',
+        '02_同步诊断\分支与远端诊断.md',
+        '04_计划任务\计划任务健康摘要.md',
+        '04_计划任务\计划任务异常清单.md',
+        '04_计划任务\用户自动化任务地图.md',
+        '04_计划任务\仓库计划任务建议.md'
+    )
+    $generated = @{}
+    foreach ($relativePath in $generatedPaths) {
+        $generated[$relativePath.ToLowerInvariant()] = $true
+    }
+
+    $status = Invoke-GitCommandResult `
+        -Path $resolvedPath `
+        -Arguments @(
+            '-c',
+            'core.quotepath=false',
+            'status',
+            '--porcelain=v1',
+            '--untracked-files=all'
+        )
+    if ($status.exit_code -ne 0) {
+        return $null
+    }
+
+    $count = 0
+    foreach ($line in @($status.stdout -split "`r?`n")) {
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -lt 4) {
+            continue
+        }
+        $relativePath = $line.Substring(3).Trim()
+        if ($relativePath -match '\s+->\s+(?<target>.+)$') {
+            $relativePath = $matches['target']
+        }
+        $normalized = $relativePath.Replace('/', '\').ToLowerInvariant()
+        if (-not $generated.ContainsKey($normalized)) {
+            $count++
+        }
+    }
+    return $count
 }
 
 function Get-LocalCloneMap {
@@ -936,11 +997,26 @@ function Resolve-CloneStatuses {
                 -GitHubInvoker $metadataInvoker
 
             $repoErrorReasons = @($admission.errors | ForEach-Object { [string] $_.category })
-            foreach ($worktree in @($admission.worktrees)) {
+            foreach ($worktree in @(
+                    $admission.worktrees |
+                        Where-Object {
+                            -not (
+                                Test-IsTransientClonePath `
+                                    -Path ([string] $_.path)
+                            )
+                        }
+                )) {
                 $inspectionFailed = [bool] $worktree.inspection_error
                 $observedAhead = $worktree.ahead
                 $observedBehind = $worktree.behind
                 $observedDirtyCount = $worktree.dirty_count
+                $publishableDirtyCount = (
+                    Get-GitHubIndexPublishableDirtyCount `
+                        -Path ([string] $worktree.path)
+                )
+                if ($null -ne $publishableDirtyCount) {
+                    $observedDirtyCount = [int] $publishableDirtyCount
+                }
                 $ahead = if ($inspectionFailed -and $null -eq $observedAhead) { $null } elseif ($null -eq $observedAhead) { 0 } else { [int] $observedAhead }
                 $behind = if ($inspectionFailed -and $null -eq $observedBehind) { $null } elseif ($null -eq $observedBehind) { 0 } else { [int] $observedBehind }
                 $dirtyCount = if ($inspectionFailed -and $null -eq $observedDirtyCount) { $null } elseif ($null -eq $observedDirtyCount) { 0 } else { [int] $observedDirtyCount }

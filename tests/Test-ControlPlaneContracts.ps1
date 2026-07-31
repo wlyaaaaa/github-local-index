@@ -179,11 +179,16 @@ Assert-Equal 0 @(Get-ContractContentViolations -Text $stableBranchProse).Count '
 
 $actualFiles = @()
 if (Test-Path -LiteralPath $contractRoot) {
-    $actualFiles = @(Get-ChildItem -LiteralPath $contractRoot -File -Filter '*.md' | Sort-Object Name)
+    $actualFiles = @(
+        Get-ChildItem -LiteralPath $contractRoot -File -Filter '*.md' |
+            Where-Object Name -ne 'git.protected-major-actions.md' |
+            Sort-Object Name
+    )
 }
 $expectedNames = @($ids | ForEach-Object { "$_.md" } | Sort-Object)
 $actualNames = @($actualFiles.Name)
-Assert-Equal ($expectedNames -join '|') ($actualNames -join '|') 'contract directory contains exactly the five Git contract files'
+Assert-Equal ($expectedNames -join '|') ($actualNames -join '|') `
+    'contract-card set contains exactly the five compact Git contract cards'
 
 $totalBytes = 0L
 foreach ($id in $ids) {

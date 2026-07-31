@@ -1,74 +1,97 @@
 # Git 与 GitHub 重大动作保护合同
 
 owner: GitHub 总索引
-状态：现行 owner 语义；受管 Codex 路径立即适用，密码学 effect adapter 的
-实现状态以活动策略中的 protected owner-adapter registry 为准
 
-## 目标
+adapter: `github.protected-major-actions.v1`
 
-为本地与远端 Git/GitHub 对象提供稳定身份、preimage、执行和 read-back，使
-`.agents` 的顶级模型智能审查与 PCConfig AuthorityHost 的一次性能力可以
-保护系统项目、四基座相关仓库和其他高价值仓库。
+实现：`tools/Invoke-ProtectedGitHubMajorAction.ps1`
 
-本合同不维护固定“必须弹通行密钥”清单。受认证 `codex-root` 是最高权限主体；
-当前顶级模型结合用户意图、仓库真实身份、visibility、默认分支、恢复性、
-影响范围和异常证据，自主决定直接执行、通行密钥 step-up、拒绝或只读取证。
+生产激活状态：只认 PCConfig AuthorityHost 发布的活动策略，不由本仓源码自证
 
-## 重大信号不是完备分类
+## 产品语义
 
-删除/转移仓库、改变 visibility、重写远端默认分支、删除唯一历史或恢复分支、
-撤销保护/备份、替换 remote owner、破坏 release/deployment 链等是强风险信号。
-普通 commit、normal push、受信文档/代码修改、明确可回退分支整理和索引刷新
-不能只因发生在系统项目或四基座相关仓库就被判成恶意。
+系统项目、四基座相关仓库和其他高价值仓库的重大动作，同时经过硬边界与顶级
+模型语义判断。受认证的 `codex-root` 是最高权限主体；Codex 主对话、子智能体
+或新对话不因形态不同重复索要通行密钥。其他智能体没有可验证的同级因子时，
+adapter 返回 `highest_authority_verification_required`，进入最高权限因子验证，
+不把“尚未验证”伪装成永久拒绝，也不执行副作用。
 
-最终判断由顶级模型完成；owner policy 可以拒绝身份不明、preimage 不完整、
-目标歧义或 read-back 不可用的动作，但不能用关键词替模型决定通行密钥。
+是否额外使用本机通行密钥由顶级模型结合用户意图、目标身份、visibility、
+恢复性、影响范围和异常证据决定，不维护固定弹窗清单。普通 commit、normal
+push、受信代码或文档修改不能只因位于受保护仓库就被判为恶意篡改。
 
-## 稳定目标
+## 两阶段接口
 
-Git adapter 至少解析并绑定：
+`Prepare` 读取实时 project admission 与 GitHub provider metadata，接收一个只有
+操作所需字段的 JSON 参数对象，生成
+`github-local-index.protected-major-action-proposal.v1`。提案内嵌
+`pcconfig.major-action-authorization-request.v1`，并绑定：
 
-- 本地 canonical worktree/common-dir 与 filesystem identity；
-- provider、remote URL、stable owner/repository ID、visibility；
-- 实际 default branch、目标 ref/object ID、保护与恢复 refs；
-- 当前远端 head、候选变更、预期现实效果和恢复路径；
-- 调用的 executable/hash、API endpoint、arguments 和 credential scope class。
+- GitHub database ID、node ID、规范 `owner/repo`、remote URL；
+- canonical worktree、git common-dir、visibility、default branch 和资源；
+- 类型化 effect family、operation、完整 argv 与参数；
+- `execution_mode=execute|dry_run`，演练能力不能升级为现实执行；
+- 实时 admission、provider metadata、ref/remote 等 precondition；
+- adapter 脚本与 native git/gh 的 SHA-256、模型 decision/reason/user intent、
+  30 秒能力 TTL。
 
-仓库名、目录名、窗口文本或模型自述不能单独成为目标身份。
+`Execute` 只读取上述提案，按以下顺序运行：
 
-## 精确能力
+1. 重新取得 admission、provider metadata、precondition、adapter 与 native
+   executor hash；
+2. 调用固定入口
+   `C:\ProgramData\PCConfig\AuthorityHost\tools\Invoke-SecretBroker.ps1`
+   的 `AuthorizeMajorAction`；Codex 默认使用 `Runtime/codex-root` 自动验证，其他
+   智能体可对同一 proposal 选择 Passkey/TOTP/Recovery/Google/Microsoft 因子；
+3. 再次取证后，以 `pcconfig.major-action-consume-request.v1` 调用
+   `ConsumeMajorActionCapability`，且 consume 模式必须与已签
+   `execution_mode` 精确一致；
+4. 非 dry-run 在能力已验证且 single-use consume 成功后最后一次取证，再执行
+   精确 argv，并 read-back 实际状态。native 返回非零也必须先回读：owner 已观察
+   到目标效果则按已执行收敛，否则明确保留 `state_unknown`，不能谎报零变更。
 
-owner adapter 只接受 AuthorityHost 根签的 single-use capability，绑定
-`ActionProposal`、`codex-root` runtime proof、可选 passkey receipt、stable
-repository ID、preimage、expected post-state、executor/hash/arguments、
-policy/trust epoch 和 expiry。
+任何 target、executor、参数、precondition、assessment、user intent 或
+AuthorityHost epoch binding 漂移都使旧能力失效。`-DryRun` 仍完成 AuthorityHost
+授权与 capability 验证，但要求 `execute_allowed=false`、
+`capability_consumed=false`，不会调用 effect executor。
 
-执行前重新 fetch/read、解析 remote identity 和 precondition；任何 owner、
-visibility、default branch、object ID、计划或 epoch 漂移都使旧能力失效。
-执行后必须从提供方和本地两侧 read-back，并写无秘密 receipt。partial 状态
-不能冒充成功；能够回滚时按预签计划回滚，不能回滚时保留精确恢复证据。
+authorization 的 `executor_sha256` 绑定 adapter 脚本自身；native git/gh hash
+另以 `parameters.native_executor_sha256` 精确绑定。发送给 broker 的 authorization
+与 capability 临时文件仅放在关闭继承的私有 ACL 目录中，只允许当前用户、
+SYSTEM 与 Administrators 访问。
 
-普通 `gh`/Git 认证不应默认持有删除、转移或管理级 scope；需要此类能力时由
-受保护 Broker 向精确 adapter 临时提供且丢弃输出。当前个人工程不承诺阻止
-已经取得管理员、其他高权限 token 或提供方账号完全控制权的外部程序绕过，
-但受管 Codex 路径不得绕过本合同。
+## 类型化 effect
 
-## 正常变化与篡改
+adapter 只接受两类固定 effect，不接受 shell string 或 executable 参数：
 
-以下是正常变化证据，不是恶意篡改：受信 commit/push、用户或其他智能体的
-正常代码/文档修改、合法 PR/merge、候选 branch、明确授权的仓库设置调整。
+- `git-local`：`delete-local-ref`、`force-update-local-ref`、
+  `replace-remote-url`；
+- `github-api`：`set-visibility`、`set-default-branch`、
+  `delete-repository`、`transfer-repository`。
 
-以下可以形成 integrity incident：remote stable owner/repository ID、
-visibility、default branch、保护/恢复 refs 或受保护 adapter 在没有有效事务
-的情况下被替换、回滚、伪造、重放；或无 capability 的受管重大动作已产生
-现实副作用。是否属于攻击/失陷仍由顶级模型结合提供方事件和本地证据判断；
-确认后交 PCConfig 以 `protected-action-integrity` 进入统一不可信流程。
+Git 本地 effect 只调用固定 Git for Windows 路径，以
+`ProcessStartInfo.ArgumentList` 逐参数执行；清除 Git 目录、exec、SSH、askpass、
+redirect 等环境覆盖，禁用 system/global config，并用
+`core.hooksPath=NUL`、空 credential helper 隔离 hook/helper。GitHub effect 只调
+固定 `gh api` 与固定 GitHub REST endpoint/method；不存在通用命令、别名、扩展、
+重定向或任意 API endpoint 通道。
 
-## 验收
+## 正常变化、事件与边界
 
-- synthetic/private 测试仓库覆盖 allow、step-up、deny 和目标漂移；
-- 正常 commit/push 和文档编辑不误报；
-- repo alias、remote 替换、默认分支变化、force rewrite、delete/transfer/
-  visibility endpoint 直调无 capability 时拒绝；
-- capability exact binding、single-use、expiry、replay 和 read-back 通过；
-- 不为验收删除、公开、转移或重写任何真实生产仓库。
+受信 commit/push、正常代码或文档修改、合法 PR/merge、候选 branch 和明确授权
+的仓库设置调整都是正常变化。stable repository ID、visibility、default branch、
+保护/恢复 ref 或 adapter 在没有有效事务时被替换、回滚、伪造或重放，可以形成
+integrity incident；是否失陷仍由顶级模型结合 provider 与本地证据确认。adapter
+本身不改变设备信任，也不直接触发 BitLocker containment。
+
+本实现保护受管 Codex 路径，不承诺拦截已经取得系统管理员、其他高权限 token
+或 GitHub 账号完全控制权的外部程序。PersonalOS 不属于本 adapter 的生产激活
+依赖，本仓不读取或治理其本地数据。
+
+## 无破坏验收
+
+- synthetic 状态覆盖 Prepare、DryRun、Execute/read-back；
+- 缺失 runtime factor 返回 `highest_authority_verification_required` 且零 effect；
+- target drift 在 broker 调用或 effect 前失败关闭；
+- 多余字段与 shell string 被类型化 schema 拒绝；
+- 测试不删除、公开、转移或重写任何真实生产仓库。

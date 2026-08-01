@@ -185,6 +185,194 @@ Assert-OwnerTrue ($current.fingerprint.value -match '^sha256:[0-9a-f]{64}$') 'fi
 Assert-OwnerTrue ([bool]$current.registry.valid) 'compact output exposes governance registry validity without its contents'
 Assert-OwnerEqual $indexIdentity.head $current.provenance.index_head 'index HEAD is retained only as provider provenance'
 
+$mismatchedIdentity = [pscustomobject]@{
+    repository = 'attacker/github-local-index'
+    default_branch = 'main'
+    head = $indexIdentity.head
+}
+$identityBlocked = Invoke-GitOwnerStatus `
+    -BaselineRows $baselineRows `
+    -ObservedRows $observedRows `
+    -IndexIdentity $mismatchedIdentity `
+    -RegistryIdentity $registryA `
+    -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
+Assert-OwnerEqual 'completed' $identityBlocked.execution_status 'index repository mismatch remains a completed identity observation'
+Assert-OwnerEqual 'blocked' $identityBlocked.domain_status 'index repository mismatch can never be owner-current'
+Assert-OwnerTrue (@($identityBlocked.issues | Where-Object code -EQ 'index_repository_mismatch').Count -eq 1) 'index repository mismatch emits a bounded blocking issue'
+
+$missingIdentity = Invoke-GitOwnerStatus `
+    -BaselineRows $baselineRows `
+    -ObservedRows $observedRows `
+    -IndexIdentity ([pscustomobject]@{ repository=$null; default_branch='main'; head=$indexIdentity.head }) `
+    -RegistryIdentity $registryA `
+    -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
+Assert-OwnerEqual 'blocked' $missingIdentity.domain_status 'unresolved index repository identity can never be owner-current'
+Assert-OwnerTrue (@($missingIdentity.issues | Where-Object code -EQ 'index_repository_unresolved').Count -eq 1) 'unresolved index repository emits a bounded blocking issue'
+
+foreach ($gateCase in @(
+    [pscustomobject]@{
+        name = 'mismatch'
+        identity = $mismatchedIdentity
+        issue = 'index_repository_mismatch'
+    },
+    [pscustomobject]@{
+        name = 'unresolved'
+        identity = [pscustomobject]@{
+            repository = $null
+            default_branch = $null
+            head = $indexIdentity.head
+        }
+        issue = 'index_repository_unresolved'
+    }
+)) {
+    $probeCounts = [ordered]@{
+        identity = 0
+        read_index = 0
+        read_registry = 0
+        gh = 0
+        local_path = 0
+    }
+    $gateIdentity = $gateCase.identity
+    $gateStatus = Invoke-GitOwnerProvider `
+        -Owner 'wlyaaaaa' `
+        -ExpectedRepository 'wlyaaaaa/github-local-index' `
+        -RepoRoot $repoRoot `
+        -IdentityResolver {
+            param($Root)
+            $probeCounts.identity++
+            return $gateIdentity
+        } `
+        -IndexReader {
+            param($Root)
+            $probeCounts.read_index++
+            throw 'index_reader_must_not_run'
+        } `
+        -RegistryReader {
+            param($Root)
+            $probeCounts.read_registry++
+            throw 'registry_reader_must_not_run'
+        } `
+        -RemoteReader {
+            param($OwnerName)
+            $probeCounts.gh++
+            throw 'gh_must_not_run'
+        } `
+        -RemoteMerger {
+            param($Baseline,$Remote)
+            $probeCounts.local_path++
+            throw 'local_path_probe_must_not_run'
+        }
+    Assert-OwnerEqual 'completed' $gateStatus.execution_status "$($gateCase.name) identity gate remains a completed observation"
+    Assert-OwnerEqual 'blocked' $gateStatus.domain_status "$($gateCase.name) identity gate blocks before owner sources"
+    Assert-OwnerTrue (
+        @($gateStatus.issues | Where-Object code -EQ $gateCase.issue).Count -eq 1
+    ) "$($gateCase.name) identity gate returns its bounded issue"
+    Assert-OwnerTrue (
+        $probeCounts.identity -eq 1 -and
+        $probeCounts.read_index -eq 0 -and
+        $probeCounts.read_registry -eq 0 -and
+        $probeCounts.gh -eq 0 -and
+        $probeCounts.local_path -eq 0
+    ) "$($gateCase.name) identity gate performs zero untrusted-source or local-path calls"
+}
+
+$validProbeCounts = [ordered]@{
+    identity = 0
+    read_index = 0
+    read_registry = 0
+    gh = 0
+    local_path = 0
+}
+$validGateStatus = Invoke-GitOwnerProvider `
+    -Owner 'wlyaaaaa' `
+    -ExpectedRepository 'wlyaaaaa/github-local-index' `
+    -RepoRoot $repoRoot `
+    -IdentityResolver {
+        param($Root)
+        $validProbeCounts.identity++
+        return $indexIdentity
+    } `
+    -IndexReader {
+        param($Root)
+        $validProbeCounts.read_index++
+        return $baselineRows
+    } `
+    -RegistryReader {
+        param($Root)
+        $validProbeCounts.read_registry++
+        return $registryA
+    } `
+    -RemoteReader {
+        param($OwnerName)
+        $validProbeCounts.gh++
+        return [pscustomobject]@{
+            available = $true
+            reason = $null
+            rows = $observedRows
+        }
+    } `
+    -RemoteMerger {
+        param($Baseline,$Remote)
+        $validProbeCounts.local_path++
+        return $observedRows
+    }
+Assert-OwnerEqual 'current' $validGateStatus.domain_status 'valid identity preserves the owner-current path'
+Assert-OwnerTrue (
+    $validProbeCounts.identity -eq 1 -and
+    $validProbeCounts.read_index -eq 1 -and
+    $validProbeCounts.read_registry -eq 1 -and
+    $validProbeCounts.gh -eq 1 -and
+    $validProbeCounts.local_path -eq 1
+) 'valid identity invokes each downstream owner source exactly once'
+
+$entryGateRoot = Join-Path ([IO.Path]::GetTempPath()) (
+    'git-owner-entry-gate-' + [guid]::NewGuid().ToString('N')
+)
+$entryGitRoot = Join-Path $entryGateRoot '.git'
+[void][IO.Directory]::CreateDirectory($entryGitRoot)
+try {
+    [IO.File]::WriteAllText(
+        (Join-Path $entryGitRoot 'HEAD'),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`n",
+        [Text.Encoding]::ASCII
+    )
+    [IO.File]::WriteAllText(
+        (Join-Path $entryGitRoot 'config'),
+        "[remote `"origin`"]`n  url = https://github.com/attacker/github-local-index.git`n",
+        [Text.UTF8Encoding]::new($false)
+    )
+    $entryArguments = @(
+        '-NoProfile','-ExecutionPolicy','Bypass','-File',$providerPath,
+        '-RepoRoot',$entryGateRoot,
+        '-Owner','invalid owner',
+        '-Json'
+    )
+    $entryMismatchJson = & pwsh @entryArguments
+    Assert-OwnerEqual 0 $LASTEXITCODE 'entry mismatch blocks before missing index/registry or invalid gh owner can fail execution'
+    $entryMismatch = $entryMismatchJson | ConvertFrom-Json -Depth 12
+    Assert-OwnerEqual 'blocked' $entryMismatch.domain_status 'entry mismatch returns blocked from .git identity alone'
+    Assert-OwnerTrue (@($entryMismatch.issues | Where-Object code -EQ 'index_repository_mismatch').Count -eq 1) 'entry mismatch exposes only its bounded identity issue'
+
+    [IO.File]::WriteAllText(
+        (Join-Path $entryGitRoot 'config'),
+        "[core]`n  repositoryformatversion = 0`n",
+        [Text.UTF8Encoding]::new($false)
+    )
+    $entryUnresolvedJson = & pwsh @entryArguments
+    Assert-OwnerEqual 0 $LASTEXITCODE 'entry unresolved blocks before missing index/registry or invalid gh owner can fail execution'
+    $entryUnresolved = $entryUnresolvedJson | ConvertFrom-Json -Depth 12
+    Assert-OwnerEqual 'blocked' $entryUnresolved.domain_status 'entry unresolved returns blocked from .git identity alone'
+    Assert-OwnerTrue (@($entryUnresolved.issues | Where-Object code -EQ 'index_repository_unresolved').Count -eq 1) 'entry unresolved exposes only its bounded identity issue'
+}
+finally {
+    $entryGateFull = [IO.Path]::GetFullPath($entryGateRoot)
+    $entryGateTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    if ($entryGateFull.StartsWith(
+        $entryGateTemp, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $entryGateFull -Recurse -Force
+    }
+}
+
 $otherHeadIdentity = [pscustomobject]@{
     repository = $indexIdentity.repository
     default_branch = $indexIdentity.default_branch
@@ -272,13 +460,71 @@ $registryBlocked = Invoke-GitOwnerStatus `
 Assert-OwnerEqual 'blocked' $registryBlocked.domain_status 'invalid governance registry blocks owner-currentness'
 Assert-OwnerTrue (@($registryBlocked.issues | Where-Object code -EQ 'governance_registry_invalid').Count -eq 1) 'invalid registry is reported by a bounded public-safe code'
 
+$remoteFixtureRoot = Join-Path ([IO.Path]::GetTempPath()) (
+    'git-owner-remote-fixture-' + [guid]::NewGuid().ToString('N')
+)
+[void][IO.Directory]::CreateDirectory($remoteFixtureRoot)
+try {
+    $missingCli = Get-GitOwnerRemoteRows -Owner 'wlyaaaaa' `
+        -GhCommandPath (Join-Path $remoteFixtureRoot 'missing-gh.cmd')
+    Assert-OwnerEqual 'github_cli_unavailable' $missingCli.reason 'missing gh executable is reported as provider unavailability'
+
+    $transportCliPath = Join-Path $remoteFixtureRoot 'gh-transport.cmd'
+    [IO.File]::WriteAllText(
+        $transportCliPath,
+        "@echo off`r`nexit /b 7`r`n",
+        [Text.Encoding]::ASCII
+    )
+    $transportFailure = Get-GitOwnerRemoteRows -Owner 'wlyaaaaa' `
+        -GhCommandPath $transportCliPath
+    Assert-OwnerEqual 'remote_metadata_unavailable' $transportFailure.reason 'nonzero gh transport is a provider failure'
+
+    $invalidJsonCliPath = Join-Path $remoteFixtureRoot 'gh-invalid-json.cmd'
+    [IO.File]::WriteAllText(
+        $invalidJsonCliPath,
+        "@echo off`r`necho not-json`r`nexit /b 0`r`n",
+        [Text.Encoding]::ASCII
+    )
+    $invalidJson = Get-GitOwnerRemoteRows -Owner 'wlyaaaaa' `
+        -GhCommandPath $invalidJsonCliPath
+    Assert-OwnerEqual 'remote_metadata_invalid' $invalidJson.reason 'syntactically invalid gh JSON is a provider failure'
+}
+finally {
+    $fixtureFull = [IO.Path]::GetFullPath($remoteFixtureRoot)
+    $tempFull = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    if ($fixtureFull.StartsWith($tempFull, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $fixtureFull -Recurse -Force
+    }
+}
+
 $unknown = New-GitOwnerUnavailableStatus `
     -Reason 'remote_metadata_unavailable' `
     -IndexIdentity $indexIdentity `
     -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
-Assert-OwnerEqual 'completed' $unknown.execution_status 'source unavailability is a completed provider execution'
-Assert-OwnerEqual 'unknown' $unknown.domain_status 'source unavailability is explicit domain uncertainty'
-Assert-OwnerEqual 0 (Get-GitOwnerStatusProcessExitCode -Status $unknown) 'domain uncertainty does not request scheduler retry'
+Assert-OwnerEqual 'error' $unknown.execution_status 'remote transport failure is a provider execution error'
+Assert-OwnerEqual 'unknown' $unknown.domain_status 'provider execution failure does not invent a domain conclusion'
+Assert-OwnerEqual 2 (Get-GitOwnerStatusProcessExitCode -Status $unknown) 'remote transport failure requests scheduler retry'
+
+foreach ($providerReason in @(
+    'github_cli_unavailable',
+    'remote_metadata_unavailable',
+    'remote_metadata_invalid'
+)) {
+    $providerFailure = New-GitOwnerUnavailableStatus `
+        -Reason $providerReason `
+        -IndexIdentity $indexIdentity `
+        -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
+    Assert-OwnerEqual 'error' $providerFailure.execution_status "$providerReason is classified as provider execution error"
+    Assert-OwnerEqual 2 (Get-GitOwnerStatusProcessExitCode -Status $providerFailure) "$providerReason returns a nonzero provider exit"
+}
+
+$domainUnknown = New-GitOwnerUnavailableStatus `
+    -Reason 'owner_evidence_incomplete' `
+    -IndexIdentity $indexIdentity `
+    -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
+Assert-OwnerEqual 'completed' $domainUnknown.execution_status 'valid evidence uncertainty remains a completed provider observation'
+Assert-OwnerEqual 'unknown' $domainUnknown.domain_status 'valid evidence uncertainty remains domain unknown'
+Assert-OwnerEqual 0 (Get-GitOwnerStatusProcessExitCode -Status $domainUnknown) 'valid domain unknown does not request provider retry'
 
 $executionFailure = New-GitOwnerExecutionFailure -Reason 'provider_execution_failed' -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
 Assert-OwnerEqual 'error' $executionFailure.execution_status 'unexpected provider failure is an execution error'

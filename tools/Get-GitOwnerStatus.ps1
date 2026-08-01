@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
     [string] $Owner = 'wlyaaaaa',
+    [string] $ExpectedRepository = 'wlyaaaaa/github-local-index',
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [switch] $Json
 )
@@ -231,6 +232,28 @@ function ConvertTo-GitOwnerCanonicalIndexIdentity {
     }
 }
 
+function Get-GitOwnerIndexIdentityIssueCode {
+    param(
+        [AllowNull()] [object] $IndexIdentity,
+        [string] $ExpectedRepository = 'wlyaaaaa/github-local-index'
+    )
+
+    $identity = ConvertTo-GitOwnerCanonicalIndexIdentity `
+        -IndexIdentity $IndexIdentity
+    $expectedRepositoryValue = ([string]$ExpectedRepository).Trim().ToLowerInvariant()
+    if ($expectedRepositoryValue -notmatch
+        '^[a-z0-9_.-]+/[a-z0-9_.-]+$') {
+        return 'expected_repository_invalid'
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$identity.repository)) {
+        return 'index_repository_unresolved'
+    }
+    if ([string]$identity.repository -cne $expectedRepositoryValue) {
+        return 'index_repository_mismatch'
+    }
+    return $null
+}
+
 function ConvertTo-GitOwnerFingerprintIndexIdentity {
     param([AllowNull()] [object] $IndexIdentity)
 
@@ -434,6 +457,7 @@ function Invoke-GitOwnerStatus {
         [AllowEmptyCollection()] [object[]] $ObservedRows = @(),
         [AllowNull()] [object] $IndexIdentity,
         [AllowNull()] [object] $RegistryIdentity,
+        [string] $ExpectedRepository = 'wlyaaaaa/github-local-index',
         [datetimeoffset] $ObservedAt = [datetimeoffset]::UtcNow
     )
 
@@ -443,6 +467,19 @@ function Invoke-GitOwnerStatus {
     $registry = ConvertTo-GitOwnerCanonicalRegistryIdentity -RegistryIdentity $RegistryIdentity
     if ($null -ne $registry.valid -and -not [bool]$registry.valid) {
         $issues += [pscustomobject][ordered]@{ code = 'governance_registry_invalid'; repo = $null }
+    }
+    $identity = ConvertTo-GitOwnerCanonicalIndexIdentity -IndexIdentity $IndexIdentity
+    $identityIssueCode = Get-GitOwnerIndexIdentityIssueCode `
+        -IndexIdentity $identity -ExpectedRepository $ExpectedRepository
+    if (-not [string]::IsNullOrWhiteSpace($identityIssueCode)) {
+        $issueRepository = if ($identityIssueCode -ceq
+            'index_repository_mismatch') {
+            [string]$identity.repository
+        } else { $null }
+        $issues += [pscustomobject][ordered]@{
+            code = $identityIssueCode
+            repo = $issueRepository
+        }
     }
     $deltas = @(Compare-GitOwnerFactSets -BaselineFacts $baseline.facts -ObservedFacts $observed.facts)
     $domainStatus = if ($issues.Count -gt 0) {
@@ -454,7 +491,6 @@ function Invoke-GitOwnerStatus {
     else {
         'current'
     }
-    $identity = ConvertTo-GitOwnerCanonicalIndexIdentity -IndexIdentity $IndexIdentity
     $fingerprint = Get-GitOwnerFingerprint `
         -BaselineFacts $baseline.facts `
         -ObservedFacts $observed.facts `
@@ -501,6 +537,14 @@ function New-GitOwnerUnavailableStatus {
     )
 
     $safeReason = ConvertTo-GitOwnerSafeReason -Reason $Reason
+    if ($safeReason -in @(
+        'github_cli_unavailable',
+        'remote_metadata_unavailable',
+        'remote_metadata_invalid',
+        'invalid_owner'
+    )) {
+        return New-GitOwnerExecutionFailure -Reason $safeReason -ObservedAt $ObservedAt
+    }
     $identity = ConvertTo-GitOwnerCanonicalIndexIdentity -IndexIdentity $IndexIdentity
     $registry = ConvertTo-GitOwnerCanonicalRegistryIdentity -RegistryIdentity $RegistryIdentity
     $canonical = [pscustomobject][ordered]@{
@@ -734,24 +778,50 @@ function Get-GitOwnerVerifiedLocalRoots {
 }
 
 function Get-GitOwnerRemoteRows {
-    param([Parameter(Mandatory = $true)] [string] $Owner)
+    param(
+        [Parameter(Mandatory = $true)] [string] $Owner,
+        [AllowEmptyString()] [string] $GhCommandPath = ''
+    )
 
     if ($Owner -notmatch '^[a-zA-Z0-9_.-]+$') {
         return [pscustomobject][ordered]@{ available = $false; reason = 'invalid_owner'; rows = @() }
     }
 
-    $gh = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue
-    if ($null -eq $gh) {
-        return [pscustomobject][ordered]@{ available = $false; reason = 'github_cli_unavailable'; rows = @() }
+    $ghSource = $null
+    if (-not [string]::IsNullOrWhiteSpace($GhCommandPath)) {
+        $candidateGhPath = [IO.Path]::GetFullPath($GhCommandPath)
+        if (Test-Path -LiteralPath $candidateGhPath -PathType Leaf) {
+            $ghSource = $candidateGhPath
+        }
+    }
+    else {
+        $gh = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue
+        if ($null -ne $gh) { $ghSource = $gh.Source }
+    }
+    if ([string]::IsNullOrWhiteSpace($ghSource)) {
+        return [pscustomobject][ordered]@{
+            available = $false
+            reason = 'github_cli_unavailable'
+            rows = @()
+        }
     }
 
-    $stdout = @(& $gh.Source repo list $Owner --limit 1000 --json nameWithOwner,visibility,defaultBranchRef 2>$null)
+    $stdout = @(& $ghSource repo list $Owner --limit 1000 --json nameWithOwner,visibility,defaultBranchRef 2>$null)
     if ($LASTEXITCODE -ne 0) {
         return [pscustomobject][ordered]@{ available = $false; reason = 'remote_metadata_unavailable'; rows = @() }
     }
 
+    $remoteJson = ($stdout -join "`n").Trim()
+    if ([string]::IsNullOrWhiteSpace($remoteJson)) {
+        return [pscustomobject][ordered]@{ available = $false; reason = 'remote_metadata_invalid'; rows = @() }
+    }
+
     try {
-        $metadata = @((($stdout -join "`n") | ConvertFrom-Json))
+        $parsedMetadata = ConvertFrom-Json -InputObject $remoteJson -NoEnumerate
+        if ($parsedMetadata -isnot [System.Array]) {
+            throw 'remote metadata root is not an array'
+        }
+        $metadata = @($parsedMetadata)
     }
     catch {
         return [pscustomobject][ordered]@{ available = $false; reason = 'remote_metadata_invalid'; rows = @() }
@@ -844,46 +914,114 @@ function Get-GitOwnerHeadFromFiles {
 }
 
 function Get-GitOwnerIndexIdentity {
+    param([Parameter(Mandatory = $true)] [string] $RepoRoot)
+
+    $repository = Get-GitOwnerRootRemoteSlug -RepositoryRoot $RepoRoot
+    return [pscustomobject][ordered]@{
+        repository = $repository
+        default_branch = $null
+        head = Get-GitOwnerHeadFromFiles -RepositoryRoot $RepoRoot
+    }
+}
+
+function Add-GitOwnerIndexBaselineContext {
     param(
-        [Parameter(Mandatory = $true)] [string] $RepoRoot,
-        [Parameter(Mandatory = $true)] [string] $Owner,
+        [AllowNull()] [object] $IndexIdentity,
         [AllowEmptyCollection()] [object[]] $BaselineRows = @()
     )
 
-    $repository = Get-GitOwnerRootRemoteSlug -RepositoryRoot $RepoRoot
-    if ([string]::IsNullOrWhiteSpace($repository)) {
-        $repository = "$Owner/github-local-index".ToLowerInvariant()
-    }
+    $identity = ConvertTo-GitOwnerCanonicalIndexIdentity `
+        -IndexIdentity $IndexIdentity
     $defaultBranch = @(
         $BaselineRows |
-            Where-Object { ([string]$_.NameWithOwner).Trim().ToLowerInvariant() -eq $repository } |
+            Where-Object {
+                ([string]$_.NameWithOwner).Trim().ToLowerInvariant() -eq
+                    [string]$identity.repository
+            } |
             Select-Object -First 1 -ExpandProperty DefaultBranch
     )
-
     return [pscustomobject][ordered]@{
-        repository = $repository
-        default_branch = if ($defaultBranch.Count -gt 0) { [string]$defaultBranch[0] } else { $null }
-        head = Get-GitOwnerHeadFromFiles -RepositoryRoot $RepoRoot
+        repository = $identity.repository
+        default_branch = if ($defaultBranch.Count -gt 0) {
+            [string]$defaultBranch[0]
+        } else { $identity.default_branch }
+        head = $identity.head
     }
+}
+
+function Invoke-GitOwnerProvider {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Owner,
+        [Parameter(Mandatory = $true)] [string] $ExpectedRepository,
+        [Parameter(Mandatory = $true)] [string] $RepoRoot,
+        [AllowNull()] [scriptblock] $IdentityResolver,
+        [AllowNull()] [scriptblock] $IndexReader,
+        [AllowNull()] [scriptblock] $RegistryReader,
+        [AllowNull()] [scriptblock] $RemoteReader,
+        [AllowNull()] [scriptblock] $RemoteMerger
+    )
+
+    $identity = if ($null -ne $IdentityResolver) {
+        & $IdentityResolver $RepoRoot
+    }
+    else {
+        Get-GitOwnerIndexIdentity -RepoRoot $RepoRoot
+    }
+    $identityIssue = Get-GitOwnerIndexIdentityIssueCode `
+        -IndexIdentity $identity -ExpectedRepository $ExpectedRepository
+    if (-not [string]::IsNullOrWhiteSpace($identityIssue)) {
+        return Invoke-GitOwnerStatus `
+            -BaselineRows @() -ObservedRows @() `
+            -IndexIdentity $identity -RegistryIdentity $null `
+            -ExpectedRepository $ExpectedRepository
+    }
+
+    $baselineRows = if ($null -ne $IndexReader) {
+        @(& $IndexReader $RepoRoot)
+    }
+    else {
+        @(Read-GitOwnerIndexRows -RepoRoot $RepoRoot)
+    }
+    $identity = Add-GitOwnerIndexBaselineContext `
+        -IndexIdentity $identity -BaselineRows $baselineRows
+    $registryIdentity = if ($null -ne $RegistryReader) {
+        & $RegistryReader $RepoRoot
+    }
+    else {
+        Read-GitOwnerGovernanceRegistryIdentity -RepoRoot $RepoRoot
+    }
+    $remote = if ($null -ne $RemoteReader) {
+        & $RemoteReader $Owner
+    }
+    else {
+        Get-GitOwnerRemoteRows -Owner $Owner
+    }
+    if (-not [bool]$remote.available) {
+        return New-GitOwnerUnavailableStatus -Reason $remote.reason `
+            -IndexIdentity $identity -RegistryIdentity $registryIdentity
+    }
+    $observedRows = if ($null -ne $RemoteMerger) {
+        @(& $RemoteMerger $baselineRows @($remote.rows))
+    }
+    else {
+        @(Merge-GitOwnerRemoteAndLocalFacts `
+            -BaselineRows $baselineRows -RemoteRows @($remote.rows))
+    }
+    return Invoke-GitOwnerStatus -BaselineRows $baselineRows `
+        -ObservedRows $observedRows -IndexIdentity $identity `
+        -RegistryIdentity $registryIdentity `
+        -ExpectedRepository $ExpectedRepository
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
     $status = $null
     try {
-        $baselineRows = @(Read-GitOwnerIndexRows -RepoRoot $RepoRoot)
-        $identity = Get-GitOwnerIndexIdentity -RepoRoot $RepoRoot -Owner $Owner -BaselineRows $baselineRows
-        $registryIdentity = Read-GitOwnerGovernanceRegistryIdentity -RepoRoot $RepoRoot
-        $remote = Get-GitOwnerRemoteRows -Owner $Owner
-        if (-not $remote.available) {
-            $status = New-GitOwnerUnavailableStatus -Reason $remote.reason -IndexIdentity $identity -RegistryIdentity $registryIdentity
-        }
-        else {
-            $observedRows = @(Merge-GitOwnerRemoteAndLocalFacts -BaselineRows $baselineRows -RemoteRows $remote.rows)
-            $status = Invoke-GitOwnerStatus -BaselineRows $baselineRows -ObservedRows $observedRows -IndexIdentity $identity -RegistryIdentity $registryIdentity
-        }
+        $status = Invoke-GitOwnerProvider -Owner $Owner `
+            -ExpectedRepository $ExpectedRepository -RepoRoot $RepoRoot
     }
     catch {
-        $status = New-GitOwnerExecutionFailure -Reason 'provider_execution_failed'
+        $status = New-GitOwnerExecutionFailure `
+            -Reason 'provider_execution_failed'
     }
 
     if ($Json) {

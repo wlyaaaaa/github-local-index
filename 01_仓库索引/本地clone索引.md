@@ -6,8 +6,8 @@
 
 | GitHub 仓库 | 本地路径 | 状态 |
 | --- | --- | --- |
-| wlyaaaaa/.agents | E:\.agents<br>V:\Personal\Worktrees\agents-economy-router-v5 | `main` 已同步，`0/0`，脏工作区 374 项（cached）<br>`codex/s8-wp4-personalos-router` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/economy-router-v5-blue-green` 无 upstream，脏工作区 6 项，内容已由默认分支吸收（cached）<br>`codex/s9-beta-total-deadline` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/s9-health-route-doc` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/personalos-beacon-receipt` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached） |
-| wlyaaaaa/ai-cli-profile-manager | E:\Projects\Tools\ai-cli-profile-manager | `main` 已同步，`0/0`，脏工作区 39 项（cached） |
+| wlyaaaaa/.agents | E:\.agents<br>V:\Personal\Worktrees\agents-economy-router-v5 | `main` 已同步，`0/0`，脏工作区 378 项（cached）<br>`codex/s8-wp4-personalos-router` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/economy-router-v5-blue-green` 无 upstream，脏工作区 14 项，内容已由默认分支吸收（cached）<br>`codex/s9-beta-total-deadline` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/s9-health-route-doc` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`codex/personalos-beacon-receipt` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached） |
+| wlyaaaaa/ai-cli-profile-manager | E:\Projects\Tools\ai-cli-profile-manager | `main` 已同步，`0/0`，脏工作区 41 项（cached） |
 | wlyaaaaa/ai-coach | E:\Projects\Tools\ai-coach | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/ai-llm-job-prep | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/ChineseASR | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0`（cached） |
@@ -21,11 +21,12 @@
 | wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/Key | V:\Personal\Projects\Key | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/legal-filing-kit | E:\Projects\Tools\legal-filing-kit<br>V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1<br>V:\Personal\Worktrees\legal-filing-kit-1.0-reaudit-859b083<br>V:\Personal\Worktrees\legal-filing-kit-s3-audit-25529a0 | `main` 已同步，`0/0`，脏工作区 3 项（cached）<br>历史审计快照固定于 `87dcfd1`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `859b083`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `25529a0`，detached 且无 upstream，不自动同步（cached） |
-| wlyaaaaa/llm-backend-toolkit | V:\Personal\Projects\llm-backend-toolkit | `main` 已同步，`0/0`，脏工作区 26 项（cached） |
+| wlyaaaaa/llm-backend-toolkit | V:\Personal\Projects\llm-backend-toolkit | `main` 已同步，`0/0`，脏工作区 29 项（cached） |
 | wlyaaaaa/LocalOCR | E:\Projects\Tools\LocalOCR | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/md-triple-tactics-talent-solver | E:\Projects\Archives\md-triple-tactics-talent-solver | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/openclaw-backup | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/OpenClawGateway | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0`，脏工作区 9 项（cached） |
+| wlyaaaaa/PC-Panel-Hub | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`，脏工作区 3 项（cached） |
 | wlyaaaaa/PCConfig | E:\PCConfig | `main` 已同步，`0/0`，脏工作区 38 项（cached）<br>`codex/personalos-shadow-root-fact` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`origin/secret-broker-backup` 由 PCConfig Secret Broker 专门 owner 治理，不纳入 Codex 收敛判断（cached） |
 | wlyaaaaa/ProxyClean | E:\Projects\Tools\ProxyClean | `master` 已同步，`0/0`（cached） |
 | wlyaaaaa/RamdiskGuardian | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（cached） |
@@ -34,8 +35,7 @@
 | wlyaaaaa/steam-millennium-config-backup | E:\Projects\Tools\steam-millennium-config-backup | `master` 已同步，`0/0`，脏工作区 8 项（cached） |
 | wlyaaaaa/sunshine-remote-streaming | E:\Projects\Tools\sunshine-remote-streaming | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/TimeAudit | E:\Projects\Tools\TimeAudit | `main` 已同步，`0/0`，脏工作区 2 项（cached） |
-| wlyaaaaa/TURZX-SideScreen | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`，脏工作区 9 项（cached） |
 | wlyaaaaa/vault-tool | E:\Projects\Tools\vault-tool | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/video-scaffold | E:\Projects\Archives\video-scaffold | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/wechat-history-ai-bridge | E:\Projects\Tools\WeFlowBridge<br>V:\Personal\Worktrees\WeFlowBridge-private-handoff-contract<br>V:\Personal\Worktrees\WeFlowBridge-snapshot-manifest | `master` 已同步，`0/0`（cached）<br>`codex/weflowbridge-private-handoff-contract` 无 upstream，内容已由默认分支吸收（cached）<br>`codex/weflow-snapshot-manifest` 已同步，`0/0`，内容已由默认分支吸收（cached） |
-| wlyaaaaa/wlyaaaaa | V:\Personal\Projects\wlyaaaaa | `main` 已同步，`0/0`（cached） |
+| wlyaaaaa/wlyaaaaa | V:\Personal\Projects\wlyaaaaa | `main` 已同步，`0/0`（cached）<br>`origin/output` 仅有 remote-tracking branch ref，默认分支缺少 1 个提交（cached） |

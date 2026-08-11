@@ -164,6 +164,147 @@ $brokerInvoker = {
     }
 }
 
+$script:CreateFixture = [ordered]@{
+    target_present = $false
+    metadata_calls = 0
+    present_on_metadata_call = 0
+    login = 'synthetic-owner'
+    local_branch = 'main'
+    local_head_oid = ('b' * 40)
+    local_clean = $true
+    native_effects = 0
+    effect_argv = @()
+    post_exit_code = 0
+    post_creates_target = $true
+    post_response_id = 17002
+    post_response_node_id = 'R_synthetic_created_repo'
+    post_response_full_name = 'synthetic-owner/created-repo'
+    post_response_private = $true
+    post_response_visibility = 'private'
+    readback_id = 17002
+    readback_node_id = 'R_synthetic_created_repo'
+    readback_full_name = 'synthetic-owner/created-repo'
+    readback_private = $true
+    readback_visibility = 'private'
+}
+
+$createAdmissionInvoker = {
+    throw 'create-repository must not use normal project admission'
+}
+
+$createMetadataInvoker = {
+    param([string] $Repository, [bool] $AllowMissing)
+    if ($Repository -cne 'synthetic-owner/created-repo') {
+        throw "unexpected create metadata target: $Repository"
+    }
+    $script:CreateFixture.metadata_calls++
+    if ($script:CreateFixture.present_on_metadata_call -gt 0 -and
+        $script:CreateFixture.metadata_calls -ge
+            $script:CreateFixture.present_on_metadata_call) {
+        $script:CreateFixture.target_present = $true
+    }
+    if (-not $script:CreateFixture.target_present) {
+        return [pscustomobject]@{
+            exit_code = 1
+            missing = $true
+            value = $null
+            stderr = 'HTTP 404: Not Found'
+        }
+    }
+    [pscustomobject]@{
+        exit_code = 0
+        missing = $false
+        value = [pscustomobject][ordered]@{
+            id = $script:CreateFixture.readback_id
+            node_id = $script:CreateFixture.readback_node_id
+            full_name = $script:CreateFixture.readback_full_name
+            private = $script:CreateFixture.readback_private
+            visibility = $script:CreateFixture.readback_visibility
+            default_branch = 'main'
+        }
+        stderr = ''
+    }
+}
+
+$createAccountInvoker = {
+    [pscustomobject]@{
+        exit_code = 0
+        value = [pscustomobject]@{ login = $script:CreateFixture.login }
+        stderr = ''
+    }
+}
+
+$createNativeInvoker = {
+    param(
+        [string] $Kind,
+        [string] $Executable,
+        [string[]] $Arguments,
+        [string] $WorkingDirectory,
+        [bool] $AllowFailure
+    )
+    $joined = $Arguments -join ' '
+    if ($Kind -eq 'git') {
+        if ($joined -match 'rev-parse --show-toplevel') {
+            return [pscustomobject]@{
+                exit_code = 0
+                stdout = 'C:\synthetic\created-repo'
+                stderr = ''
+            }
+        }
+        if ($joined -match 'rev-parse --git-common-dir') {
+            return [pscustomobject]@{
+                exit_code = 0
+                stdout = '.git'
+                stderr = ''
+            }
+        }
+        if ($joined -match 'symbolic-ref --quiet --short HEAD') {
+            return [pscustomobject]@{
+                exit_code = 0
+                stdout = $script:CreateFixture.local_branch
+                stderr = ''
+            }
+        }
+        if ($joined -match 'rev-parse --verify HEAD') {
+            return [pscustomobject]@{
+                exit_code = 0
+                stdout = $script:CreateFixture.local_head_oid
+                stderr = ''
+            }
+        }
+        if ($joined -match 'status --porcelain=v1') {
+            return [pscustomobject]@{
+                exit_code = 0
+                stdout = $(if ($script:CreateFixture.local_clean) { '' }
+                    else { ' M README.md' })
+                stderr = ''
+            }
+        }
+        throw "unexpected create git invocation: $joined"
+    }
+    if ($Kind -eq 'gh' -and $Arguments -contains 'user/repos') {
+        $script:CreateFixture.native_effects++
+        $script:CreateFixture.effect_argv = @($Arguments)
+        if ($script:CreateFixture.post_creates_target) {
+            $script:CreateFixture.target_present = $true
+        }
+        $postResponse = [pscustomobject][ordered]@{
+            id = $script:CreateFixture.post_response_id
+            node_id = $script:CreateFixture.post_response_node_id
+            full_name = $script:CreateFixture.post_response_full_name
+            private = $script:CreateFixture.post_response_private
+            visibility = $script:CreateFixture.post_response_visibility
+        }
+        return [pscustomobject]@{
+            exit_code = $script:CreateFixture.post_exit_code
+            stdout = ($postResponse | ConvertTo-Json -Compress)
+            stderr = $(if ($script:CreateFixture.post_exit_code -eq 0) { '' }
+                else { 'HTTP 422: repository already exists' })
+        }
+    }
+    throw "unexpected create native invocation: $Kind $joined"
+}
+
 $arguments = [ordered]@{
     ref = 'refs/heads/protected'
     expected_oid = ('a' * 40)
@@ -261,6 +402,264 @@ Assert-True (Invoke-ReadBack `
 Assert-Equal 'synthetic-destination/protected-repo' `
     $script:TransferReadBackRepository `
     'transfer read-back queries the new canonical repository slug'
+
+$createArguments = [ordered]@{
+    expected_absent = $true
+    visibility = 'PRIVATE'
+    expected_local_branch = 'main'
+    expected_head_oid = ('b' * 40)
+}
+$createProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -Operation 'create-repository' `
+    -Repository 'synthetic-owner/created-repo' `
+    -RepoPath 'C:\synthetic\created-repo' `
+    -Arguments $createArguments `
+    -Decision 'allow' `
+    -Reason '顶级模型确认先建立空 PRIVATE 远端。' `
+    -UserIntent '为已验证的本地 worktree 建立空 PRIVATE GitHub 远端。' `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker
+Assert-Equal 'repository-slug:synthetic-owner/created-repo' `
+    $createProposal.authorization_request.stable_target.resource `
+    'create Prepare binds the repository slug without fabricating an ID'
+$createStableTargetKeys = @(Get-MapKeys `
+        -Value $createProposal.authorization_request.stable_target)
+Assert-True (($createStableTargetKeys -notcontains 'repository_database_id') -and
+    ($createStableTargetKeys -notcontains 'repository_node_id')) `
+    'create Prepare does not fabricate precreation database or node IDs'
+Assert-Equal 'synthetic-owner' `
+    $createProposal.authorization_request.preconditions.authenticated_owner.login `
+    'create Prepare binds the authenticated GitHub owner'
+Assert-Equal 'main' `
+    $createProposal.authorization_request.preconditions.local_worktree.branch `
+    'create Prepare binds the clean local branch'
+Assert-Equal ('b' * 40) `
+    $createProposal.authorization_request.preconditions.local_worktree.head_oid `
+    'create Prepare binds the local HEAD OID'
+Assert-True ([bool]$createProposal.authorization_request.preconditions.target.absent) `
+    'create Prepare verifies the target repository is absent'
+$createPlan = Get-EffectPlan `
+    -EffectFamily 'github-api' `
+    -Operation 'create-repository' `
+    -Repository 'synthetic-owner/created-repo' `
+    -RepoPath 'C:\synthetic\created-repo' `
+    -Arguments $createArguments
+$expectedCreateArgv = @(
+    'api', '--method', 'POST',
+    '-H', 'Accept: application/vnd.github+json',
+    '-H', 'X-GitHub-Api-Version: 2022-11-28',
+    'user/repos',
+    '-f', 'name=created-repo',
+    '-f', 'private=true',
+    '-f', 'auto_init=false'
+)
+Assert-True (Test-ExactValue $expectedCreateArgv $createPlan.argv) `
+    'create effect uses only the fixed POST user/repos argv'
+
+$script:Fixture.broker_calls.Clear()
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.present_on_metadata_call = 0
+$script:CreateFixture.native_effects = 0
+$createDryRunProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -ExecutionMode 'dry_run' `
+    -Operation 'create-repository' `
+    -Repository 'synthetic-owner/created-repo' `
+    -RepoPath 'C:\synthetic\created-repo' `
+    -Arguments $createArguments `
+    -Decision 'allow' `
+    -Reason '只验证建仓能力，不创建远端。' `
+    -UserIntent '对空 PRIVATE 建仓请求进行无副作用验证。' `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker
+$createDryRun = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $createDryRunProposal `
+    -DryRun:$true `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'dry_run_verified' $createDryRun.result `
+    'create dry-run verifies authorization without invoking POST'
+Assert-Equal 0 $script:CreateFixture.native_effects `
+    'create dry-run never invokes the gh effect'
+Assert-True (-not $script:CreateFixture.target_present) `
+    'create dry-run leaves the synthetic target absent'
+
+$script:Fixture.broker_calls.Clear()
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.present_on_metadata_call = 0
+$script:CreateFixture.native_effects = 0
+$createExecuted = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $createProposal `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'executed_verified' $createExecuted.result `
+    'create Execute succeeds only after private read-back'
+Assert-Equal 1 $script:CreateFixture.native_effects `
+    'create Execute invokes the fixed gh effect exactly once'
+Assert-True (Test-ExactValue $expectedCreateArgv $script:CreateFixture.effect_argv) `
+    'create Execute preserves the fixed argv without a shell'
+
+$script:Fixture.broker_calls.Clear()
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.present_on_metadata_call = 0
+$script:CreateFixture.native_effects = 0
+$script:CreateFixture.post_exit_code = 1
+$script:CreateFixture.post_creates_target = $true
+$createCollision = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $createProposal `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'effect_failed_state_unknown' $createCollision.result `
+    'create does not claim a competing repository after POST fails'
+Assert-True (-not [bool]$createCollision.mutation_performed) `
+    'failed create POST does not claim this adapter performed the mutation'
+Assert-True ([bool]$createCollision.mutation_may_have_occurred) `
+    'failed create POST preserves the ambiguous external state'
+
+$script:Fixture.broker_calls.Clear()
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.native_effects = 0
+$script:CreateFixture.post_exit_code = 0
+$script:CreateFixture.readback_id = 17003
+$createReadBackMismatch = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $createProposal `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'read_back_failed' $createReadBackMismatch.result `
+    'create rejects a GET read-back that does not match the POST repository ID'
+Assert-True ([bool]$createReadBackMismatch.mutation_performed) `
+    'successful create POST remains a performed mutation when read-back mismatches'
+$script:CreateFixture.readback_id = 17002
+
+$script:Fixture.broker_calls.Clear()
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.present_on_metadata_call = 0
+$script:CreateFixture.native_effects = 0
+$createDriftProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -Operation 'create-repository' `
+    -Repository 'synthetic-owner/created-repo' `
+    -RepoPath 'C:\synthetic\created-repo' `
+    -Arguments $createArguments `
+    -Decision 'allow' `
+    -Reason '验证能力消费后的目标出现漂移。' `
+    -UserIntent '验证新仓库在 POST 前出现时拒绝执行。' `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker
+$script:CreateFixture.present_on_metadata_call = 4
+$createDrift = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $createDriftProposal `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'target_precondition_changed_after_consume' $createDrift.error `
+    'create rejects a 404-to-present drift before POST'
+Assert-Equal 0 $script:CreateFixture.native_effects `
+    '404-to-present drift causes zero create effects'
+
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.present_on_metadata_call = 0
+$script:CreateFixture.login = 'different-owner'
+$loginMismatchRejected = $false
+try {
+    New-ProtectedGitHubMajorActionProposal `
+        -EffectFamily 'github-api' `
+        -Operation 'create-repository' `
+        -Repository 'synthetic-owner/created-repo' `
+        -RepoPath 'C:\synthetic\created-repo' `
+        -Arguments $createArguments `
+        -Decision 'allow' `
+        -Reason 'synthetic authenticated-owner mismatch' `
+        -UserIntent 'reject a mismatched GitHub account' `
+        -AdmissionInvoker $createAdmissionInvoker `
+        -MetadataInvoker $createMetadataInvoker `
+        -AccountInvoker $createAccountInvoker `
+        -NativeInvoker $createNativeInvoker | Out-Null
+}
+catch { $loginMismatchRejected = $_.Exception.Message -eq 'authenticated_owner_mismatch' }
+Assert-True $loginMismatchRejected `
+    'create rejects a slug owner that does not exactly match the authenticated login'
+$script:CreateFixture.login = 'synthetic-owner'
+
+$publicCreateArguments = [ordered]@{
+    expected_absent = $true
+    visibility = 'PUBLIC'
+    expected_local_branch = 'main'
+    expected_head_oid = ('b' * 40)
+}
+$publicCreateRejected = $false
+try {
+    New-ProtectedGitHubMajorActionProposal `
+        -EffectFamily 'github-api' `
+        -Operation 'create-repository' `
+        -Repository 'synthetic-owner/created-repo' `
+        -RepoPath 'C:\synthetic\created-repo' `
+        -Arguments $publicCreateArguments `
+        -Decision 'allow' `
+        -Reason 'synthetic direct public create' `
+        -UserIntent 'prove direct public creation is rejected' `
+        -AdmissionInvoker $createAdmissionInvoker `
+        -MetadataInvoker $createMetadataInvoker `
+        -AccountInvoker $createAccountInvoker `
+        -NativeInvoker $createNativeInvoker | Out-Null
+}
+catch { $publicCreateRejected = $_.Exception.Message -eq 'typed_arguments_invalid' }
+Assert-True $publicCreateRejected `
+    'create rejects direct PUBLIC repository creation'
+
+$extraCreateArguments = [ordered]@{
+    expected_absent = $true
+    visibility = 'PRIVATE'
+    expected_local_branch = 'main'
+    expected_head_oid = ('b' * 40)
+    shell = 'gh repo create --public'
+}
+$extraCreateRejected = $false
+try {
+    New-ProtectedGitHubMajorActionProposal `
+        -EffectFamily 'github-api' `
+        -Operation 'create-repository' `
+        -Repository 'synthetic-owner/created-repo' `
+        -RepoPath 'C:\synthetic\created-repo' `
+        -Arguments $extraCreateArguments `
+        -Decision 'allow' `
+        -Reason 'synthetic extra create field' `
+        -UserIntent 'prove create schema is exact-key' `
+        -AdmissionInvoker $createAdmissionInvoker `
+        -MetadataInvoker $createMetadataInvoker `
+        -AccountInvoker $createAccountInvoker `
+        -NativeInvoker $createNativeInvoker | Out-Null
+}
+catch { $extraCreateRejected = $_.Exception.Message -eq 'typed_arguments_invalid' }
+Assert-True $extraCreateRejected `
+    'create rejects extra fields and shell payloads'
 
 $script:Fixture.broker_calls.Clear()
 $script:Fixture.native_effects = 0

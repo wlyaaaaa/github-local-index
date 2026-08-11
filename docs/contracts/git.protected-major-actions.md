@@ -66,8 +66,8 @@ adapter 只接受两类固定 effect，不接受 shell string 或 executable 参
 
 - `git-local`：`delete-local-ref`、`force-update-local-ref`、
   `replace-remote-url`；
-- `github-api`：`set-visibility`、`set-default-branch`、
-  `delete-repository`、`transfer-repository`。
+- `github-api`：`create-repository`、`set-visibility`、
+  `set-default-branch`、`delete-repository`、`transfer-repository`。
 
 Git 本地 effect 只调用固定 Git for Windows 路径，以
 `ProcessStartInfo.ArgumentList` 逐参数执行；清除 Git 目录、exec、SSH、askpass、
@@ -75,6 +75,43 @@ redirect 等环境覆盖，禁用 system/global config，并用
 `core.hooksPath=NUL`、空 credential helper 隔离 hook/helper。GitHub effect 只调
 固定 `gh api` 与固定 GitHub REST endpoint/method；不存在通用命令、别名、扩展、
 重定向或任意 API endpoint 通道。
+
+### `github-api/create-repository`
+
+这是“先安全建立私有远端”的专用通道，只能在当前已认证 GitHub 登录名自己名下
+创建一个空的 PRIVATE 仓库。参数对象必须精确且仅包含：
+
+- `expected_absent=true`；
+- `visibility="PRIVATE"`；
+- `expected_local_branch` 与 `expected_head_oid`。
+
+Prepare 不复用要求远端已存在的普通 project admission。它以固定 `gh api` GET
+读取 `repos/<owner>/<repo>`，只接受可识别的 404/absent；再固定 GET `user`，要求
+返回的 `login` 与 repository slug 的 owner 严格相等。随后固定 Git 逐项确认
+`RepoPath` 正是 canonical worktree、worktree clean、当前 branch 与 HEAD OID 精确
+匹配 typed 参数。提案目标使用 `repository-slug:<owner>/<repo>`，在创建前绝不伪造
+database ID 或 node ID。
+
+effect 的 argv 是封闭的：`gh api --method POST user/repos`，payload 只能是
+`name=<repo>`、`private=true`、`auto_init=false`。没有 owner、visibility、模板、
+description、任意 endpoint 或任意 payload 的透传字段。Authorize/Consume 后仍会重新
+执行上述 preimage；目标若在最终 effect 前出现，必须失败关闭。POST 后以固定 GET
+read-back 只在 POST 成功并返回合法 `full_name`、PRIVATE、database ID 与 node ID
+后成立，固定 GET 的同名字段还必须与 POST 响应精确一致；POST 非零不得认领随后
+出现的同名仓库。
+
+创建成功后，初始 remote 配置和 push 仍是普通 Git 收敛，不由本操作替代。若以后要
+公开，必须使用既有 typed `set-visibility`，并先完成 PUBLIC 内容审查；不得以 direct
+create 绕过该边界。
+
+### Schema 与内部执行器边界
+
+adapter schema 规定可授权的 typed effect、preimage 和 read-back；内部执行器只把
+已绑定的 closed argv 交给已哈希的固定 `gh` 路径与 `ProcessStartInfo.ArgumentList`。
+本机 `gh` 是 adapter 的内部实现，不需要也不依赖 GitHub plugin。某个 GitHub 操作
+尚未被闭合 schema 与固定 executor 表达时，属于
+`protected_executor_extension_required` 的 adapter 扩展缺口，不是要求安装 plugin、
+开放任意 endpoint 或退回 shell 的理由。
 
 ## 正常变化、事件与边界
 

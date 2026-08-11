@@ -14,6 +14,7 @@ param(
         'delete-local-ref',
         'force-update-local-ref',
         'replace-remote-url',
+        'create-repository',
         'set-visibility',
         'set-default-branch',
         'delete-repository',
@@ -413,6 +414,37 @@ function Get-DefaultMetadataInvoker {
     }
 }
 
+function Get-DefaultAccountInvoker {
+    {
+        $gh = Get-FixedExecutor -Kind gh
+        $result = Invoke-HardenedNative `
+            -Kind gh `
+            -Executable $gh `
+            -Arguments @(
+                'api', '--method', 'GET',
+                '-H', 'Accept: application/vnd.github+json',
+                '-H', 'X-GitHub-Api-Version: 2022-11-28',
+                'user'
+            ) `
+            -WorkingDirectory $PSScriptRoot `
+            -AllowFailure $true
+        if ($result.exit_code -ne 0) {
+            return [pscustomobject]@{
+                exit_code = $result.exit_code
+                value = $null
+                stderr = $result.stderr
+            }
+        }
+        try { $value = $result.stdout | ConvertFrom-Json -Depth 30 }
+        catch { Throw-ProtectedActionError 'github_authenticated_account_invalid' }
+        [pscustomobject]@{
+            exit_code = 0
+            value = $value
+            stderr = ''
+        }
+    }
+}
+
 function Get-DefaultNativeInvoker {
     {
         param(
@@ -487,6 +519,16 @@ function Assert-GitRef {
     }
 }
 
+function Assert-GitBranchName {
+    param([Parameter(Mandatory)][string] $Branch)
+    if ($Branch -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._/-]{0,240}$' -or
+        $Branch.Contains('..') -or $Branch.Contains('@{') -or
+        $Branch.EndsWith('.') -or $Branch.EndsWith('/') -or
+        $Branch.Contains('//') -or $Branch.Contains('\')) {
+        Throw-ProtectedActionError 'typed_arguments_invalid'
+    }
+}
+
 function Assert-TypedArguments {
     param(
         [Parameter(Mandatory)][string] $EffectFamily,
@@ -498,7 +540,7 @@ function Assert-TypedArguments {
     }
     else {
         @(
-            'set-visibility', 'set-default-branch', 'delete-repository',
+            'create-repository', 'set-visibility', 'set-default-branch', 'delete-repository',
             'transfer-repository'
         )
     }
@@ -509,6 +551,12 @@ function Assert-TypedArguments {
         'delete-local-ref' { @('ref', 'expected_oid') }
         'force-update-local-ref' { @('ref', 'expected_old_oid', 'new_oid') }
         'replace-remote-url' { @('remote', 'expected_url', 'new_url') }
+        'create-repository' {
+            @(
+                'expected_absent', 'visibility', 'expected_local_branch',
+                'expected_head_oid'
+            )
+        }
         'set-visibility' { @('expected_visibility', 'new_visibility') }
         'set-default-branch' {
             @('expected_default_branch', 'new_default_branch')
@@ -541,6 +589,17 @@ function Assert-TypedArguments {
                 $new -notmatch '^(?:https://github\.com/|git@github\.com:)') {
                 Throw-ProtectedActionError 'typed_arguments_invalid'
             }
+        }
+        'create-repository' {
+            $expectedAbsent = Get-MapValue $Arguments 'expected_absent'
+            $visibility = [string](Get-MapValue $Arguments 'visibility')
+            if ($expectedAbsent -isnot [bool] -or $expectedAbsent -ne $true -or
+                $visibility -cne 'PRIVATE') {
+                Throw-ProtectedActionError 'typed_arguments_invalid'
+            }
+            Assert-GitBranchName ([string](Get-MapValue `
+                    $Arguments 'expected_local_branch'))
+            Assert-GitOid ([string](Get-MapValue $Arguments 'expected_head_oid'))
         }
         'set-visibility' {
             $old = [string](Get-MapValue $Arguments 'expected_visibility')
@@ -635,20 +694,32 @@ function Get-EffectPlan {
         }
     }
     $executable = Get-FixedExecutor -Kind gh
-    $endpoint = if ($Operation -eq 'transfer-repository') {
-        "repos/$Repository/transfer"
+    $endpoint = switch ($Operation) {
+        'create-repository' { 'user/repos' }
+        'transfer-repository' { "repos/$Repository/transfer" }
+        default { "repos/$Repository" }
     }
-    else { "repos/$Repository" }
+    $method = switch ($Operation) {
+        'create-repository' { 'POST' }
+        'delete-repository' { 'DELETE' }
+        'transfer-repository' { 'POST' }
+        default { 'PATCH' }
+    }
     $base = @(
-        'api', '--method',
-        $(if ($Operation -eq 'delete-repository') { 'DELETE' }
-            elseif ($Operation -eq 'transfer-repository') { 'POST' }
-            else { 'PATCH' }),
+        'api', '--method', $method,
         '-H', 'Accept: application/vnd.github+json',
         '-H', 'X-GitHub-Api-Version: 2022-11-28',
         $endpoint
     )
     switch ($Operation) {
+        'create-repository' {
+            $name = $Repository.Split('/')[1]
+            $base += @(
+                '-f', "name=$name",
+                '-f', 'private=true',
+                '-f', 'auto_init=false'
+            )
+        }
         'set-visibility' {
             $base += @(
                 '-f', ('visibility=' +
@@ -737,6 +808,138 @@ function Get-NormalizedIdentity {
     }
 }
 
+function Get-CreateRepositoryLocalWorktree {
+    param(
+        [Parameter(Mandatory)][string] $RepoPath,
+        [Parameter(Mandatory)][object] $Arguments,
+        [Parameter(Mandatory)][scriptblock] $NativeInvoker
+    )
+    $requestedWorktree = [IO.Path]::GetFullPath($RepoPath)
+    $git = Get-FixedExecutor -Kind git
+    $prefix = @(Get-GitArgumentsPrefix $requestedWorktree)
+    $topLevel = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @('rev-parse', '--show-toplevel')) `
+        -WorkingDirectory $requestedWorktree -AllowFailure $true
+    if ($topLevel.exit_code -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string]$topLevel.stdout)) {
+        Throw-ProtectedActionError 'create_repository_local_worktree_invalid'
+    }
+    try {
+        $canonicalWorktree = [IO.Path]::GetFullPath($topLevel.stdout.Trim())
+    }
+    catch { Throw-ProtectedActionError 'create_repository_local_worktree_invalid' }
+    if ($canonicalWorktree -cne $requestedWorktree) {
+        Throw-ProtectedActionError 'create_repository_local_worktree_invalid'
+    }
+    $commonDir = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @('rev-parse', '--git-common-dir')) `
+        -WorkingDirectory $requestedWorktree -AllowFailure $true
+    if ($commonDir.exit_code -ne 0 -or
+        [string]::IsNullOrWhiteSpace([string]$commonDir.stdout)) {
+        Throw-ProtectedActionError 'create_repository_local_worktree_invalid'
+    }
+    try {
+        $commonDirText = $commonDir.stdout.Trim()
+        $gitCommonDir = if ([IO.Path]::IsPathRooted($commonDirText)) {
+            [IO.Path]::GetFullPath($commonDirText)
+        }
+        else {
+            [IO.Path]::GetFullPath((Join-Path $canonicalWorktree $commonDirText))
+        }
+    }
+    catch { Throw-ProtectedActionError 'create_repository_local_worktree_invalid' }
+    $branchResult = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @('symbolic-ref', '--quiet', '--short', 'HEAD')) `
+        -WorkingDirectory $requestedWorktree -AllowFailure $true
+    $branch = $branchResult.stdout.Trim()
+    if ($branchResult.exit_code -ne 0 -or
+        [string]::IsNullOrWhiteSpace($branch)) {
+        Throw-ProtectedActionError 'create_repository_local_worktree_invalid'
+    }
+    try { Assert-GitBranchName $branch }
+    catch { Throw-ProtectedActionError 'create_repository_local_worktree_invalid' }
+    if ($branch -cne [string](Get-MapValue $Arguments 'expected_local_branch')) {
+        Throw-ProtectedActionError 'operation_precondition_mismatch'
+    }
+    $headResult = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @('rev-parse', '--verify', 'HEAD')) `
+        -WorkingDirectory $requestedWorktree -AllowFailure $true
+    $headOid = $headResult.stdout.Trim()
+    if ($headResult.exit_code -ne 0 -or
+        $headOid -cnotmatch '^(?:[a-f0-9]{40}|[a-f0-9]{64})$') {
+        Throw-ProtectedActionError 'create_repository_local_worktree_invalid'
+    }
+    if ($headOid -cne [string](Get-MapValue $Arguments 'expected_head_oid')) {
+        Throw-ProtectedActionError 'operation_precondition_mismatch'
+    }
+    $status = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @(
+                'status', '--porcelain=v1', '--untracked-files=all',
+                '--ignore-submodules=none'
+            )) `
+        -WorkingDirectory $requestedWorktree -AllowFailure $true
+    if ($status.exit_code -ne 0 -or
+        -not [string]::IsNullOrWhiteSpace([string]$status.stdout)) {
+        Throw-ProtectedActionError 'create_repository_local_worktree_dirty'
+    }
+    [pscustomobject][ordered]@{
+        canonical_worktree = $canonicalWorktree
+        git_common_dir = $gitCommonDir
+        branch = $branch
+        head_oid = $headOid
+        clean = $true
+    }
+}
+
+function Get-CreateRepositoryIdentity {
+    param(
+        [Parameter(Mandatory)][string] $Repository,
+        [Parameter(Mandatory)][string] $RepoPath,
+        [Parameter(Mandatory)][object] $Arguments,
+        [Parameter(Mandatory)][scriptblock] $MetadataInvoker,
+        [Parameter(Mandatory)][scriptblock] $AccountInvoker,
+        [Parameter(Mandatory)][scriptblock] $NativeInvoker
+    )
+    Assert-RepositorySlug $Repository
+    $owner, $name = $Repository.Split('/', 2)
+    $metadataResult = & $MetadataInvoker $Repository $true
+    if ($null -eq $metadataResult -or
+        $metadataResult.exit_code -eq 0 -or
+        (Get-OptionalMapValue $metadataResult 'missing' $false) -ne $true -or
+        $null -ne (Get-OptionalMapValue $metadataResult 'value')) {
+        Throw-ProtectedActionError 'create_repository_target_not_absent'
+    }
+    $accountResult = & $AccountInvoker
+    if ($null -eq $accountResult -or $accountResult.exit_code -ne 0 -or
+        $null -eq $accountResult.value -or
+        [string]::IsNullOrWhiteSpace(
+            [string](Get-OptionalMapValue $accountResult.value 'login')
+        )) {
+        Throw-ProtectedActionError 'github_authenticated_account_unavailable'
+    }
+    $login = [string](Get-OptionalMapValue $accountResult.value 'login')
+    if ($login -cne $owner) {
+        Throw-ProtectedActionError 'authenticated_owner_mismatch'
+    }
+    $localWorktree = Get-CreateRepositoryLocalWorktree `
+        -RepoPath $RepoPath -Arguments $Arguments -NativeInvoker $NativeInvoker
+    [pscustomobject][ordered]@{
+        target = [pscustomobject][ordered]@{
+            repository = $Repository
+            owner = $owner
+            name = $name
+            absent = $true
+        }
+        authenticated_owner = [pscustomobject][ordered]@{ login = $login }
+        local_worktree = $localWorktree
+    }
+}
+
 function Get-OperationState {
     param(
         [Parameter(Mandatory)][string] $EffectFamily,
@@ -748,6 +951,21 @@ function Get-OperationState {
     )
     if ($EffectFamily -eq 'github-api') {
         switch ($Operation) {
+            'create-repository' {
+                if ($Identity.target.absent -ne $true -or
+                    $Identity.local_worktree.branch -cne
+                        [string](Get-MapValue $Arguments 'expected_local_branch') -or
+                    $Identity.local_worktree.head_oid -cne
+                        [string](Get-MapValue $Arguments 'expected_head_oid')) {
+                    Throw-ProtectedActionError 'operation_precondition_mismatch'
+                }
+                return [pscustomobject][ordered]@{
+                    expected_absent = $true
+                    visibility = 'PRIVATE'
+                    expected_local_branch = $Identity.local_worktree.branch
+                    expected_head_oid = $Identity.local_worktree.head_oid
+                }
+            }
             'set-visibility' {
                 if ($Identity.provider.visibility -ine
                     [string](Get-MapValue $Arguments 'expected_visibility')) {
@@ -831,9 +1049,49 @@ function Get-LiveBinding {
         [Parameter(Mandatory)][object] $Arguments,
         [Parameter(Mandatory)][scriptblock] $AdmissionInvoker,
         [Parameter(Mandatory)][scriptblock] $MetadataInvoker,
+        [Parameter(Mandatory)][scriptblock] $AccountInvoker,
         [Parameter(Mandatory)][scriptblock] $NativeInvoker
     )
     Assert-TypedArguments $EffectFamily $Operation $Arguments
+    if ($EffectFamily -eq 'github-api' -and $Operation -eq 'create-repository') {
+        $identity = Get-CreateRepositoryIdentity `
+            -Repository $Repository -RepoPath $RepoPath -Arguments $Arguments `
+            -MetadataInvoker $MetadataInvoker -AccountInvoker $AccountInvoker `
+            -NativeInvoker $NativeInvoker
+        $plan = Get-EffectPlan `
+            -EffectFamily $EffectFamily -Operation $Operation `
+            -Repository $Repository -RepoPath $RepoPath -Arguments $Arguments
+        $operationState = Get-OperationState `
+            -EffectFamily $EffectFamily -Operation $Operation `
+            -RepoPath $RepoPath -Arguments $Arguments -Identity $identity `
+            -NativeInvoker $NativeInvoker
+        return [pscustomobject][ordered]@{
+            stable_target = [pscustomobject][ordered]@{
+                provider = 'github'
+                repository = $identity.target.repository
+                repository_owner = $identity.target.owner
+                repository_name = $identity.target.name
+                canonical_worktree = $identity.local_worktree.canonical_worktree
+                git_common_dir = $identity.local_worktree.git_common_dir
+                resource = 'repository-slug:' + $identity.target.repository
+            }
+            parameters = [pscustomobject][ordered]@{
+                operation = $Operation
+                executor_kind = $plan.kind
+                native_executor_sha256 = $plan.native_executor_sha256
+                argv = @($plan.argv)
+                arguments = ConvertTo-CanonicalNode $Arguments
+            }
+            preconditions = [pscustomobject][ordered]@{
+                target = [pscustomobject][ordered]@{ absent = $true }
+                authenticated_owner = $identity.authenticated_owner
+                local_worktree = $identity.local_worktree
+                operation_state = $operationState
+            }
+            plan = $plan
+            adapter_sha256 = Get-FileSha256 $script:AdapterEntry
+        }
+    }
     $identity = Get-NormalizedIdentity `
         -Repository $Repository -RepoPath $RepoPath `
         -AdmissionInvoker $AdmissionInvoker `
@@ -901,6 +1159,7 @@ function New-ProtectedGitHubMajorActionProposal {
         [Parameter(Mandatory)][string] $UserIntent,
         [scriptblock] $AdmissionInvoker = (Get-DefaultAdmissionInvoker),
         [scriptblock] $MetadataInvoker = (Get-DefaultMetadataInvoker),
+        [scriptblock] $AccountInvoker = (Get-DefaultAccountInvoker),
         [scriptblock] $NativeInvoker = (Get-DefaultNativeInvoker)
     )
     if ([string]::IsNullOrWhiteSpace($Reason) -or $Reason.Length -gt 4096 -or
@@ -913,7 +1172,8 @@ function New-ProtectedGitHubMajorActionProposal {
         -EffectFamily $EffectFamily -Operation $Operation `
         -Repository $Repository -RepoPath $repoRoot -Arguments $Arguments `
         -AdmissionInvoker $AdmissionInvoker `
-        -MetadataInvoker $MetadataInvoker -NativeInvoker $NativeInvoker
+        -MetadataInvoker $MetadataInvoker -AccountInvoker $AccountInvoker `
+        -NativeInvoker $NativeInvoker
     [pscustomobject][ordered]@{
         schema = $script:ProposalSchema
         prepared_utc = [DateTimeOffset]::UtcNow.ToString('o')
@@ -974,6 +1234,60 @@ function Assert-Proposal {
         -EffectFamily $request.effect_family `
         -Operation $request.parameters.operation `
         -Arguments $request.parameters.arguments
+    if ($request.parameters.operation -eq 'create-repository') {
+        $target = $request.stable_target
+        $preconditions = $request.preconditions
+        $expectedLocalBranch = [string](Get-MapValue `
+                -Value $request.parameters.arguments `
+                -Name 'expected_local_branch')
+        $expectedHeadOid = [string](Get-MapValue `
+                -Value $request.parameters.arguments `
+                -Name 'expected_head_oid')
+        if ($request.parameters.executor_kind -cne 'gh' -or
+            -not (Test-ExactKeys $target @(
+                    'provider', 'repository', 'repository_owner',
+                    'repository_name', 'canonical_worktree', 'git_common_dir',
+                    'resource'
+                )) -or
+            $target.provider -cne 'github') {
+            Throw-ProtectedActionError 'proposal_invalid'
+        }
+        try { Assert-RepositorySlug ([string]$target.repository) }
+        catch { Throw-ProtectedActionError 'proposal_invalid' }
+        $owner, $name = ([string]$target.repository).Split('/', 2)
+        if ($target.repository_owner -cne $owner -or
+            $target.repository_name -cne $name -or
+            $target.resource -cne "repository-slug:$($target.repository)" -or
+            -not (Test-ExactKeys $preconditions @(
+                    'target', 'authenticated_owner', 'local_worktree',
+                    'operation_state'
+                )) -or
+            -not (Test-ExactKeys $preconditions.target @('absent')) -or
+            $preconditions.target.absent -ne $true -or
+            -not (Test-ExactKeys $preconditions.authenticated_owner @('login')) -or
+            $preconditions.authenticated_owner.login -cne $owner -or
+            -not (Test-ExactKeys $preconditions.local_worktree @(
+                    'canonical_worktree', 'git_common_dir', 'branch', 'head_oid',
+                    'clean'
+                )) -or
+            $preconditions.local_worktree.clean -ne $true -or
+            $preconditions.local_worktree.branch -cne
+                $expectedLocalBranch -or
+            $preconditions.local_worktree.head_oid -cne
+                $expectedHeadOid -or
+            -not (Test-ExactKeys $preconditions.operation_state @(
+                    'expected_absent', 'visibility', 'expected_local_branch',
+                    'expected_head_oid'
+                )) -or
+            $preconditions.operation_state.expected_absent -ne $true -or
+            $preconditions.operation_state.visibility -cne 'PRIVATE' -or
+            $preconditions.operation_state.expected_local_branch -cne
+                $preconditions.local_worktree.branch -or
+            $preconditions.operation_state.expected_head_oid -cne
+                $preconditions.local_worktree.head_oid) {
+            Throw-ProtectedActionError 'proposal_invalid'
+        }
+    }
 }
 
 function New-BlockedResult {
@@ -1003,16 +1317,36 @@ function Test-LiveProposalBinding {
         [Parameter(Mandatory)][object] $Request,
         [Parameter(Mandatory)][scriptblock] $AdmissionInvoker,
         [Parameter(Mandatory)][scriptblock] $MetadataInvoker,
+        [Parameter(Mandatory)][scriptblock] $AccountInvoker,
         [Parameter(Mandatory)][scriptblock] $NativeInvoker
     )
-    $live = Get-LiveBinding `
-        -EffectFamily $Request.effect_family `
-        -Operation $Request.parameters.operation `
-        -Repository $Request.stable_target.repository `
-        -RepoPath $Request.stable_target.canonical_worktree `
-        -Arguments $Request.parameters.arguments `
-        -AdmissionInvoker $AdmissionInvoker `
-        -MetadataInvoker $MetadataInvoker -NativeInvoker $NativeInvoker
+    try {
+        $live = Get-LiveBinding `
+            -EffectFamily $Request.effect_family `
+            -Operation $Request.parameters.operation `
+            -Repository $Request.stable_target.repository `
+            -RepoPath $Request.stable_target.canonical_worktree `
+            -Arguments $Request.parameters.arguments `
+            -AdmissionInvoker $AdmissionInvoker `
+            -MetadataInvoker $MetadataInvoker -AccountInvoker $AccountInvoker `
+            -NativeInvoker $NativeInvoker
+    }
+    catch {
+        if ($_.Exception.Message -in @(
+                'operation_precondition_mismatch',
+                'stable_repository_identity_mismatch',
+                'project_admission_blocked',
+                'github_metadata_unavailable',
+                'create_repository_target_not_absent',
+                'github_authenticated_account_unavailable',
+                'authenticated_owner_mismatch',
+                'create_repository_local_worktree_invalid',
+                'create_repository_local_worktree_dirty'
+            )) {
+            return $false
+        }
+        throw
+    }
     (Test-ExactValue $Request.stable_target $live.stable_target) -and
         (Test-ExactValue $Request.parameters $live.parameters) -and
         (Test-ExactValue $Request.preconditions $live.preconditions) -and
@@ -1023,7 +1357,8 @@ function Invoke-ReadBack {
     param(
         [Parameter(Mandatory)][object] $Request,
         [Parameter(Mandatory)][scriptblock] $MetadataInvoker,
-        [Parameter(Mandatory)][scriptblock] $NativeInvoker
+        [Parameter(Mandatory)][scriptblock] $NativeInvoker,
+        [object] $EffectResult = $null
     )
     $operation = [string]$Request.parameters.operation
     $arguments = $Request.parameters.arguments
@@ -1070,6 +1405,30 @@ function Invoke-ReadBack {
         return $false
     }
     $metadata = $metadataResult.value
+    if ($operation -eq 'create-repository') {
+        if ($null -eq $EffectResult -or $EffectResult.exit_code -ne 0 -or
+            [string]::IsNullOrWhiteSpace([string]$EffectResult.stdout)) {
+            return $false
+        }
+        try {
+            $created = $EffectResult.stdout | ConvertFrom-Json -Depth 20
+        }
+        catch { return $false }
+        if ([string]$created.full_name -cne $repo -or
+            $created.private -ne $true -or
+            [string]$created.visibility -ine 'PRIVATE' -or
+            $null -eq $created.id -or
+            [string]::IsNullOrWhiteSpace([string]$created.node_id)) {
+            return $false
+        }
+        return (
+            [string]$metadata.full_name -ceq [string]$created.full_name -and
+            $metadata.private -eq $true -and
+            [string]$metadata.visibility -ieq 'PRIVATE' -and
+            [string]$metadata.id -ceq [string]$created.id -and
+            [string]$metadata.node_id -ceq [string]$created.node_id
+        )
+    }
     if ([string]$metadata.node_id -cne
         [string]$Request.stable_target.repository_node_id) { return $false }
     switch ($operation) {
@@ -1097,6 +1456,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         [switch] $DryRun,
         [scriptblock] $AdmissionInvoker = (Get-DefaultAdmissionInvoker),
         [scriptblock] $MetadataInvoker = (Get-DefaultMetadataInvoker),
+        [scriptblock] $AccountInvoker = (Get-DefaultAccountInvoker),
         [scriptblock] $NativeInvoker = (Get-DefaultNativeInvoker),
         [scriptblock] $BrokerInvoker = (Get-DefaultBrokerInvoker)
     )
@@ -1110,6 +1470,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         if (-not (Test-LiveProposalBinding `
                 -Request $request -AdmissionInvoker $AdmissionInvoker `
                 -MetadataInvoker $MetadataInvoker `
+                -AccountInvoker $AccountInvoker `
                 -NativeInvoker $NativeInvoker)) {
             return New-BlockedResult 'target_precondition_changed'
         }
@@ -1119,7 +1480,12 @@ function Invoke-ProtectedGitHubMajorActionProposal {
                 'operation_precondition_mismatch',
                 'stable_repository_identity_mismatch',
                 'project_admission_blocked',
-                'github_metadata_unavailable'
+                'github_metadata_unavailable',
+                'create_repository_target_not_absent',
+                'github_authenticated_account_unavailable',
+                'authenticated_owner_mismatch',
+                'create_repository_local_worktree_invalid',
+                'create_repository_local_worktree_dirty'
             )) {
             return New-BlockedResult 'target_precondition_changed'
         }
@@ -1154,6 +1520,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         if (-not (Test-LiveProposalBinding `
                 -Request $request -AdmissionInvoker $AdmissionInvoker `
                 -MetadataInvoker $MetadataInvoker `
+                -AccountInvoker $AccountInvoker `
                 -NativeInvoker $NativeInvoker)) {
             return New-BlockedResult 'target_precondition_changed'
         }
@@ -1204,6 +1571,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         if (-not (Test-LiveProposalBinding `
                 -Request $request -AdmissionInvoker $AdmissionInvoker `
                 -MetadataInvoker $MetadataInvoker `
+                -AccountInvoker $AccountInvoker `
                 -NativeInvoker $NativeInvoker)) {
             return New-BlockedResult 'target_precondition_changed_after_consume'
         }
@@ -1228,7 +1596,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         try {
             $verified = Invoke-ReadBack `
                 -Request $request -MetadataInvoker $MetadataInvoker `
-                -NativeInvoker $NativeInvoker
+                -NativeInvoker $NativeInvoker -EffectResult $effect
         }
         catch {
             $verified = $false

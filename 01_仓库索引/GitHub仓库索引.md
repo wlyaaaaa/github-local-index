@@ -2,7 +2,7 @@
 
 更新时间：2026-08-11
 
-当前 `wlyaaaaa` 账号共有 37 个仓库。本文件由 `tools/Update-GitHubIndex.ps1` 刷新。
+当前 `wlyaaaaa` 账号共有 38 个仓库。本文件由 `tools/Update-GitHubIndex.ps1` 刷新。
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
@@ -12,11 +12,12 @@
 | wlyaaaaa/ai-llm-job-prep | PRIVATE | master | E:\Projects\Tools\ai-llm-job-prep | `master` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/ChineseASR | PUBLIC | main | E:\Projects\Tools\ChineseASR | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/claude-memory | PRIVATE | main | E:\Projects\Backups\claude-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
-| wlyaaaaa/codex-agent-model-benchmark | PUBLIC | main | V:\Personal\Projects\codex-agent-model-benchmark | `main` 已同步，`0/0`，脏工作区 12 项（cached） | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/codex-agent-model-benchmark | PUBLIC | main | V:\Personal\Projects\codex-agent-model-benchmark | `main` 已同步，`0/0`，脏工作区 28 项（cached） | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/codex-app-power-user-playbook | PUBLIC | master | E:\Projects\Archives\codex-app-power-user-playbook | `master` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/codex-local-remote | PUBLIC | main | V:\Personal\Projects\codex-local-remote<br>V:\Personal\Worktrees\codex-local-remote-v1-rollback | `main` 已同步，`0/0`（cached）<br>必要保留：当前 V1 计划任务使用的干净运行回滚根；owner：PCConfig；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success（cached） | 保持必要保留；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success<br>正常维护 |
 | wlyaaaaa/codex-memory | PRIVATE | main | E:\Projects\Backups\codex-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/devconfig-backup | PUBLIC | main | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） | 正常维护 |
+| wlyaaaaa/emerald-veil | PUBLIC | main | V:\Personal\Projects\emerald-veil | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/gemini-memory | PRIVATE | main | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/github-local-index | PUBLIC | main | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
@@ -29,7 +30,7 @@
 | wlyaaaaa/openclaw-backup | PRIVATE | main | E:\Projects\Backups\openclaw-backup | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/OpenClawGateway | PUBLIC | main | E:\Projects\Tools\OpenClawGateway | `main` 已同步，`0/0`，脏工作区 9 项（cached） | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/PC-Panel-Hub | PUBLIC | main | E:\Projects\Tools\TURZX-SideScreen | `main` 已同步，`0/0`，脏工作区 3 项（cached） | 公开仓库先做暴露面审查，再按显式路径提交 |
-| wlyaaaaa/PCConfig | PRIVATE | main | E:\PCConfig<br>V:\Personal\Worktrees\PCConfig-authority-source-plan-bridge<br>V:\Personal\Worktrees\PCConfig-m1-phone-ready-owner-v3<br>V:\Personal\Worktrees\PCConfig-m1-runtime-binding-v4-9a8a642 | `main` 已同步，`0/0`，脏工作区 36 项（cached）<br>`codex/authority-source-plan-bridge` 无 upstream，脏工作区 8 项，默认分支缺少 22 个提交（cached）<br>`codex/m1-phone-ready-owner-v3` 无 upstream，内容已由默认分支吸收（cached）<br>`codex/m1-runtime-binding-v4-9a8a642` 无 upstream，内容已由默认分支吸收（cached）<br>`codex/personalos-shadow-root-fact` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`origin/secret-broker-backup` 由 PCConfig Secret Broker 专门 owner 治理，不纳入 Codex 收敛判断（cached） | 保留活跃脏工作区；完成并验证后再整合到默认分支<br>确认无活跃依赖后移除已整合的临时 worktree，再删除分支<br>私有仓库按备份需求确认后提交<br>无；由 PCConfig Secret Broker owner 管理<br>无；由 PersonalOS owner 管理 |
+| wlyaaaaa/PCConfig | PRIVATE | main | E:\PCConfig<br>V:\Personal\Worktrees\PCConfig-authority-source-plan-bridge<br>V:\Personal\Worktrees\PCConfig-m1-phone-ready-owner-v3<br>V:\Personal\Worktrees\PCConfig-m1-runtime-binding-v4-9a8a642 | `main` 已同步，`0/0`，脏工作区 34 项（cached）<br>`codex/authority-source-plan-bridge` 无 upstream，脏工作区 8 项，默认分支缺少 22 个提交（cached）<br>`codex/m1-phone-ready-owner-v3` 无 upstream，内容已由默认分支吸收（cached）<br>`codex/m1-runtime-binding-v4-9a8a642` 无 upstream，内容已由默认分支吸收（cached）<br>`codex/personalos-shadow-root-fact` 由 PersonalOS 专门 owner 治理，不纳入 Codex 收敛判断（cached）<br>`origin/secret-broker-backup` 由 PCConfig Secret Broker 专门 owner 治理，不纳入 Codex 收敛判断（cached） | 保留活跃脏工作区；完成并验证后再整合到默认分支<br>确认无活跃依赖后移除已整合的临时 worktree，再删除分支<br>私有仓库按备份需求确认后提交<br>无；由 PCConfig Secret Broker owner 管理<br>无；由 PersonalOS owner 管理 |
 | wlyaaaaa/PersonalOS | PRIVATE | main | 外部治理（不读取本地路径） | 仅保留 GitHub 目录事实 | 不行动；由外部治理 owner 维护 |
 | wlyaaaaa/ProxyClean | PUBLIC | master | E:\Projects\Tools\ProxyClean | `master` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/RamdiskGuardian | PUBLIC | main | E:\Projects\Tools\RamdiskGuardian | `main` 已同步，`0/0`（cached） | 正常维护 |

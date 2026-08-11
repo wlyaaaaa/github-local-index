@@ -1417,7 +1417,7 @@ function Invoke-ReadBack {
         if ([string]$created.full_name -cne $repo -or
             $created.private -ne $true -or
             [string]$created.visibility -ine 'PRIVATE' -or
-            $null -eq $created.id -or
+            [string]$created.id -cnotmatch '^[1-9][0-9]*$' -or
             [string]::IsNullOrWhiteSpace([string]$created.node_id)) {
             return $false
         }

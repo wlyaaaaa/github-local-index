@@ -555,6 +555,24 @@ $script:CreateFixture.readback_id = 17002
 $script:Fixture.broker_calls.Clear()
 $script:CreateFixture.target_present = $false
 $script:CreateFixture.metadata_calls = 0
+$script:CreateFixture.native_effects = 0
+$script:CreateFixture.post_response_id = 'not-a-database-id'
+$script:CreateFixture.readback_id = 'not-a-database-id'
+$createInvalidDatabaseId = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $createProposal `
+    -AdmissionInvoker $createAdmissionInvoker `
+    -MetadataInvoker $createMetadataInvoker `
+    -AccountInvoker $createAccountInvoker `
+    -NativeInvoker $createNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'read_back_failed' $createInvalidDatabaseId.result `
+    'create rejects matching POST and GET responses with a nonnumeric database ID'
+$script:CreateFixture.post_response_id = 17002
+$script:CreateFixture.readback_id = 17002
+
+$script:Fixture.broker_calls.Clear()
+$script:CreateFixture.target_present = $false
+$script:CreateFixture.metadata_calls = 0
 $script:CreateFixture.present_on_metadata_call = 0
 $script:CreateFixture.native_effects = 0
 $createDriftProposal = New-ProtectedGitHubMajorActionProposal `

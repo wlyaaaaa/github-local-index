@@ -8,8 +8,8 @@ param(
     [string] $EffectFamily,
     [ValidateSet('execute', 'dry_run')]
     [string] $ExecutionMode = 'execute',
-    [ValidateSet('Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
-    [string] $AuthorityFactor = 'Runtime',
+    [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
+    [string] $AuthorityFactor = 'Auto',
     [ValidateSet(
         'delete-local-ref',
         'force-update-local-ref',
@@ -465,7 +465,12 @@ function Get-DefaultNativeInvoker {
 
 function Get-DefaultBrokerInvoker {
     {
-        param([string] $Action, [string] $InputPath, [string] $OperationId)
+        param(
+            [string] $Action,
+            [string] $InputPath,
+            [string] $OperationId,
+            [string] $SelectedAuthorityFactor
+        )
         if (-not (Test-Path -LiteralPath $script:BrokerEntry -PathType Leaf)) {
             Throw-ProtectedActionError 'authority_broker_unavailable'
         }
@@ -474,12 +479,12 @@ function Get-DefaultBrokerInvoker {
             '-NoProfile', '-NonInteractive', '-File',
             $script:BrokerEntry,
             '-Action', $Action,
-            '-AuthorityFactor', $script:AuthorityFactor,
+            '-AuthorityFactor', $SelectedAuthorityFactor,
             '-InputPath', $InputPath,
             '-OperationId', $OperationId,
             '-Json'
         )
-        if ($script:AuthorityFactor -ceq 'Runtime') {
+        if ($SelectedAuthorityFactor -ceq 'Runtime') {
             $brokerArguments += @('-RuntimePrincipal', 'codex-root')
         }
         $result = Invoke-HardenedNative `
@@ -636,6 +641,58 @@ function Assert-TypedArguments {
                 }
             }
         }
+    }
+}
+
+function Get-GitHubAuthorizationRequirement {
+    param(
+        [Parameter(Mandatory)][string] $EffectFamily,
+        [Parameter(Mandatory)][string] $Operation,
+        [Parameter(Mandatory)][object] $Arguments
+    )
+    Assert-TypedArguments `
+        -EffectFamily $EffectFamily -Operation $Operation -Arguments $Arguments
+    if ($EffectFamily -eq 'github-api') {
+        if ($Operation -in @('delete-repository', 'transfer-repository')) {
+            return 'human_required'
+        }
+        if ($Operation -eq 'set-visibility') {
+            $old = ([string](Get-MapValue `
+                    -Value $Arguments -Name 'expected_visibility')).ToUpperInvariant()
+            $new = ([string](Get-MapValue `
+                    -Value $Arguments -Name 'new_visibility')).ToUpperInvariant()
+            if ($old -ceq 'PRIVATE' -and $new -ceq 'PUBLIC') {
+                return 'human_required'
+            }
+        }
+    }
+    'runtime_allowed'
+}
+
+function Resolve-GitHubAuthorityFactor {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('runtime_allowed', 'human_required')]
+        [string] $AuthorizationRequirement,
+        [Parameter(Mandatory)]
+        [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
+        [string] $RequestedFactor
+    )
+    if ($RequestedFactor -eq 'Auto') {
+        if ($AuthorizationRequirement -eq 'human_required') { return 'Passkey' }
+        return 'Runtime'
+    }
+    if ($AuthorizationRequirement -eq 'human_required' -and
+        $RequestedFactor -eq 'Runtime') {
+        Throw-ProtectedActionError 'highest_authority_verification_required'
+    }
+    switch ($RequestedFactor.ToLowerInvariant()) {
+        'runtime' { 'Runtime' }
+        'passkey' { 'Passkey' }
+        'totp' { 'Totp' }
+        'recovery' { 'Recovery' }
+        'google' { 'Google' }
+        'microsoft' { 'Microsoft' }
     }
 }
 
@@ -1174,6 +1231,8 @@ function New-ProtectedGitHubMajorActionProposal {
         -AdmissionInvoker $AdmissionInvoker `
         -MetadataInvoker $MetadataInvoker -AccountInvoker $AccountInvoker `
         -NativeInvoker $NativeInvoker
+    $authorizationRequirement = Get-GitHubAuthorizationRequirement `
+        -EffectFamily $EffectFamily -Operation $Operation -Arguments $Arguments
     [pscustomobject][ordered]@{
         schema = $script:ProposalSchema
         prepared_utc = [DateTimeOffset]::UtcNow.ToString('o')
@@ -1184,6 +1243,7 @@ function New-ProtectedGitHubMajorActionProposal {
             owner_id = $script:OwnerId
             effect_family = $EffectFamily
             execution_mode = $ExecutionMode
+            authorization_requirement = $authorizationRequirement
             stable_target = $binding.stable_target
             executor_sha256 = $binding.adapter_sha256
             parameters = $binding.parameters
@@ -1210,13 +1270,17 @@ function Assert-Proposal {
     $request = $Proposal.authorization_request
     if (-not (Test-ExactKeys $request @(
                 'schema', 'adapter_id', 'owner_id', 'effect_family',
-                'execution_mode', 'stable_target', 'executor_sha256', 'parameters',
-                'preconditions', 'assessment', 'ttl_seconds'
+                'execution_mode', 'authorization_requirement', 'stable_target',
+                'executor_sha256', 'parameters', 'preconditions', 'assessment',
+                'ttl_seconds'
             )) -or $request.schema -cne $script:AuthorizationSchema -or
         $request.adapter_id -cne $script:AdapterId -or
         $request.owner_id -cne $script:OwnerId -or
         $request.effect_family -notin @('git-local', 'github-api') -or
         $request.execution_mode -notin @('execute', 'dry_run') -or
+        $request.authorization_requirement -notin @(
+            'runtime_allowed', 'human_required'
+        ) -or
         $request.executor_sha256 -cnotmatch '^[a-f0-9]{64}$' -or
         [int]$request.ttl_seconds -ne 30 -or
         -not (Test-ExactKeys $request.assessment @(
@@ -1234,6 +1298,13 @@ function Assert-Proposal {
         -EffectFamily $request.effect_family `
         -Operation $request.parameters.operation `
         -Arguments $request.parameters.arguments
+    $derivedRequirement = Get-GitHubAuthorizationRequirement `
+        -EffectFamily $request.effect_family `
+        -Operation $request.parameters.operation `
+        -Arguments $request.parameters.arguments
+    if ($request.authorization_requirement -cne $derivedRequirement) {
+        Throw-ProtectedActionError 'proposal_invalid'
+    }
     if ($request.parameters.operation -eq 'create-repository') {
         $target = $request.stable_target
         $preconditions = $request.preconditions
@@ -1453,6 +1524,8 @@ function Invoke-ProtectedGitHubMajorActionProposal {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object] $Proposal,
+        [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
+        [string] $AuthorityFactor = $script:AuthorityFactor,
         [switch] $DryRun,
         [scriptblock] $AdmissionInvoker = (Get-DefaultAdmissionInvoker),
         [scriptblock] $MetadataInvoker = (Get-DefaultMetadataInvoker),
@@ -1462,6 +1535,19 @@ function Invoke-ProtectedGitHubMajorActionProposal {
     )
     Assert-Proposal $Proposal
     $request = $Proposal.authorization_request
+    try {
+        $selectedAuthorityFactor = Resolve-GitHubAuthorityFactor `
+            -AuthorizationRequirement $request.authorization_requirement `
+            -RequestedFactor $AuthorityFactor
+    }
+    catch {
+        if ($_.Exception.Message -eq 'highest_authority_verification_required') {
+            return New-BlockedResult `
+                -Error 'highest_authority_verification_required' `
+                -AuthorizationStatus 'verification_required'
+        }
+        throw
+    }
     $expectedDryRun = $request.execution_mode -ceq 'dry_run'
     if ([bool]$DryRun -ne $expectedDryRun) {
         return New-BlockedResult 'execution_mode_mismatch'
@@ -1501,7 +1587,8 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         $authorizationPath = Join-Path $tempRoot 'authorization.json'
         Write-JsonFile $authorizationPath $request
         $authorization = & $BrokerInvoker `
-            'AuthorizeMajorAction' $authorizationPath $operationId
+            'AuthorizeMajorAction' $authorizationPath $operationId `
+            $selectedAuthorityFactor
         if ((Get-OptionalMapValue $authorization.value 'error') -eq
             'highest_authority_verification_required' -or
             (Get-OptionalMapValue $authorization.value 'authorization_status') -eq
@@ -1533,7 +1620,8 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         $consumePath = Join-Path $tempRoot 'consume.json'
         Write-JsonFile $consumePath $consumeEnvelope
         $consume = & $BrokerInvoker `
-            'ConsumeMajorActionCapability' $consumePath $operationId
+            'ConsumeMajorActionCapability' $consumePath $operationId `
+            $selectedAuthorityFactor
         if ((Get-OptionalMapValue $consume.value 'error') -eq
             'highest_authority_verification_required' -or
             (Get-OptionalMapValue $consume.value 'authorization_status') -eq
@@ -1680,7 +1768,7 @@ function Invoke-ProtectedGitHubMajorActionCli {
     }
     $proposal = Read-BoundedJsonObject $ProposalPath
     Invoke-ProtectedGitHubMajorActionProposal `
-        -Proposal $proposal -DryRun:$DryRun
+        -Proposal $proposal -AuthorityFactor $AuthorityFactor -DryRun:$DryRun
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

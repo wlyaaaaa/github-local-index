@@ -6,6 +6,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $tool = Join-Path $repoRoot 'tools/Invoke-ProtectedGitHubMajorAction.ps1'
+$contractPath = Join-Path $repoRoot 'docs/contracts/git.protected-major-actions.md'
+$agentsPath = Join-Path $repoRoot 'AGENTS.md'
 $script:Failures = 0
 
 function Assert-Equal {
@@ -125,13 +127,20 @@ $nativeInvoker = {
 }
 
 $brokerInvoker = {
-    param([string] $Action, [string] $InputPath, [string] $OperationId)
+    param(
+        [string] $Action,
+        [string] $InputPath,
+        [string] $OperationId,
+        [string] $SelectedAuthorityFactor
+    )
     $input = Get-Content -LiteralPath $InputPath -Raw -Encoding utf8 |
         ConvertFrom-Json -Depth 40
+    $factorClass = $SelectedAuthorityFactor.ToLowerInvariant()
     $script:Fixture.broker_calls.Add([pscustomobject]@{
         action = $Action
         input = $input
         operation_id = $OperationId
+        authority_factor = $SelectedAuthorityFactor
     })
     if ($Action -eq 'AuthorizeMajorAction') {
         return [pscustomobject]@{
@@ -140,9 +149,13 @@ $brokerInvoker = {
                 schema = 'pcconfig.secret-broker-result.v1'
                 status = 'pass'
                 authorization_status = 'authorized'
+                authority_factor_class = $factorClass
                 runtime_proof_verified = $true
                 major_action_capability = [pscustomobject]@{
-                    schema = 'pcconfig.major-action-capability.v1'
+                    schema = if ($factorClass -eq 'runtime') {
+                        'pcconfig.major-action-capability.v1'
+                    }
+                    else { 'pcconfig.major-action-capability.v2' }
                     capability_id = '11111111-1111-4111-8111-111111111111'
                 }
             }
@@ -155,6 +168,7 @@ $brokerInvoker = {
             schema = 'pcconfig.secret-broker-result.v1'
             status = 'pass'
             authorization_status = 'authorized'
+            authority_factor_class = $factorClass
             runtime_proof_verified = $true
             capability_verified = $true
             capability_consumed = $execute
@@ -353,11 +367,114 @@ Assert-Equal 'execute' $proposal.authorization_request.execution_mode `
 Assert-Equal $arguments.ref `
     $proposal.authorization_request.parameters.arguments.ref `
     'Prepare binds typed arguments'
+Assert-Equal 'runtime_allowed' `
+    $proposal.authorization_request.authorization_requirement `
+    'local Git effects remain runtime-allowed'
+
+$deleteRepositoryArguments = [ordered]@{
+    expected_visibility = 'PRIVATE'
+    expected_default_branch = 'main'
+}
+$deleteRepositoryProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -ExecutionMode 'dry_run' `
+    -Operation 'delete-repository' `
+    -Repository 'synthetic-owner/protected-repo' `
+    -RepoPath 'C:\synthetic\protected-repo' `
+    -Arguments $deleteRepositoryArguments `
+    -Decision 'allow' `
+    -Reason 'synthetic delete classification test' `
+    -UserIntent 'verify repository deletion requires human presence' `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker
+Assert-Equal 'human_required' `
+    $deleteRepositoryProposal.authorization_request.authorization_requirement `
+    'repository deletion mechanically requires a human factor'
+
+$privateToPublicArguments = [ordered]@{
+    expected_visibility = 'PRIVATE'
+    new_visibility = 'PUBLIC'
+}
+$privateToPublicProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -Operation 'set-visibility' `
+    -Repository 'synthetic-owner/protected-repo' `
+    -RepoPath 'C:\synthetic\protected-repo' `
+    -Arguments $privateToPublicArguments `
+    -Decision 'allow' `
+    -Reason 'synthetic public exposure classification test' `
+    -UserIntent 'verify private to public requires human presence' `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker
+Assert-Equal 'human_required' `
+    $privateToPublicProposal.authorization_request.authorization_requirement `
+    'PRIVATE-to-PUBLIC visibility mechanically requires a human factor'
+
+$setDefaultBranchArguments = [ordered]@{
+    expected_default_branch = 'main'
+    new_default_branch = 'stable'
+}
+$setDefaultBranchProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -Operation 'set-default-branch' `
+    -Repository 'synthetic-owner/protected-repo' `
+    -RepoPath 'C:\synthetic\protected-repo' `
+    -Arguments $setDefaultBranchArguments `
+    -Decision 'allow' `
+    -Reason 'synthetic default branch classification test' `
+    -UserIntent 'verify ordinary default branch change stays unattended' `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker
+Assert-Equal 'runtime_allowed' `
+    $setDefaultBranchProposal.authorization_request.authorization_requirement `
+    'set-default-branch remains runtime-allowed'
+
+$script:Fixture.visibility = 'PUBLIC'
+try {
+    $publicToPrivateArguments = [ordered]@{
+        expected_visibility = 'PUBLIC'
+        new_visibility = 'PRIVATE'
+    }
+    $publicToPrivateProposal = New-ProtectedGitHubMajorActionProposal `
+        -EffectFamily 'github-api' `
+        -Operation 'set-visibility' `
+        -Repository 'synthetic-owner/protected-repo' `
+        -RepoPath 'C:\synthetic\protected-repo' `
+        -Arguments $publicToPrivateArguments `
+        -Decision 'allow' `
+        -Reason 'synthetic private convergence classification test' `
+        -UserIntent 'verify public to private remains unattended' `
+        -AdmissionInvoker $admissionInvoker `
+        -MetadataInvoker $metadataInvoker `
+        -NativeInvoker $nativeInvoker
+    Assert-Equal 'runtime_allowed' `
+        $publicToPrivateProposal.authorization_request.authorization_requirement `
+        'PUBLIC-to-PRIVATE visibility remains runtime-allowed'
+}
+finally { $script:Fixture.visibility = 'PRIVATE' }
 
 $transferArguments = [ordered]@{
     expected_owner = 'synthetic-owner'
     new_owner = 'synthetic-destination'
 }
+$transferProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -Operation 'transfer-repository' `
+    -Repository 'synthetic-owner/protected-repo' `
+    -RepoPath 'C:\synthetic\protected-repo' `
+    -Arguments $transferArguments `
+    -Decision 'allow' `
+    -Reason 'synthetic transfer classification test' `
+    -UserIntent 'verify repository transfer requires human presence' `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker
+Assert-Equal 'human_required' `
+    $transferProposal.authorization_request.authorization_requirement `
+    'repository transfer mechanically requires a human factor'
 $transferPlan = Get-EffectPlan `
     -EffectFamily 'github-api' `
     -Operation 'transfer-repository' `
@@ -441,6 +558,9 @@ Assert-Equal ('b' * 40) `
     'create Prepare binds the local HEAD OID'
 Assert-True ([bool]$createProposal.authorization_request.preconditions.target.absent) `
     'create Prepare verifies the target repository is absent'
+Assert-Equal 'runtime_allowed' `
+    $createProposal.authorization_request.authorization_requirement `
+    'PRIVATE repository creation remains runtime-allowed'
 $createPlan = Get-EffectPlan `
     -EffectFamily 'github-api' `
     -Operation 'create-repository' `
@@ -725,6 +845,55 @@ Assert-True ([bool]$script:Fixture.broker_calls[1].input.dry_run) `
 Assert-Equal 'dry_run' `
     $script:Fixture.broker_calls[1].input.authorization_request.execution_mode `
     'DryRun capability is mechanically bound to dry-run mode'
+Assert-Equal 'Runtime' $script:Fixture.broker_calls[0].authority_factor `
+    'Auto resolves a frozen runtime-allowed request to Runtime'
+Assert-Equal 'Runtime' $script:Fixture.broker_calls[1].authority_factor `
+    'capability consumption preserves the resolved Runtime factor'
+
+$script:Fixture.broker_calls.Clear()
+$humanDryRun = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $deleteRepositoryProposal `
+    -DryRun:$true `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'pass' $humanDryRun.status `
+    'Auto can verify a frozen human-required request without an effect'
+Assert-Equal 'Passkey' $script:Fixture.broker_calls[0].authority_factor `
+    'Auto resolves a frozen human-required request to Passkey'
+Assert-Equal 'Passkey' $script:Fixture.broker_calls[1].authority_factor `
+    'capability consumption preserves the resolved human factor'
+Assert-Equal 0 $script:Fixture.native_effects `
+    'human-required DryRun performs no GitHub effect'
+
+$script:Fixture.broker_calls.Clear()
+$runtimeCannotLowerHuman = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $deleteRepositoryProposal `
+    -AuthorityFactor 'runtime' `
+    -DryRun:$true `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'highest_authority_verification_required' `
+    $runtimeCannotLowerHuman.error `
+    'explicit Runtime cannot lower a mechanically human-required request, regardless of case'
+Assert-Equal 0 $script:Fixture.broker_calls.Count `
+    'human-required Runtime mismatch fails before broker or effect'
+
+$tamperedRequirement = $deleteRepositoryProposal | ConvertTo-Json -Depth 50 |
+    ConvertFrom-Json -Depth 50
+$tamperedRequirement.authorization_request.authorization_requirement =
+    'runtime_allowed'
+$tamperedRequirementRejected = $false
+try { Assert-Proposal $tamperedRequirement }
+catch {
+    $tamperedRequirementRejected =
+        $_.Exception.Message -eq 'proposal_invalid'
+}
+Assert-True $tamperedRequirementRejected `
+    'a caller cannot downgrade the adapter-derived requirement in a frozen proposal'
 
 $script:Fixture.broker_calls.Clear()
 $modeMismatch = Invoke-ProtectedGitHubMajorActionProposal `
@@ -880,6 +1049,8 @@ Assert-True $invalidRejected `
     'typed operation rejects extra shell-string fields'
 
 $toolText = Get-Content -LiteralPath $tool -Raw -Encoding utf8
+$contractText = Get-Content -LiteralPath $contractPath -Raw -Encoding utf8
+$agentsText = Get-Content -LiteralPath $agentsPath -Raw -Encoding utf8
 Assert-True ($toolText.Contains(
         "'C:\ProgramData\PCConfig\AuthorityHost\tools\Invoke-SecretBroker.ps1'"
     )) 'adapter fixes the production PCConfig broker entry'
@@ -887,12 +1058,24 @@ Assert-True ($toolText.Contains(
         "'C:\Program Files\PowerShell\7\pwsh.exe'"
     ) -and -not $toolText.Contains('[Environment]::ProcessPath')) `
     'adapter uses only the fixed Program Files PowerShell runtime'
-Assert-True ($toolText.Contains("'-AuthorityFactor', `$script:AuthorityFactor")) `
-    'adapter routes the selected highest-authority factor to the broker'
-Assert-True ($toolText.Contains("[string] `$AuthorityFactor = 'Runtime'")) `
-    'Codex defaults to automatic registered runtime verification'
+Assert-True ($toolText.Contains("'-AuthorityFactor', `$SelectedAuthorityFactor")) `
+    'adapter routes only the post-freeze selected factor to the broker'
+Assert-True ($toolText.Contains("[string] `$AuthorityFactor = 'Auto'")) `
+    'adapter defaults to post-freeze automatic factor selection'
 Assert-True ($toolText.Contains("-RuntimePrincipal', 'codex-root'")) `
     'adapter uses the unified codex-root principal'
+Assert-True ($contractText -match
+    '(?s)authorization_requirement.{0,500}(delete-repository|delete).{0,180}(transfer-repository|transfer).{0,220}PRIVATE.{0,80}PUBLIC.{0,300}human_required') `
+    'owner contract records the closed human-required GitHub matrix'
+Assert-True ($contractText -match
+    '(?s)create-repository.{0,260}set-default-branch.{0,260}git-local.{0,260}runtime_allowed') `
+    'owner contract preserves unattended ordinary GitHub and local Git work'
+Assert-True ($contractText -match
+    '(?s)Auto.{0,260}human_required.{0,100}Passkey.{0,220}runtime_allowed.{0,100}Runtime') `
+    'owner contract resolves Auto only after the frozen request is classified'
+Assert-True ($agentsText -match
+    '最高自动化主体.{0,260}最终人类根.{0,320}git\.protected-major-actions') `
+    'project entry distinguishes runtime authority from the human floor'
 Assert-True ($toolText.Contains("'-c', 'core.hooksPath=NUL'")) `
     'git-local effects suppress repository hooks'
 Assert-True ($toolText.Contains("'GIT_CONFIG_NOSYSTEM'")) `

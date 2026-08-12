@@ -11,14 +11,24 @@ adapter: `github.protected-major-actions.v1`
 ## 产品语义
 
 系统项目、四基座相关仓库和其他高价值仓库的重大动作，同时经过硬边界与顶级
-模型语义判断。受认证的 `codex-root` 是最高权限主体；Codex 主对话、子智能体
-或新对话不因形态不同重复索要通行密钥。其他智能体没有可验证的同级因子时，
-adapter 返回 `highest_authority_verification_required`，进入最高权限因子验证，
-不把“尚未验证”伪装成永久拒绝，也不执行副作用。
+模型语义判断。受认证的 `codex-root` 是最高自动化主体，可完成
+`runtime_allowed` 动作；Passkey/TOTP/Recovery/Google/Microsoft 中任一已登记因子
+代表最终人类根，可满足 `human_required` 动作。五因子全部丢失或不可验证时没有
+Runtime、管理员或其他自动化 fallback，关键动作保持失败关闭。普通 commit、
+normal push、受信代码或文档修改不能只因位于受保护仓库就被判为恶意篡改。
 
-是否额外使用本机通行密钥由顶级模型结合用户意图、目标身份、visibility、
-恢复性、影响范围和异常证据决定，不维护固定弹窗清单。普通 commit、normal
-push、受信代码或文档修改不能只因位于受保护仓库就被判为恶意篡改。
+adapter 从冻结请求的 typed effect 与 preimage 机械派生
+`authorization_requirement`，调用方和模型不能提供或降低该字段：
+
+- `delete-repository`、`transfer-repository`、`set-visibility` 的
+  `PRIVATE` → `PUBLIC` 为 `human_required`；
+- `create-repository`（仅 PRIVATE）、`set-default-branch`、全部 `git-local`、
+  `PUBLIC` → `PRIVATE` 及其他非上述关键 typed 变化为 `runtime_allowed`。
+
+`AuthorityFactor=Auto` 是默认值，并且只在 proposal 完成类型校验、请求冻结后解析：
+`human_required` → `Passkey`，`runtime_allowed` → `Runtime`。显式人类因子可提高
+普通请求的验证强度；显式 `Runtime` 不能降低 `human_required`，adapter 必须在
+broker 和 effect 之前返回 `highest_authority_verification_required`。
 
 ## 两阶段接口
 
@@ -31,6 +41,7 @@ push、受信代码或文档修改不能只因位于受保护仓库就被判为�
 - canonical worktree、git common-dir、visibility、default branch 和资源；
 - 类型化 effect family、operation、完整 argv 与参数；
 - `execution_mode=execute|dry_run`，演练能力不能升级为现实执行；
+- adapter 机械派生的 `authorization_requirement=runtime_allowed|human_required`；
 - 实时 admission、provider metadata、ref/remote 等 precondition；
 - adapter 脚本与 native git/gh 的 SHA-256、模型 decision/reason/user intent、
   30 秒能力 TTL。
@@ -41,8 +52,8 @@ push、受信代码或文档修改不能只因位于受保护仓库就被判为�
    executor hash；
 2. 调用固定入口
    `C:\ProgramData\PCConfig\AuthorityHost\tools\Invoke-SecretBroker.ps1`
-   的 `AuthorizeMajorAction`；Codex 默认使用 `Runtime/codex-root` 自动验证，其他
-   智能体可对同一 proposal 选择 Passkey/TOTP/Recovery/Google/Microsoft 因子；
+   的 `AuthorizeMajorAction`；adapter 把冻结后解析出的单一因子传给 broker，
+   Runtime 使用 `codex-root`，人类下限使用已登记的五因子之一；
 3. 再次取证后，以 `pcconfig.major-action-consume-request.v1` 调用
    `ConsumeMajorActionCapability`，且 consume 模式必须与已签
    `execution_mode` 精确一致；
@@ -50,7 +61,8 @@ push、受信代码或文档修改不能只因位于受保护仓库就被判为�
    精确 argv，并 read-back 实际状态。native 返回非零也必须先回读：owner 已观察
    到目标效果则按已执行收敛，否则明确保留 `state_unknown`，不能谎报零变更。
 
-任何 target、executor、参数、precondition、assessment、user intent 或
+任何 target、executor、参数、precondition、assessment、user intent、
+`authorization_requirement` 或
 AuthorityHost epoch binding 漂移都使旧能力失效。`-DryRun` 仍完成 AuthorityHost
 授权与 capability 验证，但要求 `execute_allowed=false`、
 `capability_consumed=false`，不会调用 effect executor。

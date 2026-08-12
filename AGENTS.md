@@ -23,7 +23,7 @@
 - `tools/Get-ProjectAdmission.ps1 -Json` 是可选的结构化证据能力。仓库身份、worktree、同步、visibility 或直接 transport 状态不清楚，或调用的信息价值高于成本时使用；事实已由新鲜可靠证据明确时不为流程打卡重复调用。
 - admission V1 的 `decision`、`push_decision` 与 `push_strategy` 只描述 provider 观察到的进入/transport 条件，不授予写入或公开发布权限。`decision=block` 应阻止基于不充分证据的写入和直接 transport，但不得阻止继续只读诊断。
 - owner-local 合同位于 [`docs/contracts/`](./docs/contracts/)；仅在机制、兼容性、故障或控制面演进需要时读取。
-- 系统项目和四基座相关仓库的重大动作由顶级模型智能审查，`codex-root` 保持最高权限，是否使用本机通行密钥不按清单硬编码；稳定仓库身份、正常变化/恶意篡改和受保护 adapter 见 [`git.protected-major-actions`](./docs/contracts/git.protected-major-actions.md)。
+- 系统项目和四基座相关仓库由顶级模型智能审查：`codex-root` 是最高自动化主体，最终人类根仅用于 adapter 机械派生且不可降低的人类下限；稳定仓库身份、动作分类、正常变化/恶意篡改和受保护 adapter 见 [`git.protected-major-actions`](./docs/contracts/git.protected-major-actions.md)。
 
 ## 维护原则
 

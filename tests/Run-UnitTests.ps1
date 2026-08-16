@@ -135,7 +135,9 @@ $fetchFailureResult = Invoke-GitFetchWithRetry `
 Assert-Equal 2 $script:FetchFailureAttempts 'Git refs refresh keeps retries bounded'
 Assert-Equal 128 $fetchFailureResult.exit_code 'persistent Git refs failure remains explicit for fail-closed admission'
 
-$resolveRetryRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+$testFixtureRoot = Join-Path $repoRoot '99_private/test-fixtures'
+New-Item -ItemType Directory -Path $testFixtureRoot -Force | Out-Null
+$resolveRetryRoot = Join-Path $testFixtureRoot (
     'github-index-resolve-retry-' + [guid]::NewGuid().ToString('N')
 )
 try {
@@ -186,7 +188,7 @@ finally {
     }
 }
 
-$pinnedPreflightContainer = Join-Path ([System.IO.Path]::GetTempPath()) (
+$pinnedPreflightContainer = Join-Path $testFixtureRoot (
     'github-index-pinned-preflight-' + [guid]::NewGuid().ToString('N')
 )
 try {
@@ -430,7 +432,7 @@ if ($seedDiscovery) {
     }
 }
 
-$inspectionRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-inspection-' + [guid]::NewGuid().ToString('N'))
+$inspectionRoot = Join-Path $testFixtureRoot ('github-index-inspection-' + [guid]::NewGuid().ToString('N'))
 try {
     & git init --initial-branch=main $inspectionRoot 2>&1 | Out-Null
     & git -C $inspectionRoot config user.name 'Inspection Test'
@@ -718,6 +720,15 @@ Assert-True (@($artifactGovernance.entries | Where-Object {
     $_.owner -eq 'PCConfig Secret Broker' -and
     @($_.refs) -contains 'secret-broker-backup'
 }).Count -eq 1) 'artifact-owner registry classifies the contract-defined encrypted backup stream separately from feature convergence'
+Assert-True (@($artifactGovernance.entries | Where-Object {
+    $_.repo -eq 'wlyaaaaa/wlyaaaaa' -and
+    $_.owner -eq 'GitHub Actions deployment artifact' -and
+    @($_.refs) -contains 'output' -and
+    $_.purpose -eq '由 .github/workflows/snake.yml 发布并被 README SVG 引用的 orphan 生成分支' -and
+    $_.exit_condition -eq '同时移除 README 中的 output 引用并修改或停用该 workflow'
+}).Count -eq 1) 'artifact-owner registry retains the workflow-backed output deployment branch with its exit condition'
+$outputGovernance = Get-GitArtifactGovernance -Repo 'wlyaaaaa/wlyaaaaa' -Branch 'origin/output'
+Assert-Equal 'GitHub Actions deployment artifact' $outputGovernance.owner 'output deployment branch resolves to its explicit external owner'
 Assert-True (@($artifactGovernance.retentions | Where-Object {
     $_.repo -eq 'wlyaaaaa/codex-local-remote' -and
     $_.path -eq 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' -and

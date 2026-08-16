@@ -27,6 +27,15 @@
       "refs": [
         "secret-broker-backup"
       ]
+    },
+    {
+      "repo": "wlyaaaaa/wlyaaaaa",
+      "owner": "GitHub Actions deployment artifact",
+      "refs": [
+        "output"
+      ],
+      "purpose": "由 .github/workflows/snake.yml 发布并被 README SVG 引用的 orphan 生成分支",
+      "exit_condition": "同时移除 README 中的 output 引用并修改或停用该 workflow"
     }
   ],
   "retentions": [

@@ -1191,6 +1191,21 @@ function New-ProjectAdmissionRecord {
         [object[]] $Branches = @()
     )
 
+    $liveChecked = (
+        $RemoteMode -ceq 'live' -and
+        $MetadataMode -ceq 'live' -and
+        $RefsMode -ceq 'live'
+    )
+    $freshness = if ($liveChecked) {
+        'live'
+    }
+    elseif ($MetadataMode -ceq 'live' -or $RefsMode -ceq 'live') {
+        'mixed'
+    }
+    else {
+        'cached'
+    }
+
     [pscustomobject][ordered]@{
         schema = $script:AdmissionSchema
         observed_utc = $ObservedUtc
@@ -1203,6 +1218,13 @@ function New-ProjectAdmissionRecord {
         remote_mode = $RemoteMode
         metadata_mode = $MetadataMode
         refs_mode = $RefsMode
+        evidence_source = [pscustomobject][ordered]@{
+            local_git = if ([string]::IsNullOrWhiteSpace($LocalRoot)) { 'unavailable' } else { 'live' }
+            github_metadata = $MetadataMode
+            remote_refs = $RefsMode
+        }
+        freshness = $freshness
+        live_checked = [bool] $liveChecked
         target_worktree = if ([string]::IsNullOrWhiteSpace($TargetWorktree)) { $null } else { $TargetWorktree }
         target_ref = if ([string]::IsNullOrWhiteSpace($TargetRef)) { $null } else { $TargetRef }
         decision = $Decision
@@ -1226,6 +1248,7 @@ function Get-ProjectAdmissionRecord {
         [switch] $Fetch,
         [switch] $LiveMetadata,
         [switch] $RefreshRefs,
+        [switch] $ForPublication,
         [string] $TargetWorktree,
         [string] $TargetRef,
         [scriptblock] $FetchInvoker,
@@ -1246,8 +1269,8 @@ function Get-ProjectAdmissionRecord {
     $remoteMode = 'cached'
     $metadataMode = 'cached'
     $refsMode = 'cached'
-    $useLiveMetadata = [bool] ($LiveMetadata -or $Fetch)
-    $useRefreshRefs = [bool] ($RefreshRefs -or $Fetch)
+    $useLiveMetadata = [bool] ($ForPublication -or $LiveMetadata -or $Fetch)
+    $useRefreshRefs = [bool] ($ForPublication -or $RefreshRefs -or $Fetch)
     $visibilityWasSupplied = -not [string]::IsNullOrWhiteSpace($Visibility)
     $visibilityInvalidObserved = $false
 

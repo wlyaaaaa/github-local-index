@@ -10,7 +10,7 @@ triggers: `push|publication|visibility|public_repo`；只有准备产生外部�
 owner: E:\GitHub总索引
 
 ## 权威输入
-transport 可采用 admission V1 或等价的新鲜 Git 证据；publication 依赖当前目标 visibility、candidate commits、paths、content、项目规则与用户授权。敏感路径 canonical case table 位于 `tools/PublicExposurePolicy.psd1`。
+transport 可采用 admission V1 的 `-ForPublication` profile 或等价的新鲜 Git/GitHub 证据；publication 依赖当前目标 visibility、candidate commits、paths、content、项目规则与用户授权。`live_checked=true` 只证明 metadata/refs 的新鲜取证完成，仍不等于内容安全或外部写入授权。敏感路径 canonical case table 位于 `tools/PublicExposurePolicy.psd1`。
 
 ## 核心机制
 `push_decision=proceed` 最多表示 transport readiness，不代表公开发布授权。PUBLIC review 必须判断实际候选暴露面；`.env`、运行态 `.env.*`、`*.env*` 及同表敏感路径由 admission、Hook、`.gitignore` 共用用例验证。明确的 `.example/.sample/.template/.dist` 模板后缀只免除路径否决，仍接受内容扫描；pure delete 与移出敏感路径是修复。

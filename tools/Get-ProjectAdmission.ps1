@@ -6,6 +6,7 @@ param(
     [switch] $Fetch,
     [switch] $LiveMetadata,
     [switch] $RefreshRefs,
+    [switch] $ForPublication,
     [switch] $Json,
     [string] $RepoPath,
     [string] $Visibility,
@@ -31,6 +32,7 @@ function Invoke-ProjectAdmissionCli {
         -Fetch:$Fetch `
         -LiveMetadata:$LiveMetadata `
         -RefreshRefs:$RefreshRefs `
+        -ForPublication:$ForPublication `
         -TargetWorktree $TargetWorktree `
         -TargetRef $TargetRef
 }

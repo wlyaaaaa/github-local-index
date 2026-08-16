@@ -106,6 +106,9 @@ $requiredContent = @{
         'github-local-index.project-admission.v1',
         '-LiveMetadata',
         '-RefreshRefs',
+        '-ForPublication',
+        'evidence_source',
+        'live_checked',
         'PUBLIC|PRIVATE|INTERNAL',
         'branch inventory',
         'remote default branch reachability',
@@ -256,6 +259,28 @@ $matrixCopies = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter '*
 })
 Assert-Equal 1 $matrixCopies.Count 'full publication matrix has exactly one Markdown copy'
 Assert-Equal $matrixPath ($matrixCopies[0].FullName.Substring($repoRoot.Length + 1).Replace('\', '/')) 'full publication matrix lives in the designated rule file'
+
+$redirectPath = '05_规则与模板/公开发布脱敏规则.md'
+$redirectText = Get-Content -LiteralPath (Join-Path $repoRoot $redirectPath) -Raw -Encoding utf8
+Assert-True ($redirectText.Contains('document_role=redirect')) "$redirectPath is only a compatibility redirect"
+Assert-True ($redirectText.Contains('authoritative=false')) "$redirectPath is explicitly non-authoritative"
+Assert-True ($redirectText.Contains('推送放行与否决规则')) "$redirectPath points to the canonical matrix"
+foreach ($duplicateHeading in @('## 禁止进入公开仓库', '## 可以进入公开仓库', '## 私有仓库例外')) {
+    Assert-True (-not $redirectText.Contains($duplicateHeading)) "$redirectPath does not duplicate $duplicateHeading"
+}
+
+$derivedMachineDocuments = @(
+    '02_同步诊断/本机配置状态.md',
+    '02_同步诊断/云端备份状态.md',
+    '04_计划任务/用户自动化任务治理建议.md'
+)
+foreach ($relativePath in $derivedMachineDocuments) {
+    $documentText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
+    Assert-True ($documentText.Contains('authoritative=false')) "$relativePath is non-authoritative"
+    Assert-True ($documentText.Contains('derived_from=')) "$relativePath declares its machine-fact owner"
+    Assert-True ($documentText.Contains('freshness=')) "$relativePath declares freshness"
+    Assert-True ($documentText.Contains('expires_after=')) "$relativePath declares expiry semantics"
+}
 
 $fixedRitualPhrases = @(
     '以后修改任意 Git 项目时',

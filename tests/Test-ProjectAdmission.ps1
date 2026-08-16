@@ -339,6 +339,7 @@ try {
     $requiredAdmissionProperties = @(
         'schema', 'observed_utc', 'repo', 'remote_url', 'visibility', 'default_branch',
         'local_root', 'git_common_dir', 'remote_mode', 'metadata_mode', 'refs_mode',
+        'evidence_source', 'freshness', 'live_checked',
         'target_worktree', 'target_ref', 'decision', 'push_decision', 'push_strategy',
         'reasons', 'errors', 'worktrees', 'branches'
     )
@@ -366,6 +367,11 @@ try {
     $cliSource = Get-Content -LiteralPath $cliPath -Raw -Encoding utf8
     Assert-True ($cliSource -match 'New-ProjectAdmissionRecord') 'CLI exceptional JSON uses the shared stable record factory'
     Assert-Equal 'cached' $cached.remote_mode 'labels cached observation explicitly'
+    Assert-Equal 'cached' $cached.freshness 'cached evidence exposes top-level freshness'
+    Assert-True (-not $cached.live_checked) 'cached evidence never claims a completed live check'
+    Assert-Equal 'live' $cached.evidence_source.local_git 'local Git evidence is observed live'
+    Assert-Equal 'cached' $cached.evidence_source.github_metadata 'cached GitHub metadata source is explicit'
+    Assert-Equal 'cached' $cached.evidence_source.remote_refs 'cached remote refs source is explicit'
     Assert-Equal 'warn' $cached.decision 'warns for cached and local worktree issues'
     Assert-True ($cached.reasons -contains 'cached_observation') 'reports cached observation reason'
     Assert-True ($cached.reasons -contains 'dirty_worktree') 'reports dirty worktree reason'
@@ -412,6 +418,7 @@ try {
     $admissionParameters = (Get-Command Get-ProjectAdmissionRecord).Parameters.Keys
     Assert-True ($admissionParameters -contains 'LiveMetadata') 'admission exposes a read-only live metadata switch'
     Assert-True ($admissionParameters -contains 'RefreshRefs') 'admission exposes an explicit refs refresh switch'
+    Assert-True ($admissionParameters -contains 'ForPublication') 'admission exposes a publication live-evidence profile'
     Assert-True ($admissionParameters -contains 'TargetWorktree') 'admission exposes an exact target worktree selector'
     Assert-True ($admissionParameters -contains 'TargetRef') 'admission exposes an exact target ref selector'
     if ($admissionParameters -contains 'TargetWorktree') {
@@ -507,6 +514,10 @@ try {
 
     $live = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchSuccess -GitHubInvoker $ghSuccess
     Assert-Equal 'live' $live.remote_mode 'labels successful fetch and metadata observation live'
+    Assert-Equal 'live' $live.freshness 'fully live evidence exposes live freshness'
+    Assert-True $live.live_checked 'fully live evidence sets live_checked'
+    Assert-Equal 'live' $live.evidence_source.github_metadata 'live metadata source is explicit'
+    Assert-Equal 'live' $live.evidence_source.remote_refs 'live refs source is explicit'
     Assert-Equal 'https://github.com/example/project' $live.remote_url 'uses the real GitHub metadata URL in live admission JSON'
     Assert-Equal 'warn' $live.decision 'keeps local worktree warnings under live observation'
     Assert-True (-not ($live.reasons -contains 'cached_observation')) 'removes cached warning after live evidence succeeds'
@@ -515,6 +526,16 @@ try {
     Assert-Equal 'behind' $livePrimary.sync_state 'classifies a fetched behind worktree'
     Assert-Equal 'block' $live.push_decision 'behind worktree blocks direct push without blocking read-only admission'
     Assert-Equal 'update_then_recheck' $live.push_strategy 'behind worktree requires update and recheck'
+    $publicationLive = Get-ProjectAdmissionRecord `
+        -Repo 'example/project' `
+        -RepoPath $primaryPath `
+        -Visibility 'PUBLIC' `
+        -DefaultBranch 'main' `
+        -ForPublication `
+        -FetchInvoker $fetchSuccess `
+        -GitHubInvoker $ghSuccess
+    Assert-True $publicationLive.live_checked 'publication profile requires both live metadata and refs'
+    Assert-Equal 'live' $publicationLive.freshness 'publication profile emits live freshness after success'
     Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--set-upstream-to=origin/main', 'feature') | Out-Null
     $divergedWorktrees = @(Get-GitRepositoryWorktrees -Path $primaryPath)
     Assert-Equal 'diverged' ($divergedWorktrees | Where-Object branch -eq 'feature').sync_state 'real worktree fixture produces diverged'
@@ -725,6 +746,9 @@ try {
         'admission v1 deliberately does not claim publication authorization'
     Assert-Equal 'github-local-index.project-admission.v1' $cliRecord.schema 'CLI emits parseable versioned JSON'
     Assert-Equal 'cached' $cliRecord.remote_mode 'CLI JSON exposes observation mode'
+    Assert-True ($cliRecord.PSObject.Properties.Name -contains 'evidence_source') 'CLI JSON exposes evidence sources'
+    Assert-True ($cliRecord.PSObject.Properties.Name -contains 'freshness') 'CLI JSON exposes freshness'
+    Assert-True ($cliRecord.PSObject.Properties.Name -contains 'live_checked') 'CLI JSON exposes live_checked'
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) {

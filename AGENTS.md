@@ -33,4 +33,5 @@
 - `tools/Add-PushRecord.ps1` 仅在用户要求或确有公开里程碑价值时使用；普通 commit/push 不生成索引流水账。
 - 只显式 stage 本次目标文件，保护用户已有改动；不使用 `git add .` 吞入混合产物。
 - 计划任务在这里只保留公开安全摘要；实时状态归 Task Scheduler，机器配置与恢复归 PCConfig，业务语义归所属项目。
+- Git/GitHub 与受管 registry 是可审计事实源；generation 先完整回读再原子进入 current，顶层 Markdown 只是可检 stale 的兼容投影，默认保留 current+previous。`refs/codex/turn-diffs/checkpoints`、unreachable objects 和 generation manifest 的保留/恢复边界必须先有证据，未证明前不得 `gc`/`prune`。当前不引入数据库，未来查询 cache 只能可删除、可重建且不能替代 Git/GitHub/registry。
 - 规则在最相关位置原地重写并去重；本文件保持短小，专项机制放对应合同或工具文档。

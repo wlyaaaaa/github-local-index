@@ -1,5 +1,8 @@
 ﻿param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [string] $OutputRoot,
+    [string] $GenerationId,
+    [string] $ObservedAt,
     [switch] $NoWrite
 )
 
@@ -59,7 +62,55 @@ function Set-UserAutomationTextFile {
     }
 
     $text = ($normalizedLines -join [Environment]::NewLine) + [Environment]::NewLine
-    Set-Content -LiteralPath $Path -Value $text -Encoding UTF8 -NoNewline
+    $tempPath = Join-Path $directory ('.' + (Split-Path -Leaf $Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $text, [System.Text.UTF8Encoding]::new($false))
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            [System.IO.File]::Move($tempPath, $Path, $true)
+        }
+        else {
+            [System.IO.File]::Move($tempPath, $Path)
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function New-UserAutomationSnapshotHeader {
+    param(
+        [string] $GenerationId,
+        [string] $ObservedAt,
+        [switch] $RepositoryRecommendation
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ObservedAt)) {
+        $ObservedAt = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(8)).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $source = if ($RepositoryRecommendation) {
+        'E:\GitHub总索引 + E:\PCConfig + Windows Task Scheduler'
+    }
+    else {
+        'Windows Task Scheduler + owning project + E:\PCConfig'
+    }
+    $lines = @(
+        '- document_role=derived_snapshot',
+        '- authoritative=false',
+        '- owner=E:\PCConfig',
+        "- source=$source",
+        "- observed_at=$ObservedAt",
+        '- freshness=observed_at_only',
+        '- expires_after=immediate',
+        "- expires_at=$ObservedAt",
+        '- 当前操作、复跑、恢复、任务创建与路径事实请回 PCConfig/项目 owner；本页不是当前成功证据。',
+        ''
+    )
+    if (-not [string]::IsNullOrWhiteSpace($GenerationId)) {
+        return @("<!-- generation_id=$GenerationId -->") + $lines
+    }
+    return $lines
 }
 
 function ConvertTo-UserAutomationTaskResultAssessment {
@@ -522,11 +573,17 @@ function Write-UserAutomationDocuments {
     param(
         [string] $RepoRoot,
         [object[]] $TaskRows,
-        [object[]] $RecommendationRows
+        [object[]] $RecommendationRows,
+        [string] $OutputRoot,
+        [string] $GenerationId,
+        [string] $ObservedAt
     )
 
+    $documentRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $RepoRoot } else { $OutputRoot }
+    $taskHeader = New-UserAutomationSnapshotHeader -GenerationId $GenerationId -ObservedAt $ObservedAt
+    $recommendationHeader = New-UserAutomationSnapshotHeader -GenerationId $GenerationId -ObservedAt $ObservedAt -RepositoryRecommendation
     $date = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
-    $taskLines = @(
+    $taskLines = @($taskHeader + @(
         '# 用户自动化任务地图',
         '',
         "更新时间：$date",
@@ -541,11 +598,11 @@ function Write-UserAutomationDocuments {
         '',
         '## 任务地图',
         ''
-    )
+    ))
     $taskLines += New-UserAutomationMarkdownTable -Headers @('任务', '状态', '运行记录', '下次状态', '返回码', '动作摘要', '推测用途', '为什么需要', '风险/复查点') -Properties @('TaskName', 'State', 'LastRunTime', 'NextRunTime', 'LastTaskResult', 'ActionSummary', 'Purpose', 'Why', 'Risk') -Rows $TaskRows
-    Set-UserAutomationTextFile -Path (Join-Path $RepoRoot '04_计划任务/用户自动化任务地图.md') -Lines $taskLines
+    Set-UserAutomationTextFile -Path (Join-Path $documentRoot '04_计划任务/用户自动化任务地图.md') -Lines $taskLines
 
-    $recommendationLines = @(
+    $recommendationLines = @($recommendationHeader + @(
         '# 仓库计划任务建议',
         '',
         "更新时间：$date",
@@ -554,7 +611,7 @@ function Write-UserAutomationDocuments {
         '',
         '## 建议表',
         ''
-    )
+    ))
     $recommendationLines += New-UserAutomationMarkdownTable -Headers @('仓库', '可见性', '本地路径', '已有覆盖', '决策', '建议频率', '建议用途', '理由', '风险') -Properties @('Repository', 'Visibility', 'LocalPath', 'ExistingCoverage', 'Decision', 'Frequency', 'SuggestedPurpose', 'Reason', 'Risk') -Rows $RecommendationRows
     $recommendationLines += ''
     $recommendationLines += '## 当前最值得补的任务'
@@ -565,19 +622,22 @@ function Write-UserAutomationDocuments {
     } else {
         $recommendationLines += New-UserAutomationMarkdownTable -Headers @('仓库', '建议频率', '建议用途', '理由') -Properties @('Repository', 'Frequency', 'SuggestedPurpose', 'Reason') -Rows $topRows
     }
-    Set-UserAutomationTextFile -Path (Join-Path $RepoRoot '04_计划任务/仓库计划任务建议.md') -Lines $recommendationLines
+    Set-UserAutomationTextFile -Path (Join-Path $documentRoot '04_计划任务/仓库计划任务建议.md') -Lines $recommendationLines
 }
 
 function Invoke-UpdateUserAutomationMap {
     param(
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+        [string] $OutputRoot,
+        [string] $GenerationId,
+        [string] $ObservedAt,
         [switch] $NoWrite
     )
 
     $taskRows = @(Get-UserAutomationTaskRows)
     $recommendationRows = @(Get-RepositoryRecommendationRows -RepoRoot $RepoRoot -TaskRows $taskRows)
     if (-not $NoWrite) {
-        Write-UserAutomationDocuments -RepoRoot $RepoRoot -TaskRows $taskRows -RecommendationRows $recommendationRows
+        Write-UserAutomationDocuments -RepoRoot $RepoRoot -OutputRoot $OutputRoot -TaskRows $taskRows -RecommendationRows $recommendationRows -GenerationId $GenerationId -ObservedAt $ObservedAt
     }
 
     return [pscustomobject]@{
@@ -587,5 +647,5 @@ function Invoke-UpdateUserAutomationMap {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-UpdateUserAutomationMap -RepoRoot $RepoRoot -NoWrite:$NoWrite
+    Invoke-UpdateUserAutomationMap -RepoRoot $RepoRoot -OutputRoot $OutputRoot -GenerationId $GenerationId -ObservedAt $ObservedAt -NoWrite:$NoWrite
 }

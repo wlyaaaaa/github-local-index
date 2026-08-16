@@ -559,6 +559,10 @@ try {
     Invoke-TestGit -Path $integrationPath -Arguments @('commit', '-m', 'main only') | Out-Null
     Invoke-TestGit -Path $integrationPath -Arguments @('cherry-pick', $featureEquivalentHead) | Out-Null
     Invoke-TestGit -Path $integrationPath -Arguments @('branch', 'merged-residual') | Out-Null
+    $integrationDefaultHead = Invoke-TestGit -Path $integrationPath -Arguments @('rev-parse', 'main')
+    Invoke-TestGit -Path $integrationPath -Arguments @(
+        'update-ref', 'refs/remotes/origin/main', $integrationDefaultHead
+    ) | Out-Null
 
     $patchEquivalent = Get-GitDefaultBranchIntegrationEvidence `
         -Path $integrationPath -DefaultBranch 'main' -Head $featureEquivalentHead -Branch 'feature-equivalent'
@@ -571,6 +575,31 @@ try {
     $unknownIntegration = Get-GitDefaultBranchIntegrationEvidence `
         -Path $integrationPath -DefaultBranch 'missing-default' -Head $featureEquivalentHead -Branch 'feature-equivalent'
     Assert-Equal 'unknown' $unknownIntegration.integration_state 'missing default ref fails closed as unknown'
+    Assert-Equal 'refs/remotes/origin/missing-default' $unknownIntegration.default_ref `
+        'missing default ref never falls back to a local branch ref'
+    Assert-True $unknownIntegration.inspection_error 'missing remote default ref remains an inspection error'
+
+    $navigationIndexRoot = Join-Path $tempRoot 'navigation-index'
+    New-Item -ItemType Directory -Path (Join-Path $navigationIndexRoot '01_仓库索引') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $navigationIndexRoot '01_仓库索引/GitHub仓库索引.md') -Value @(
+        '# navigation fixture',
+        '',
+        '| GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |',
+        '|---|---|---|---|---|---|',
+        "| example/other | PRIVATE | markdown-branch | $primaryPath | stale | ignore |"
+    ) -Encoding utf8
+    $navigationFacts = Get-IndexedProjectFacts -IndexRoot $navigationIndexRoot -Repo 'example/other'
+    Assert-Equal 'markdown_navigation_hint' $navigationFacts.source 'Markdown facts are explicitly navigation-only'
+    Assert-True (-not $navigationFacts.authoritative) 'Markdown navigation hint is non-authoritative'
+    Assert-True (-not ($navigationFacts.PSObject.Properties.Name -contains 'visibility')) 'navigation hint does not expose Markdown visibility'
+    Assert-True (-not ($navigationFacts.PSObject.Properties.Name -contains 'default_branch')) 'navigation hint does not expose Markdown default branch'
+    $navigationAdmission = Get-ProjectAdmissionRecord -Repo 'example/other' -IndexRoot $navigationIndexRoot
+    Assert-Equal 'block' $navigationAdmission.decision 'navigation path with mismatched .git origin blocks admission'
+    Assert-True ($navigationAdmission.reasons -contains 'remote_mismatch') 'navigation path identity mismatch is explicit'
+    Assert-True ($null -eq $navigationAdmission.local_root) 'mismatched navigation path is not exposed as local root'
+    Assert-Equal 0 @($navigationAdmission.worktrees).Count 'mismatched navigation path is not enumerated'
+    Assert-True ($null -eq $navigationAdmission.visibility) 'Markdown visibility is not used when caller omits live metadata'
+    Assert-True ($null -eq $navigationAdmission.default_branch) 'Markdown default branch is not used when caller omits live metadata'
 
     $singleBranchPath = Join-Path $tempRoot 'single-snapshot-branch'
     Invoke-TestGit -Path $tempRoot -Arguments @(

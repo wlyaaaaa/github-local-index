@@ -550,7 +550,10 @@ function Get-GitDefaultBranchIntegrationEvidence {
     $result = [ordered]@{
         integration_state = 'unknown'
         is_default_branch = $false
-        default_ref = if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { $null } else { "refs/heads/$DefaultBranch" }
+        # Completion evidence must come from the remote-tracking default ref.
+        # A local branch with the same name is not proof that the remote has
+        # absorbed the worktree commit.
+        default_ref = if ([string]::IsNullOrWhiteSpace($DefaultBranch)) { $null } else { "refs/remotes/origin/$DefaultBranch" }
         default_head = $null
         default_only_commits = $null
         unique_commits_vs_default = $null
@@ -564,25 +567,16 @@ function Get-GitDefaultBranchIntegrationEvidence {
         return [pscustomobject] $result
     }
 
-    $localDefaultRef = "refs/heads/$DefaultBranch"
     $remoteDefaultRef = "refs/remotes/origin/$DefaultBranch"
     $remoteDefaultResult = Invoke-GitCommandResult -Path $Path -Arguments @(
         'rev-parse', '--verify', "$remoteDefaultRef^{commit}"
     )
-    $defaultRef = if ($remoteDefaultResult.exit_code -eq 0 -and
-        $remoteDefaultResult.stdout -match '^[0-9a-fA-F]{40}$') {
-        $remoteDefaultRef
-    }
-    else {
-        $localDefaultRef
-    }
+    $defaultRef = $remoteDefaultRef
     $result.default_ref = $defaultRef
-    $defaultResult = if ($defaultRef -eq $remoteDefaultRef) {
-        $remoteDefaultResult
-    }
-    else {
-        Invoke-GitCommandResult -Path $Path -Arguments @('rev-parse', '--verify', "$defaultRef^{commit}")
-    }
+    # Do not fall back to refs/heads/<default>.  Without a remote-tracking
+    # ref the remote state is unknown and all integration decisions fail
+    # closed.
+    $defaultResult = $remoteDefaultResult
     if ($defaultResult.exit_code -ne 0 -or $defaultResult.stdout -notmatch '^[0-9a-fA-F]{40}$') {
         return [pscustomobject] $result
     }
@@ -974,8 +968,11 @@ function Get-IndexedProjectFacts {
         }
         $paths = @($matches['paths'] -split '<br>' | ForEach-Object { $_.Trim(' ', '`') } | Where-Object { $_ -and $_ -ne '未发现本地 clone' })
         return [pscustomobject]@{
-            visibility = $matches['visibility'].Trim().ToUpperInvariant()
-            default_branch = $matches['branch'].Trim(' ', '`')
+            # Markdown is only a navigation hint.  Visibility/default branch
+            # are deliberately not returned because they are dynamic owner
+            # facts and must come from live metadata or an explicit caller.
+            source = 'markdown_navigation_hint'
+            authoritative = $false
             paths = if (Test-IsExternallyGovernedGitHubRepository -Repo $Repo) { @() } else { $paths }
         }
     }
@@ -1296,21 +1293,8 @@ function Get-ProjectAdmissionRecord {
     if ($normalizedRepo -and -not [string]::IsNullOrWhiteSpace($IndexRoot)) {
         $facts = Get-IndexedProjectFacts -IndexRoot $IndexRoot -Repo $normalizedRepo
     }
-    if (-not $visibilityWasSupplied -and $facts) {
-        $visibilityResolution = Resolve-AdmissionVisibilityValue -Value ([string] $facts.visibility)
-        if ($visibilityResolution.valid) {
-            $Visibility = $visibilityResolution.value
-        }
-        else {
-            $Visibility = $null
-            $visibilityInvalidObserved = $true
-        }
-    }
-    if ([string]::IsNullOrWhiteSpace($DefaultBranch) -and $facts) {
-        $DefaultBranch = $facts.default_branch
-    }
-
     $candidates = @()
+    $navigationHintUsed = $false
     if ($isExternalGovernance) {
         $candidates = @()
     }
@@ -1319,6 +1303,7 @@ function Get-ProjectAdmissionRecord {
     }
     elseif ($facts) {
         $candidates = @($facts.paths)
+        $navigationHintUsed = $candidates.Count -gt 0
     }
     $pathResolution = Resolve-AdmissionRepoPath -CandidatePaths $candidates
     if ($pathResolution.ambiguous) {
@@ -1329,32 +1314,60 @@ function Get-ProjectAdmissionRecord {
     }
     else {
         $RepoPath = $pathResolution.path
-        try {
-            $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
-        }
-        catch {
-            $errors.Add((New-AdmissionError -Category 'worktree_enumeration_failed' -ExitCode 1))
-            $reasons.Add('missing_repo_path')
-        }
-
-        $localRoot = ConvertTo-NormalizedGitPath $RepoPath
-        $commonResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir')
-        if ($commonResult.exit_code -eq 0) {
-            $gitCommonDir = ConvertTo-NormalizedGitPath $commonResult.stdout
-        }
+        # A Markdown-derived path is untrusted until its .git identity is
+        # checked.  This prevents a stale navigation row from causing local
+        # facts to be collected from an unrelated repository.
         $remoteResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('config', '--get', 'remote.origin.url')
-        if ($remoteResult.exit_code -eq 0) {
-            $remoteSlug = ConvertTo-GitHubRepoSlug $remoteResult.stdout
-            $remoteUrl = ConvertTo-PublicGitHubRemoteUrl $remoteResult.stdout
+        $candidateRemoteSlug = if ($remoteResult.exit_code -eq 0) {
+            ConvertTo-GitHubRepoSlug $remoteResult.stdout
         }
-        if (-not $remoteSlug -or ($normalizedRepo -and $remoteSlug -ine $normalizedRepo)) {
-            $reasons.Add('remote_mismatch')
+        else {
+            $null
         }
+        $commonResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir')
+        $candidateCommonDir = if ($commonResult.exit_code -eq 0) {
+            ConvertTo-NormalizedGitPath $commonResult.stdout
+        }
+        else {
+            $null
+        }
+        if ($navigationHintUsed -and (-not $candidateRemoteSlug -or
+            ($normalizedRepo -and $candidateRemoteSlug -ine $normalizedRepo) -or
+            [string]::IsNullOrWhiteSpace($candidateCommonDir))) {
+            if (-not $candidateRemoteSlug -or ($normalizedRepo -and $candidateRemoteSlug -ine $normalizedRepo)) {
+                $reasons.Add('remote_mismatch')
+            }
+            if ([string]::IsNullOrWhiteSpace($candidateCommonDir)) {
+                $reasons.Add('local_git_identity_unavailable')
+            }
+            $RepoPath = $null
+        }
+        else {
+            try {
+                $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
+            }
+            catch {
+                $errors.Add((New-AdmissionError -Category 'worktree_enumeration_failed' -ExitCode 1))
+                $reasons.Add('missing_repo_path')
+            }
 
-        if ([string]::IsNullOrWhiteSpace($DefaultBranch)) {
-            $defaultResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
-            if ($defaultResult.exit_code -eq 0 -and $defaultResult.stdout -match '^origin/(?<branch>.+)$') {
-                $DefaultBranch = $matches['branch']
+            $localRoot = ConvertTo-NormalizedGitPath $RepoPath
+            if ($commonResult.exit_code -eq 0) {
+                $gitCommonDir = $candidateCommonDir
+            }
+            if ($remoteResult.exit_code -eq 0) {
+                $remoteSlug = $candidateRemoteSlug
+                $remoteUrl = ConvertTo-PublicGitHubRemoteUrl $remoteResult.stdout
+            }
+            if (-not $remoteSlug -or ($normalizedRepo -and $remoteSlug -ine $normalizedRepo)) {
+                $reasons.Add('remote_mismatch')
+            }
+
+            if ([string]::IsNullOrWhiteSpace($DefaultBranch)) {
+                $defaultResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
+                if ($defaultResult.exit_code -eq 0 -and $defaultResult.stdout -match '^origin/(?<branch>.+)$') {
+                    $DefaultBranch = $matches['branch']
+                }
             }
         }
     }

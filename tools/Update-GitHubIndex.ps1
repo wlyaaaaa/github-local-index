@@ -1,6 +1,9 @@
 ﻿param(
     [string] $Owner = 'wlyaaaaa',
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [string] $OutputRoot,
+    [string] $GenerationId,
+    [string] $ObservedAt,
     [string[]] $ScanRoots = @(),
     [switch] $SkipFetch,
     [switch] $NoWrite
@@ -857,7 +860,9 @@ function ConvertTo-GitHubIndexRows {
         }
         $states = ($clones | ForEach-Object { $_.State }) -join '<br>'
         $actions = ($clones | ForEach-Object { $_.NextAction } | Sort-Object -Unique) -join '<br>'
-        $needsReview = @($clones | Where-Object { $_.NeedsReview }).Count -gt 0
+        $needsReview = @($clones | Where-Object {
+            $_.NeedsReview -or [string] $_.RemoteMode -eq 'cached'
+        }).Count -gt 0
         $dirtyCount = @($clones | Measure-Object -Property DirtyCount -Sum).Sum
         $ahead = @($clones | Measure-Object -Property Ahead -Sum).Sum
         $behind = @($clones | Measure-Object -Property Behind -Sum).Sum
@@ -888,6 +893,9 @@ function ConvertTo-GitHubIndexRows {
                 (-not ($null -ne $_.PSObject.Properties['IsNecessaryRetention'] -and [bool] $_.IsNecessaryRetention)) -and
                 [string]::IsNullOrWhiteSpace([string] $_.Upstream)
             }).Count -gt 0) { $reasons += '无 upstream' }
+            if (@($clones | Where-Object { [string] $_.RemoteMode -eq 'cached' }).Count -gt 0) {
+                $reasons += 'cached 远端引用'
+            }
             foreach ($cloneReason in @($clones | ForEach-Object { @($_.QueueReasons) })) {
                 if (-not [string]::IsNullOrWhiteSpace([string] $cloneReason)) {
                     $reasons += [string] $cloneReason
@@ -1153,7 +1161,7 @@ function Resolve-CloneStatuses {
                         $convergence.queue_reason -ne 'unintegrated_worktree_commit') {
                         $queueReasons.Add('unintegrated_worktree_commit')
                     }
-                    if (-not $protectedRetention -and $admission.remote_mode -eq 'cached') {
+                    if ($admission.remote_mode -eq 'cached') {
                         $queueReasons.Add('cached 远端引用')
                     }
                     foreach ($errorReason in $repoErrorReasons) { $queueReasons.Add($errorReason) }
@@ -1205,9 +1213,10 @@ function Resolve-CloneStatuses {
                         (-not $necessaryRetention) -and [bool] $convergence.retirement_candidate
                     NeedsReview = (-not $externalGovernance) -and (
                         $inspectionFailed -or $repoErrorReasons.Count -gt 0 -or
-                        $worktree.prunable -or ((-not $hasUpstream) -and -not $protectedRetention) -or
-                        $ahead -gt 0 -or $actionableBehind -gt 0 -or
-                        $dirtyCount -gt 0 -or [bool] $convergence.needs_review
+                         $worktree.prunable -or ((-not $hasUpstream) -and -not $protectedRetention) -or
+                         $ahead -gt 0 -or $actionableBehind -gt 0 -or
+                         $dirtyCount -gt 0 -or [bool] $convergence.needs_review -or
+                         $admission.remote_mode -eq 'cached'
                     )
                     QueueReasons = @($queueReasons)
                     RemoteMode = $admission.remote_mode
@@ -1305,7 +1314,8 @@ function Resolve-CloneStatuses {
                     RetirementCandidate = (-not $branchExternalGovernance) -and
                         [bool] $branchConvergence.retirement_candidate
                     NeedsReview = (-not $branchExternalGovernance) -and (
-                        $repoErrorReasons.Count -gt 0 -or [bool] $branchConvergence.needs_review
+                        $repoErrorReasons.Count -gt 0 -or [bool] $branchConvergence.needs_review -or
+                        $admission.remote_mode -eq 'cached'
                     )
                     QueueReasons = @($branchQueueReasons)
                     RemoteMode = $admission.remote_mode
@@ -1320,7 +1330,7 @@ function Resolve-CloneStatuses {
     }
 }
 
-function Set-TextFile {
+function Set-GitHubIndexTextFile {
     param(
         [string] $Path,
         [string[]] $Lines
@@ -1342,15 +1352,47 @@ function Set-TextFile {
     }
 
     $text = ($normalizedLines -join [Environment]::NewLine) + [Environment]::NewLine
-    Set-Content -LiteralPath $Path -Value $text -Encoding UTF8 -NoNewline
+    $tempPath = Join-Path $directory ('.' + (Split-Path -Leaf $Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $text, [System.Text.UTF8Encoding]::new($false))
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            [System.IO.File]::Move($tempPath, $Path, $true)
+        }
+        else {
+            [System.IO.File]::Move($tempPath, $Path)
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Write-GitHubIndexDocuments {
     param(
         [string] $RepoRoot,
         [string] $Owner,
-        [object[]] $Rows
+        [object[]] $Rows,
+        [string] $OutputRoot,
+        [string] $GenerationId,
+        [string] $ObservedAt
     )
+
+    $documentRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $RepoRoot } else { $OutputRoot }
+    if (-not [string]::IsNullOrWhiteSpace($GenerationId) -and [string]::IsNullOrWhiteSpace($ObservedAt)) {
+        $ObservedAt = [DateTimeOffset]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $generationHeader = if ([string]::IsNullOrWhiteSpace($GenerationId)) {
+        @()
+    }
+    else {
+        @(
+            "<!-- generation_id=$GenerationId -->",
+            "<!-- observed_at=$ObservedAt -->",
+            ''
+        )
+    }
 
     $Rows = @(Sort-GitHubIndexRows (ConvertTo-DocumentRows -Rows $Rows -Owner $Owner))
     $date = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
@@ -1361,7 +1403,7 @@ function Write-GitHubIndexDocuments {
     $noActionRows = @($Rows | Where-Object { $_.HasLocalClone -and -not $_.NeedsReview } | Sort-Object NameWithOwner)
     $dirtyRows = @($Rows | Where-Object { $_.DirtyCount -gt 0 } | Sort-Object NameWithOwner)
 
-    $overviewLines = @(
+    $overviewLines = @($generationHeader + @(
         '# GitHub 总览',
         '',
         "更新时间：$date",
@@ -1383,39 +1425,39 @@ function Write-GitHubIndexDocuments {
         '## 历史审计',
         '',
         '- [2026-07-05 GitHub 仓库与计划任务审计](../90_历史审计/2026/2026-07-05-GitHub仓库与计划任务审计.md)'
-    )
-    Set-TextFile -Path (Join-Path $RepoRoot '00_总览/GitHub总览.md') -Lines $overviewLines
+    ))
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '00_总览/GitHub总览.md') -Lines $overviewLines
 
-    $indexLines = @(
+    $indexLines = @($generationHeader + @(
         '# GitHub 仓库索引',
         '',
         "更新时间：$date",
         '',
         "当前 ``$Owner`` 账号共有 $total 个仓库。本文件由 ``tools/Update-GitHubIndex.ps1`` 刷新。",
         ''
-    )
+    ))
     $indexLines += New-MarkdownTable -Headers @('GitHub 仓库', '可见性', '默认分支', '本地路径', '本地状态', '下次动作') -Properties @('NameWithOwner', 'Visibility', 'DefaultBranch', 'LocalPath', 'LocalState', 'NextAction') -Rows $Rows
-    Set-TextFile -Path (Join-Path $RepoRoot '01_仓库索引/GitHub仓库索引.md') -Lines $indexLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '01_仓库索引/GitHub仓库索引.md') -Lines $indexLines
 
-    $cloneLines = @(
+    $cloneLines = @($generationHeader + @(
         '# 本地 Clone 索引',
         '',
         "更新时间：$date",
         '',
         '## 已确认本地位置',
         ''
-    )
+    ))
     $cloneLines += New-MarkdownTable -Headers @('GitHub 仓库', '本地路径', '状态') -Properties @('NameWithOwner', 'LocalPath', 'LocalState') -Rows $localRows
-    Set-TextFile -Path (Join-Path $RepoRoot '01_仓库索引/本地clone索引.md') -Lines $cloneLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '01_仓库索引/本地clone索引.md') -Lines $cloneLines
 
-    $missingLines = @(
+    $missingLines = @($generationHeader + @(
         '# 未发现本地 Clone',
         '',
         "更新时间：$date",
         '',
         '扩大搜索范围后仍未发现本地 clone 的仓库：',
         ''
-    )
+    ))
     if ($missingRows.Count -gt 0) {
         $missingLines += New-MarkdownTable -Headers @('GitHub 仓库', '可见性', '当前决策') -Properties @('NameWithOwner', 'Visibility', 'NextAction') -Rows $missingRows
     } else {
@@ -1423,16 +1465,16 @@ function Write-GitHubIndexDocuments {
     }
     $missingLines += ''
     $missingLines += '说明：`Key` 仓库可 clone 到受管私有路径，但 checkout 只允许密文和公开安全说明；解密明文、口令与密钥文件不得进入仓库。'
-    Set-TextFile -Path (Join-Path $RepoRoot '01_仓库索引/未发现本地clone.md') -Lines $missingLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '01_仓库索引/未发现本地clone.md') -Lines $missingLines
 
-    $queueLines = @(
+    $queueLines = @($generationHeader + @(
         '# 未推送队列',
         '',
         "更新时间：$date",
         '',
         '## 当前队列',
         ''
-    )
+    ))
     if ($queueRows.Count -gt 0) {
         $queueLines += New-MarkdownTable -Headers @('仓库', '可见性', '状态', '队列原因', '决策') -Properties @('NameWithOwner', 'Visibility', 'LocalState', 'QueueReason', 'NextAction') -Rows $queueRows
     } else {
@@ -1440,16 +1482,16 @@ function Write-GitHubIndexDocuments {
         $queueLines += '|---|---|---|---|'
         $queueLines += '| 无 | - | - | 当前已发现本地 clone 的仓库均无未推送队列项 |'
     }
-    Set-TextFile -Path (Join-Path $RepoRoot '02_同步诊断/未推送队列.md') -Lines $queueLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '02_同步诊断/未推送队列.md') -Lines $queueLines
 
-    $branchLines = @(
+    $branchLines = @($generationHeader + @(
         '# 分支与远端诊断',
         '',
         "更新时间：$date",
         '',
         '## 无行动项',
         ''
-    )
+    ))
     if ($noActionRows.Count -gt 0) {
         $branchLines += New-MarkdownTable -Headers @('仓库', '本地路径', '分支状态') -Properties @('NameWithOwner', 'LocalPath', 'LocalState') -Rows $noActionRows
     } else {
@@ -1465,14 +1507,14 @@ function Write-GitHubIndexDocuments {
         $branchLines += '|---|---|---|'
         $branchLines += '| 无 | - | 当前已发现本地 clone 的仓库均无待处理项 |'
     }
-    Set-TextFile -Path (Join-Path $RepoRoot '02_同步诊断/分支与远端诊断.md') -Lines $branchLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '02_同步诊断/分支与远端诊断.md') -Lines $branchLines
 
-    $dirtyLines = @(
+    $dirtyLines = @($generationHeader + @(
         '# 工作区脏状态',
         '',
         "更新时间：$date",
         ''
-    )
+    ))
     if ($dirtyRows.Count -gt 0) {
         $dirtyLines += New-MarkdownTable -Headers @('仓库', '本地路径', '脏状态', '处理策略') -Properties @('NameWithOwner', 'LocalPath', 'LocalState', 'NextAction') -Rows $dirtyRows
     } else {
@@ -1480,7 +1522,7 @@ function Write-GitHubIndexDocuments {
     }
     $dirtyLines += ''
     $dirtyLines += '原则：脏工作区不等于必须提交。公开仓库的混合产物应先整理，再用显式路径 stage。'
-    Set-TextFile -Path (Join-Path $RepoRoot '02_同步诊断/工作区脏状态.md') -Lines $dirtyLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '02_同步诊断/工作区脏状态.md') -Lines $dirtyLines
 
     $dashboardRows = @(
         [pscustomobject]@{
@@ -1508,12 +1550,12 @@ function Write-GitHubIndexDocuments {
             NextAction    = '发现 secret、原始日志或私有 payload 时阻止发布'
         }
     )
-    $dashboardLines = @(
+    $dashboardLines = @($generationHeader + @(
         '# 当前同步看板',
         '',
         "更新时间：$date",
         ''
-    )
+    ))
     $dashboardLines += New-MarkdownTable -Headers @('项目', '可见性', '当前状态', '决策') -Properties @('NameWithOwner', 'Visibility', 'LocalState', 'NextAction') -Rows $dashboardRows
     $dashboardLines += ''
     $dashboardLines += '## 下一步优先级'
@@ -1523,13 +1565,16 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += '3. 对未推送队列中的公开仓库先做暴露面审查。'
     $dashboardLines += '4. 对未发现 clone 的仓库决定是否进入统一目录或标记远端存档；`wlyaaaaa/Key` 仅允许受管私有 clone 和密文维护。'
     $dashboardLines += '5. 只有明确里程碑或索引事实变化时才记录 push milestone；普通推送不制造索引提交。'
-    Set-TextFile -Path (Join-Path $RepoRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
+    Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }
 
 function Invoke-UpdateGitHubIndex {
     param(
         [string] $Owner = 'wlyaaaaa',
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+        [string] $OutputRoot,
+        [string] $GenerationId,
+        [string] $ObservedAt,
         [string[]] $ScanRoots = @(),
         [switch] $SkipFetch,
         [switch] $NoWrite
@@ -1548,12 +1593,12 @@ function Invoke-UpdateGitHubIndex {
     $rows = @(Sort-GitHubIndexRows (ConvertTo-GitHubIndexRows -Repositories $repositories -CloneMap $cloneMap))
 
     if (-not $NoWrite) {
-        Write-GitHubIndexDocuments -RepoRoot $RepoRoot -Owner $Owner -Rows $rows
+        Write-GitHubIndexDocuments -RepoRoot $RepoRoot -OutputRoot $OutputRoot -Owner $Owner -Rows $rows -GenerationId $GenerationId -ObservedAt $ObservedAt
     }
 
     return $rows
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-UpdateGitHubIndex -Owner $Owner -RepoRoot $RepoRoot -ScanRoots $ScanRoots -SkipFetch:$SkipFetch -NoWrite:$NoWrite
+    Invoke-UpdateGitHubIndex -Owner $Owner -RepoRoot $RepoRoot -OutputRoot $OutputRoot -GenerationId $GenerationId -ObservedAt $ObservedAt -ScanRoots $ScanRoots -SkipFetch:$SkipFetch -NoWrite:$NoWrite
 }

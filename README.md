@@ -55,3 +55,7 @@ Git transport readiness 与内容 publication 是两个不同判断。完整且�
 - `tests/Run-UnitTests.ps1`、`tests/Test-ProjectAdmission.ps1`、`tests/Test-ControlPlaneContracts.ps1`：验证工具行为与稳定合同。
 
 兼容工具可以继续被已有自动化调用，但兼容存在不等于推荐日常调用。只有仓库身份、路径、可见性、生成口径、公开门禁或明确里程碑等 owner 事实变化时才更新本索引；普通业务提交留在目标项目。
+
+## 持久化与代际边界
+
+完整 refresh 先在临时 generation 生成并校验全部 Markdown，再将其以同卷 `.incoming` 目录原子改名为 immutable generation，最后以 `00_总览/current-generation.json` 原子切换当前指针；指针未切换前，旧 generation 仍是当前代际。顶层 Markdown 只是带 generation id 的兼容投影，generation 与指针不匹配时必须视为 stale。默认只保留 current+previous generation，清理只作用于已验证的生成目录。Git/GitHub、受管 JSON registry 和该 manifest 是可审计事实源；checkpoint refs 与 unreachable objects 未经 owner 证明不得 `gc`/`prune`。当前不引入数据库，未来查询加速只能使用可删除、可重建的 cache。

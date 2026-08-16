@@ -1,5 +1,8 @@
 ﻿param(
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [string] $OutputRoot,
+    [string] $GenerationId,
+    [string] $ObservedAt,
     [string[]] $NamePatterns = @('*Backup*', '*Sync*', '*Mirror*', '*Watchdog*', '*Heartbeat*', '*AutoPush*', '*AutoStart*', '*GitHubLocalIndex*'),
     [switch] $NoWrite
 )
@@ -165,7 +168,7 @@ function New-MarkdownTable {
     return $lines
 }
 
-function Set-TextFile {
+function Set-ScheduledTaskTextFile {
     param(
         [string] $Path,
         [string[]] $Lines
@@ -187,22 +190,68 @@ function Set-TextFile {
     }
 
     $text = ($normalizedLines -join [Environment]::NewLine) + [Environment]::NewLine
-    Set-Content -LiteralPath $Path -Value $text -Encoding UTF8 -NoNewline
+    $tempPath = Join-Path $directory ('.' + (Split-Path -Leaf $Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        [System.IO.File]::WriteAllText($tempPath, $text, [System.Text.UTF8Encoding]::new($false))
+        if (Test-Path -LiteralPath $Path -PathType Leaf) {
+            [System.IO.File]::Move($tempPath, $Path, $true)
+        }
+        else {
+            [System.IO.File]::Move($tempPath, $Path)
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempPath -PathType Leaf) {
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function New-ScheduledTaskSnapshotHeader {
+    param(
+        [string] $GenerationId,
+        [string] $ObservedAt
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ObservedAt)) {
+        $ObservedAt = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(8)).ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $lines = @(
+        '- document_role=derived_snapshot',
+        '- authoritative=false',
+        '- owner=PCConfig',
+        '- source=Windows Task Scheduler + PCConfig',
+        "- observed_at=$ObservedAt",
+        '- freshness=observed_at_only',
+        '- expires_after=immediate',
+        "- expires_at=$ObservedAt",
+        '- 当前操作、复跑、恢复与任务配置请回 PCConfig/Task Scheduler owner；本页不是当前成功证据。',
+        ''
+    )
+    if (-not [string]::IsNullOrWhiteSpace($GenerationId)) {
+        return @("<!-- generation_id=$GenerationId -->") + $lines
+    }
+    return $lines
 }
 
 function Write-ScheduledTaskDocuments {
     param(
         [string] $RepoRoot,
-        [object[]] $Rows
+        [object[]] $Rows,
+        [string] $OutputRoot,
+        [string] $GenerationId,
+        [string] $ObservedAt
     )
 
+    $documentRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $RepoRoot } else { $OutputRoot }
+    $snapshotHeader = New-ScheduledTaskSnapshotHeader -GenerationId $GenerationId -ObservedAt $ObservedAt
     $date = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
     $normalRows = @($Rows | Where-Object { $_.Severity -eq '正常' })
     $warningRows = @($Rows | Where-Object { $_.Severity -eq '警告' })
     $errorRows = @($Rows | Where-Object { $_.Severity -eq '异常' })
     $reviewRows = @($Rows | Where-Object { $_.Severity -ne '正常' })
 
-    $summaryLines = @(
+    $summaryLines = @($snapshotHeader + @(
         '# 计划任务健康摘要',
         '',
         "更新时间：$date",
@@ -219,7 +268,7 @@ function Write-ScheduledTaskDocuments {
         '',
         '## 任务摘要',
         ''
-    )
+    ))
     if ($Rows.Count -gt 0) {
         $summaryLines += New-MarkdownTable -Headers @('任务', '路径', '状态', '上次运行', '下次运行', '返回码', '判断') -Properties @('TaskName', 'TaskPath', 'State', 'LastRunTime', 'NextRunTime', 'LastTaskResult', 'Summary') -Rows $Rows
     } else {
@@ -231,16 +280,16 @@ function Write-ScheduledTaskDocuments {
     $summaryLines += '- 返回码 `0` 视为正常。'
     $summaryLines += '- 返回码 `0xC000013A` 视为中断退出，常见于注销、关机或任务被终止。'
     $summaryLines += '- 其他非零返回码先列为警告，后续结合 Task Scheduler Operational 日志复查。'
-    Set-TextFile -Path (Join-Path $RepoRoot '04_计划任务/计划任务健康摘要.md') -Lines $summaryLines
+    Set-ScheduledTaskTextFile -Path (Join-Path $documentRoot '04_计划任务/计划任务健康摘要.md') -Lines $summaryLines
 
-    $anomalyLines = @(
+    $anomalyLines = @($snapshotHeader + @(
         '# 计划任务异常清单',
         '',
         "更新时间：$date",
         '',
         '## 异常与需复查',
         ''
-    )
+    ))
     if ($reviewRows.Count -gt 0) {
         $anomalyLines += New-MarkdownTable -Headers @('任务', '路径', '状态', '上次运行', '返回码', '级别', '复查点') -Properties @('TaskName', 'TaskPath', 'State', 'LastRunTime', 'LastTaskResult', 'Severity', 'Summary') -Rows $reviewRows
     } else {
@@ -254,24 +303,27 @@ function Write-ScheduledTaskDocuments {
     $anomalyLines += '1. 对异常任务复跑一次，确认是否仍复现。'
     $anomalyLines += '2. 如果仍为 `0xC000013A`，优先排查关机、注销、任务超时或被终止。'
     $anomalyLines += '3. 如需定位动作路径或脚本内容，只在本机私有目录复查，不把完整命令写入公开索引。'
-    Set-TextFile -Path (Join-Path $RepoRoot '04_计划任务/计划任务异常清单.md') -Lines $anomalyLines
+    Set-ScheduledTaskTextFile -Path (Join-Path $documentRoot '04_计划任务/计划任务异常清单.md') -Lines $anomalyLines
 }
 
 function Invoke-UpdateScheduledTaskHealth {
     param(
         [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+        [string] $OutputRoot,
+        [string] $GenerationId,
+        [string] $ObservedAt,
         [string[]] $NamePatterns = @('*Backup*', '*Sync*', '*Mirror*', '*Watchdog*', '*Heartbeat*', '*AutoPush*', '*AutoStart*', '*GitHubLocalIndex*'),
         [switch] $NoWrite
     )
 
     $rows = @(Get-MonitoredScheduledTaskRows -NamePatterns $NamePatterns)
     if (-not $NoWrite) {
-        Write-ScheduledTaskDocuments -RepoRoot $RepoRoot -Rows $rows
+        Write-ScheduledTaskDocuments -RepoRoot $RepoRoot -OutputRoot $OutputRoot -Rows $rows -GenerationId $GenerationId -ObservedAt $ObservedAt
     }
 
     return $rows
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-UpdateScheduledTaskHealth -RepoRoot $RepoRoot -NamePatterns $NamePatterns -NoWrite:$NoWrite
+    Invoke-UpdateScheduledTaskHealth -RepoRoot $RepoRoot -OutputRoot $OutputRoot -GenerationId $GenerationId -ObservedAt $ObservedAt -NamePatterns $NamePatterns -NoWrite:$NoWrite
 }

@@ -9,6 +9,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1')
 . (Join-Path $repoRoot 'tools/Update-UserAutomationMap.ps1')
 . (Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1')
+. (Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1')
 
 $script:Failures = 0
 
@@ -540,6 +541,27 @@ Assert-Equal '未发现本地 clone' $keyRow.LocalPath 'marks Key as missing loc
 Assert-True ($keyRow.NextAction -match '受管私有路径') 'keeps Key managed-clone rule'
 Assert-True ($keyRow.NextAction -match '密文') 'limits Key checkout to encrypted artifacts'
 
+$cachedEvidenceRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
+    nameWithOwner = 'wlyaaaaa/cached-evidence'
+    visibility = 'PRIVATE'
+    url = 'https://github.com/wlyaaaaa/cached-evidence'
+    defaultBranchRef = [pscustomobject]@{ name = 'main' }
+}) -CloneMap @{
+    'wlyaaaaa/cached-evidence' = @([pscustomobject]@{
+        Path = 'E:\cached-evidence'
+        State = 'main (cached)'
+        NextAction = '需人工复查'
+        NeedsReview = $false
+        RemoteMode = 'cached'
+        Ahead = 0
+        Behind = 0
+        DirtyCount = 0
+        Upstream = 'origin/main'
+    })
+})
+Assert-True $cachedEvidenceRows[0].NeedsReview 'cached remote evidence is aggregated into repository NeedsReview'
+Assert-True ($cachedEvidenceRows[0].QueueReason -match 'cached 远端引用') 'cached remote evidence remains visible in the repository queue reason'
+
 $pinnedRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
     nameWithOwner = 'wlyaaaaa/pinned-demo'
     visibility = 'PRIVATE'
@@ -744,6 +766,224 @@ $refreshAst = [System.Management.Automation.Language.Parser]::ParseFile($refresh
 $refreshParameters = @($refreshAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
 Assert-True ($refreshParameters -contains 'Json') 'fast refresh exposes JSON output'
 Assert-True ((Get-Content -LiteralPath $refreshPath -Raw -Encoding utf8) -match 'Get-ProjectAdmissionRecord') 'fast refresh consumes one admission record'
+
+$generationAtomicRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-generation-atomic-' + [guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $generationAtomicRoot -Force | Out-Null
+    $generationPaths = @(Get-RefreshGeneratedDocumentPaths)
+    $oldGenerationId = 'old-generation-fixture'
+    $oldGenerationDirectory = Join-Path $generationAtomicRoot ("00_总览/generations/$oldGenerationId")
+    $oldDocumentsDirectory = Join-Path $oldGenerationDirectory 'documents'
+    $oldDocumentRecords = @()
+    foreach ($relativePath in $generationPaths) {
+        $oldPath = Join-Path $oldDocumentsDirectory $relativePath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $oldPath) -Force | Out-Null
+        Set-Content -LiteralPath $oldPath -Value @("<!-- generation_id=$oldGenerationId -->", "old:$relativePath") -Encoding utf8
+        $projectionPath = Join-Path $generationAtomicRoot $relativePath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $projectionPath) -Force | Out-Null
+        Copy-Item -LiteralPath $oldPath -Destination $projectionPath -Force
+        $oldDocumentRecords += [ordered]@{
+            path = ('documents/' + $relativePath.Replace('\', '/'))
+            projection_path = $relativePath.Replace('\', '/')
+            sha256 = (Get-FileHash -LiteralPath $oldPath -Algorithm SHA256).Hash
+            bytes = [System.IO.File]::ReadAllBytes($oldPath).Length
+        }
+    }
+    $oldManifestPath = Join-Path $oldGenerationDirectory 'manifest.json'
+    $oldGenerationManifest = [ordered]@{
+        schema = 'github-local-index.generation.v1'
+        generation_id = $oldGenerationId
+        observed_at = '2026-08-16T00:00:00.0000000Z'
+        immutable = $true
+        integrity_authoritative_for_generation = $true
+        decision_authority = $false
+        as_of_observed_at = '2026-08-16T00:00:00.0000000Z'
+        owner = 'E:\GitHub总索引'
+        source = 'unit-test immutable generation fixture'
+        documents = @($oldDocumentRecords)
+    }
+    Set-Content -LiteralPath $oldManifestPath -Value ($oldGenerationManifest | ConvertTo-Json -Depth 8) -Encoding utf8
+    $oldPointer = [ordered]@{
+        schema = 'github-local-index.current-generation.v1'
+        generation_id = $oldGenerationId
+        observed_at = '2026-08-16T00:00:00.0000000Z'
+        authoritative = $false
+        integrity_authoritative_for_generation = $true
+        decision_authority = $false
+        as_of_observed_at = '2026-08-16T00:00:00.0000000Z'
+        owner = 'E:\GitHub总索引'
+        generation_root = "00_总览/generations/$oldGenerationId"
+        generation_manifest_sha256 = (Get-FileHash -LiteralPath $oldManifestPath -Algorithm SHA256).Hash
+        projection_role = 'compatibility_only'
+        documents = @($oldDocumentRecords)
+        retention_policy = 'current+previous'
+        previous_generation_id = $null
+        publication = 'pointer_switch_after_immutable_generation_and_projection_readback'
+    }
+    New-Item -ItemType Directory -Path (Join-Path $generationAtomicRoot '00_总览') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $generationAtomicRoot '00_总览/current-generation.json') -Value ($oldPointer | ConvertTo-Json -Depth 8) -Encoding utf8
+    $oldHashes = @{}
+    foreach ($record in $oldDocumentRecords) {
+        $oldHashes[[string] $record.path] = [string] $record.sha256
+    }
+
+    $newGenerationId = 'new-generation-fixture'
+    $newStage = Join-Path $generationAtomicRoot 'temporary-generation'
+    foreach ($relativePath in $generationPaths) {
+        $newPath = Join-Path $newStage $relativePath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $newPath) -Force | Out-Null
+        Set-Content -LiteralPath $newPath -Value @("<!-- generation_id=$newGenerationId -->", "new:$relativePath") -Encoding utf8
+    }
+    $injectedFailure = $false
+    try {
+        Publish-GitHubLocalIndexGeneration `
+            -GenerationRoot $newStage `
+            -RepoRoot $generationAtomicRoot `
+            -GenerationId $newGenerationId `
+            -ObservedAt '2026-08-16T00:01:00.0000000Z' `
+            -FailAfterPublishCount 1 | Out-Null
+    }
+    catch {
+        $injectedFailure = $true
+    }
+    Assert-True $injectedFailure 'generation failure injection stops before pointer switch'
+    $oldStateAfterFailure = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True $oldStateAfterFailure.valid 'old pointer remains valid after partial projection failure'
+    Assert-True (-not $oldStateAfterFailure.projection_valid) 'partial projection failure records stale compatibility state without invalidating old generation'
+    Assert-Equal $oldGenerationId $oldStateAfterFailure.generation_id 'old pointer remains current after partial projection failure'
+    foreach ($record in $oldDocumentRecords) {
+        $oldPath = Join-Path $generationAtomicRoot ('00_总览/generations/' + $oldGenerationId + '/' + ([string] $record.path).Replace('/', '\'))
+        Assert-Equal $oldHashes[[string] $record.path] (Get-FileHash -LiteralPath $oldPath -Algorithm SHA256).Hash `
+            "old immutable document remains unchanged: $($record.path)"
+    }
+
+    # A failed projection may leave compatibility files mixed with a valid old
+    # immutable generation. The next complete publish must repair them rather
+    # than being blocked by the stale projections.
+    $successGenerationId = 'successful-generation-fixture'
+    $successStage = Join-Path $generationAtomicRoot 'successful-temporary-generation'
+    foreach ($relativePath in $generationPaths) {
+        $successPath = Join-Path $successStage $relativePath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $successPath) -Force | Out-Null
+        Set-Content -LiteralPath $successPath -Value @("<!-- generation_id=$successGenerationId -->", "success:$relativePath") -Encoding utf8
+    }
+    $successfulPublication = Publish-GitHubLocalIndexGeneration `
+        -GenerationRoot $successStage `
+        -RepoRoot $generationAtomicRoot `
+        -GenerationId $successGenerationId `
+        -ObservedAt '2026-08-16T00:02:00.0000000Z'
+    Assert-Equal 'published' $successfulPublication.publication_status 'complete publish repairs stale compatibility projections'
+    $finalGenerationState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True $finalGenerationState.valid 'published pointer and immutable generation pass readback validation'
+    Assert-True $finalGenerationState.projection_valid 'published compatibility projections match immutable hashes'
+    Assert-Equal $successGenerationId $finalGenerationState.generation_id 'successful publish switches pointer after readback'
+    $finalPointer = Get-Content -LiteralPath (Join-Path $generationAtomicRoot '00_总览/current-generation.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    $finalManifestPath = Join-Path $generationAtomicRoot ('00_总览/generations/' + $successGenerationId + '/manifest.json')
+    Assert-Equal (Get-FileHash -LiteralPath $finalManifestPath -Algorithm SHA256).Hash $finalPointer.generation_manifest_sha256 'pointer records the immutable manifest hash'
+    $finalManifestText = Get-Content -LiteralPath $finalManifestPath -Raw -Encoding utf8
+    $finalPointerPath = Join-Path $generationAtomicRoot '00_总览/current-generation.json'
+    $finalPointerText = Get-Content -LiteralPath $finalPointerPath -Raw -Encoding utf8
+    $maliciousManifest = $finalManifestText | ConvertFrom-Json
+    $maliciousManifest.documents[0].projection_path = 'README.md'
+    Set-Content -LiteralPath $finalManifestPath -Value ($maliciousManifest | ConvertTo-Json -Depth 8) -Encoding utf8
+    $maliciousPointer = $finalPointerText | ConvertFrom-Json
+    $maliciousPointer.generation_manifest_sha256 = (Get-FileHash -LiteralPath $finalManifestPath -Algorithm SHA256).Hash
+    $maliciousPointer.documents[0].projection_path = 'README.md'
+    Set-Content -LiteralPath $finalPointerPath -Value ($maliciousPointer | ConvertTo-Json -Depth 8) -Encoding utf8
+    $maliciousProjectionState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True (-not $maliciousProjectionState.valid) 'generation rejects a projection path outside the fixed document mapping'
+    [System.IO.File]::WriteAllText($finalManifestPath, $finalManifestText, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($finalPointerPath, $finalPointerText, [System.Text.UTF8Encoding]::new($false))
+    $extraGenerationFile = Join-Path $generationAtomicRoot ('00_总览/generations/' + $successGenerationId + '/unexpected.tmp')
+    Set-Content -LiteralPath $extraGenerationFile -Value 'must be rejected' -Encoding utf8
+    $extraFileState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True (-not $extraFileState.valid) 'generation closure rejects an extra unlisted file'
+    Remove-Item -LiteralPath $extraGenerationFile -Force
+    $unknownFieldPointer = $finalPointer | Select-Object *
+    Add-Member -InputObject $unknownFieldPointer -NotePropertyName unknown_field -NotePropertyValue 'reject-me'
+    Set-Content -LiteralPath $finalPointerPath -Value ($unknownFieldPointer | ConvertTo-Json -Depth 8) -Encoding utf8
+    $unknownFieldState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True (-not $unknownFieldState.valid) 'current pointer rejects unknown schema fields'
+    [System.IO.File]::WriteAllText($finalPointerPath, $finalPointerText, [System.Text.UTF8Encoding]::new($false))
+
+    $caseVariantPointerText = $finalPointerText -replace '"generation_id"\s*:', '"Generation_Id":'
+    [System.IO.File]::WriteAllText($finalPointerPath, $caseVariantPointerText, [System.Text.UTF8Encoding]::new($false))
+    $caseVariantPointerState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True (-not $caseVariantPointerState.valid) 'current pointer rejects case-variant schema fields'
+    [System.IO.File]::WriteAllText($finalPointerPath, $finalPointerText, [System.Text.UTF8Encoding]::new($false))
+
+    $unknownManifest = $finalManifestText | ConvertFrom-Json
+    Add-Member -InputObject $unknownManifest -NotePropertyName unknown_field -NotePropertyValue 'reject-me'
+    $unknownManifestText = $unknownManifest | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($finalManifestPath, $unknownManifestText, [System.Text.UTF8Encoding]::new($false))
+    $manifestHashPointer = $finalPointerText | ConvertFrom-Json
+    $manifestHashPointer.generation_manifest_sha256 = (Get-FileHash -LiteralPath $finalManifestPath -Algorithm SHA256).Hash
+    [System.IO.File]::WriteAllText($finalPointerPath, ($manifestHashPointer | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
+    $unknownManifestState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True (-not $unknownManifestState.valid) 'generation manifest rejects unknown schema fields'
+    [System.IO.File]::WriteAllText($finalManifestPath, $finalManifestText, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($finalPointerPath, $finalPointerText, [System.Text.UTF8Encoding]::new($false))
+
+    $unknownDocumentManifest = $finalManifestText | ConvertFrom-Json
+    Add-Member -InputObject $unknownDocumentManifest.documents[0] -NotePropertyName unknown_field -NotePropertyValue 'reject-me'
+    [System.IO.File]::WriteAllText($finalManifestPath, ($unknownDocumentManifest | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
+    $documentHashPointer = $finalPointerText | ConvertFrom-Json
+    $documentHashPointer.generation_manifest_sha256 = (Get-FileHash -LiteralPath $finalManifestPath -Algorithm SHA256).Hash
+    [System.IO.File]::WriteAllText($finalPointerPath, ($documentHashPointer | ConvertTo-Json -Depth 8), [System.Text.UTF8Encoding]::new($false))
+    $unknownDocumentState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $generationAtomicRoot
+    Assert-True (-not $unknownDocumentState.valid) 'generation document rejects unknown schema fields'
+    [System.IO.File]::WriteAllText($finalManifestPath, $finalManifestText, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($finalPointerPath, $finalPointerText, [System.Text.UTF8Encoding]::new($false))
+
+    $reparseFixtureRoot = Join-Path $generationAtomicRoot 'reparse-fixture'
+    $outsideTarget = Join-Path $generationAtomicRoot 'reparse-outside'
+    $junctionPath = Join-Path $reparseFixtureRoot 'projection-parent'
+    $outsideSentinel = Join-Path $outsideTarget 'sentinel.md'
+    $junctionCreated = $false
+    try {
+        New-Item -ItemType Directory -Path $reparseFixtureRoot, $outsideTarget -Force | Out-Null
+        Set-Content -LiteralPath $outsideSentinel -Value 'outside-sentinel' -Encoding utf8
+        try {
+            New-Item -ItemType Junction -Path $junctionPath -Target $outsideTarget -ErrorAction Stop | Out-Null
+            $junctionCreated = $true
+        }
+        catch {
+            Write-Host 'SKIP: reparse-point publication test is unavailable on this host'
+        }
+        if ($junctionCreated) {
+            $sourceFixture = Join-Path $reparseFixtureRoot 'source.md'
+            Set-Content -LiteralPath $sourceFixture -Value 'source' -Encoding utf8
+            $reparseBlocked = $false
+            try {
+                Publish-RefreshGenerationFile `
+                    -SourcePath $sourceFixture `
+                    -TargetPath (Join-Path $junctionPath 'sentinel.md') `
+                    -ContainmentRoot $reparseFixtureRoot
+            }
+            catch {
+                $reparseBlocked = $true
+            }
+            Assert-True $reparseBlocked 'reparse-point projection parent fails closed before write'
+            Assert-Equal 'outside-sentinel' (Get-Content -LiteralPath $outsideSentinel -Raw -Encoding utf8).Trim() 'reparse-point rejection leaves outside sentinel untouched'
+        }
+    }
+    finally {
+        if ($junctionCreated -and (Test-Path -LiteralPath $junctionPath)) {
+            Remove-Item -LiteralPath $junctionPath -Force
+        }
+        if (Test-Path -LiteralPath $reparseFixtureRoot) {
+            Remove-Item -LiteralPath $reparseFixtureRoot -Recurse -Force
+        }
+        if (Test-Path -LiteralPath $outsideTarget) {
+            Remove-Item -LiteralPath $outsideTarget -Recurse -Force
+        }
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $generationAtomicRoot) {
+        Remove-Item -LiteralPath $generationAtomicRoot -Recurse -Force
+    }
+}
 
 $scheduledTaskSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1') -Raw -Encoding utf8
 Assert-True (-not ($scheduledTaskSource -match 'PurposeCatalogPath|E:\\PCConfig')) 'task health generator does not embed PCConfig registry paths'

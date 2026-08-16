@@ -282,6 +282,23 @@ foreach ($relativePath in $derivedMachineDocuments) {
     Assert-True ($documentText.Contains('expires_after=')) "$relativePath declares expiry semantics"
 }
 
+$dynamicSnapshotDocuments = @(
+    '02_同步诊断/H盘U盘收尾状态.md',
+    '04_计划任务/计划任务健康摘要.md',
+    '04_计划任务/计划任务异常清单.md',
+    '04_计划任务/用户自动化任务地图.md',
+    '04_计划任务/仓库计划任务建议.md'
+)
+foreach ($relativePath in $dynamicSnapshotDocuments) {
+    $documentText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
+    Assert-True ($documentText.Contains('authoritative=false')) "$relativePath is non-authoritative"
+    Assert-True ($documentText.Contains('owner=')) "$relativePath declares an owner"
+    Assert-True ($documentText.Contains('source=')) "$relativePath declares a source"
+    Assert-True ($documentText.Contains('observed_at=')) "$relativePath declares observation time"
+    Assert-True ($documentText.Contains('freshness=')) "$relativePath declares freshness"
+    Assert-True ($documentText.Contains('expires_after=')) "$relativePath declares expiry semantics"
+}
+
 $fixedRitualPhrases = @(
     '以后修改任意 Git 项目时',
     '普通项目任务直接运行 admission/fast-path',

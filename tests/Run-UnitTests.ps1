@@ -399,7 +399,26 @@ $seedDiscovery = Get-Command Get-GitRepositorySeedPaths -ErrorAction SilentlyCon
 Assert-True ($null -ne $seedDiscovery) 'repository discovery exposes common-dir/worktree seed enumeration'
 Assert-True (Test-IsExternallyGovernedGitHubRepository -Repo 'wlyaaaaa/PersonalOS') 'PersonalOS remote is marked as externally governed'
 Assert-True (Test-IsExternallyGovernedLocalPath -Path 'X:\fixtures\PersonalOS-worktrees\fixture') 'PersonalOS worktree paths are excluded before local discovery'
+Assert-True (Test-IsExternallyGovernedLocalPath -Path 'E:\PersonalOS') 'PersonalOS product root remains excluded before local discovery'
 Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'V:\Personal\Projects\ordinary-project')) 'ordinary project paths remain discoverable'
+Assert-True (Test-IsExactGovernanceCloneCandidate `
+    -Path 'V:\Personal\Projects\personalos-user-governance' `
+    -Repo 'https://github.com/wlyaaaaa/personalos-user-governance.git') `
+    'exact governance clone path and remote identity are admitted'
+Assert-True (-not (Test-IsExactGovernanceCloneCandidate `
+    -Path 'V:\Personal\Projects\personalos-user-governance' `
+    -Repo 'https://github.com/wlyaaaaa/other-repository.git')) `
+    'exact governance clone rejects a mismatched remote identity'
+Assert-True (-not (Test-IsExactGovernanceCloneCandidate `
+    -Path 'V:\Personal\Projects\other-personalos-user-governance' `
+    -Repo 'https://github.com/wlyaaaaa/personalos-user-governance.git')) `
+    'exact governance clone rejects a mismatched physical path'
+Assert-True (-not (Test-IsExactGovernanceCloneCandidate `
+    -Path 'E:\PersonalOS-用户治理' `
+    -Repo 'https://github.com/wlyaaaaa/personalos-user-governance.git')) `
+    'stable PersonalOS junction is not an admitted clone root'
+Assert-True (-not (Test-IsExactGovernanceClonePath -Path 'E:\PersonalOS-用户治理')) `
+    'stable PersonalOS junction fails closed during live clone validation'
 if ($seedDiscovery) {
     # Repository discovery deliberately excludes system-temp clones. Keep this
     # fixture beside (not inside) the checkout so it exercises a durable future

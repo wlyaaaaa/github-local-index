@@ -13,6 +13,75 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
 
+$script:ExactGovernanceCloneRepo = 'wlyaaaaa/personalos-user-governance'
+$script:ExactGovernanceCloneRoot = [System.IO.Path]::GetFullPath(
+    'V:\Personal\Projects\personalos-user-governance'
+).TrimEnd('\', '/')
+
+function Test-IsExactGovernanceCloneCandidate {
+    param(
+        [AllowNull()] [string] $Path,
+        [AllowNull()] [string] $Repo
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($Repo)) {
+        return $false
+    }
+
+    try {
+        $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    }
+    catch {
+        return $false
+    }
+
+    $normalizedRepo = ConvertTo-GitHubRepoSlug $Repo
+    return $resolvedPath -ieq $script:ExactGovernanceCloneRoot -and
+        $normalizedRepo -ceq $script:ExactGovernanceCloneRepo
+}
+
+function Test-IsExactGovernanceClonePath {
+    param([AllowNull()] [string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    try {
+        $resolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    }
+    catch {
+        return $false
+    }
+
+    if ($resolvedPath -ine $script:ExactGovernanceCloneRoot -or
+        -not (Test-Path -LiteralPath $resolvedPath -PathType Container)) {
+        return $false
+    }
+
+    $topLevel = Invoke-GitCommandResult -Path $resolvedPath -Arguments @('rev-parse', '--show-toplevel')
+    if ($topLevel.exit_code -ne 0) {
+        return $false
+    }
+
+    try {
+        $actualTopLevel = [System.IO.Path]::GetFullPath($topLevel.stdout).TrimEnd('\', '/')
+    }
+    catch {
+        return $false
+    }
+    if ($actualTopLevel -ine $resolvedPath) {
+        return $false
+    }
+
+    $remote = Invoke-GitCommandResult -Path $resolvedPath -Arguments @('config', '--get', 'remote.origin.url')
+    if ($remote.exit_code -ne 0) {
+        return $false
+    }
+
+    return Test-IsExactGovernanceCloneCandidate -Path $resolvedPath -Repo $remote.stdout
+}
+
 function Normalize-GitHubRepoSlug {
     param([AllowNull()] [string] $RemoteUrl)
 
@@ -616,6 +685,14 @@ function Get-GitRepositorySeedPaths {
         }
     }
 
+    # PersonalOS paths remain excluded from recursive discovery.  This one
+    # independently owned governance repository is admitted only by its exact
+    # physical root and exact GitHub origin identity; the stable junction and
+    # every other similarly named path remain outside the scan.
+    if (Test-IsExactGovernanceClonePath -Path $script:ExactGovernanceCloneRoot) {
+        $seeds.Add($script:ExactGovernanceCloneRoot)
+    }
+
     return @($seeds | Sort-Object -Unique)
 }
 
@@ -756,7 +833,9 @@ function Get-LocalCloneMap {
     $map = @{}
     $seenCommonDirs = @{}
     foreach ($repoPath in Get-GitRepositorySeedPaths -Roots $Roots) {
-        if ((Test-IsTransientClonePath -Path $repoPath) -or (Test-IsExternallyGovernedLocalPath -Path $repoPath)) {
+        $externallyGovernedPath = Test-IsExternallyGovernedLocalPath -Path $repoPath
+        if ((Test-IsTransientClonePath -Path $repoPath) -or
+            ($externallyGovernedPath -and -not (Test-IsExactGovernanceClonePath -Path $repoPath))) {
             continue
         }
 

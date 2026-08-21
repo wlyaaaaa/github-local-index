@@ -388,7 +388,7 @@ function Get-DefaultAdmissionInvoker {
                     -Admission $record `
                     -Repository $Repository `
                     -RepoPath $RepoPath))
-        if ($result.exit_code -ne 0 -or
+        if (($result.exit_code -ne 0 -and -not $operationEligible) -or
             ($record.decision -ne 'proceed' -and -not $operationEligible)) {
             Throw-ProtectedActionError 'project_admission_blocked'
         }

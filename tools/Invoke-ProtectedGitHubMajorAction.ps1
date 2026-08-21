@@ -441,17 +441,24 @@ function Get-DefaultMetadataInvoker {
     {
         param([string] $Repository, [bool] $AllowMissing)
         $gh = Get-FixedExecutor -Kind gh
-        $result = Invoke-HardenedNative `
-            -Kind gh `
-            -Executable $gh `
-            -Arguments @(
-                'api', '--method', 'GET',
-                '-H', 'Accept: application/vnd.github+json',
-                '-H', 'X-GitHub-Api-Version: 2022-11-28',
-                "repos/$Repository"
-            ) `
-            -WorkingDirectory $PSScriptRoot `
-            -AllowFailure $true
+        $result = $null
+        foreach ($attempt in 1..2) {
+            $result = Invoke-HardenedNative `
+                -Kind gh `
+                -Executable $gh `
+                -Arguments @(
+                    'api', '--method', 'GET',
+                    '-H', 'Accept: application/vnd.github+json',
+                    '-H', 'X-GitHub-Api-Version: 2022-11-28',
+                    "repos/$Repository"
+                ) `
+                -WorkingDirectory $PSScriptRoot `
+                -AllowFailure $true
+            if ($result.exit_code -eq 0 -or
+                (($result.stderr + $result.stdout) -match '(?i)HTTP\s+404')) {
+                break
+            }
+        }
         if ($result.exit_code -ne 0) {
             $missing = $AllowMissing -and
                 (($result.stderr + $result.stdout) -match '(?i)HTTP\s+404')

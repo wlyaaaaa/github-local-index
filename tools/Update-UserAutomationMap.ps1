@@ -635,7 +635,8 @@ function Invoke-UpdateUserAutomationMap {
     )
 
     $taskRows = @(Get-UserAutomationTaskRows)
-    $recommendationRows = @(Get-RepositoryRecommendationRows -RepoRoot $RepoRoot -TaskRows $taskRows)
+    $indexRoot = if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $RepoRoot } else { $OutputRoot }
+    $recommendationRows = @(Get-RepositoryRecommendationRows -RepoRoot $indexRoot -TaskRows $taskRows)
     if (-not $NoWrite) {
         Write-UserAutomationDocuments -RepoRoot $RepoRoot -OutputRoot $OutputRoot -TaskRows $taskRows -RecommendationRows $recommendationRows -GenerationId $GenerationId -ObservedAt $ObservedAt
     }

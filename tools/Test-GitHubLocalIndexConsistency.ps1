@@ -320,7 +320,7 @@ function Get-GitHubLocalIndexCurrentGenerationState {
         return [pscustomobject]@{ present = $false; valid = $null; projection_valid = $null; generation_id = $null; observed_at = $null; reason = 'manifest_missing' }
     }
     try {
-        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding utf8 | ConvertFrom-Json -ErrorAction Stop
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding utf8 | ConvertFrom-Json -DateKind String -ErrorAction Stop
         Assert-ConsistencyExactPropertyNames -Object $manifest -Expected @(
             'schema', 'generation_id', 'observed_at', 'authoritative',
             'integrity_authoritative_for_generation', 'decision_authority',
@@ -360,7 +360,7 @@ function Get-GitHubLocalIndexCurrentGenerationState {
         if ($generationManifestHash -ne [string] $manifest.generation_manifest_sha256) {
             throw 'current pointer generation manifest hash mismatch'
         }
-        $generation = Get-Content -LiteralPath $generationManifestPath -Raw -Encoding utf8 | ConvertFrom-Json -ErrorAction Stop
+        $generation = Get-Content -LiteralPath $generationManifestPath -Raw -Encoding utf8 | ConvertFrom-Json -DateKind String -ErrorAction Stop
         Assert-ConsistencyExactPropertyNames -Object $generation -Expected @(
             'schema', 'generation_id', 'observed_at', 'immutable',
             'integrity_authoritative_for_generation', 'decision_authority',
@@ -581,7 +581,8 @@ function Invoke-GitHubLocalIndexConsistencyCheck {
         $stableDriftRows = @($driftRows | Where-Object { $stablePaths -contains $_.File })
         $volatileDriftRows = @($driftRows | Where-Object { $stablePaths -notcontains $_.File })
         $manifestConsistent = -not $currentGeneration.present -or [bool] $currentGeneration.valid
-        $isConsistent = ($manifestConsistent) -and (if ($Strict) { $driftRows.Count -eq 0 } else { $stableDriftRows.Count -eq 0 })
+        $driftConsistent = if ($Strict) { $driftRows.Count -eq 0 } else { $stableDriftRows.Count -eq 0 }
+        $isConsistent = $manifestConsistent -and $driftConsistent
 
         return [pscustomobject]@{
             IsConsistent      = $isConsistent

@@ -328,6 +328,33 @@ function ConvertTo-GitOwnerGovernanceRegistryIdentity {
         }
     }
 
+    $repositoryOverrides = [System.Collections.Generic.List[object]]::new()
+    $seenRepositoryOverrides = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($null -ne $Registry -and $null -ne $Registry.PSObject.Properties['repository_overrides']) {
+        foreach ($entry in @($Registry.repository_overrides)) {
+            $repo = ([string]$entry.repo).Trim().ToLowerInvariant()
+            $policy = ([string]$entry.policy).Trim().ToLowerInvariant()
+            $entryOwner = ([string]$entry.owner).Trim()
+            $purpose = ([string]$entry.purpose).Trim()
+            $exitCondition = ([string]$entry.exit_condition).Trim()
+            if ($repo -notmatch '^[a-z0-9_.-]+/[a-z0-9_.-]+$' -or
+                $policy -ne 'frozen_history' -or
+                [string]::IsNullOrWhiteSpace($entryOwner) -or
+                [string]::IsNullOrWhiteSpace($purpose) -or
+                [string]::IsNullOrWhiteSpace($exitCondition) -or
+                -not $seenRepositoryOverrides.Add($repo)) {
+                $valid = $false
+            }
+            $repositoryOverrides.Add([pscustomobject][ordered]@{
+                repo = $repo
+                policy = $policy
+                owner = $entryOwner
+                purpose = $purpose
+                exit_condition = $exitCondition
+            })
+        }
+    }
+
     $retentions = [System.Collections.Generic.List[object]]::new()
     $retentionKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     if ($null -ne $Registry) {
@@ -367,6 +394,7 @@ function ConvertTo-GitOwnerGovernanceRegistryIdentity {
         schema = $schema
         valid = [bool]$valid
         entries = @($entries | Sort-Object repo, owner, @{ Expression = { $_.refs -join "`u{001f}" } })
+        repository_overrides = @($repositoryOverrides | Sort-Object repo, policy, owner, purpose, exit_condition)
         retentions = @($retentions | Sort-Object repo, path, head, disposition, owner, purpose, exit_condition)
     }
     $canonicalJson = $canonical | ConvertTo-Json -Depth 10 -Compress

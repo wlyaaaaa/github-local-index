@@ -18,6 +18,15 @@
       "exit_condition": "同时移除 README 中的 output 引用并修改或停用该 workflow"
     }
   ],
+  "repository_overrides": [
+    {
+      "repo": "wlyaaaaa/PersonalOS-Retired",
+      "policy": "frozen_history",
+      "owner": "PersonalOS-Retired retirement owner",
+      "purpose": "冻结退役文档仓库；默认分支保持冻结，非默认 refs 及独有提交仅作为 Git 历史保留",
+      "exit_condition": "仅在用户明确批准退役历史迁移或删除，并完成替代归档及独立回读后，才解除此 override"
+    }
+  ],
   "retentions": [
     {
       "repo": "wlyaaaaa/codex-local-remote",

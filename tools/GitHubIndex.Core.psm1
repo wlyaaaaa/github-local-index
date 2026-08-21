@@ -39,6 +39,22 @@ function Read-GitArtifactGovernanceRegistry {
         }
     }
 
+    $seenRepositoryOverrides = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    if ($null -ne $registry.PSObject.Properties['repository_overrides']) {
+        foreach ($entry in @($registry.repository_overrides)) {
+            if ([string] $entry.repo -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or
+                [string] $entry.policy -ne 'frozen_history' -or
+                [string]::IsNullOrWhiteSpace([string] $entry.owner) -or
+                [string]::IsNullOrWhiteSpace([string] $entry.purpose) -or
+                [string]::IsNullOrWhiteSpace([string] $entry.exit_condition) -or
+                -not $seenRepositoryOverrides.Add([string] $entry.repo)) {
+                throw 'Git artifact governance registry contains an invalid repository override.'
+            }
+        }
+    }
+
     $seenRetentions = [System.Collections.Generic.HashSet[string]]::new(
         [System.StringComparer]::OrdinalIgnoreCase
     )
@@ -212,6 +228,41 @@ function Get-GitArtifactGovernance {
         return [pscustomobject]@{
             owner = [string] $entry.owner
             reason = 'explicit_artifact_owner'
+        }
+    }
+    return $null
+}
+
+function Get-GitRepositoryOverride {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Repo)
+
+    $normalizedRepo = ConvertTo-GitHubRepoSlug $Repo
+    if (-not $normalizedRepo -or
+        $null -eq $script:GitArtifactGovernance -or
+        $script:GitArtifactGovernance.schema -ne 'github-local-index.git-artifact-governance.v1' -or
+        $null -eq $script:GitArtifactGovernance.PSObject.Properties['repository_overrides']) {
+        return $null
+    }
+
+    foreach ($entry in @($script:GitArtifactGovernance.repository_overrides)) {
+        if (-not ([string] $entry.repo).Equals(
+            $normalizedRepo,
+            [System.StringComparison]::OrdinalIgnoreCase
+        ) -or [string] $entry.policy -ne 'frozen_history') {
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace([string] $entry.owner) -or
+            [string]::IsNullOrWhiteSpace([string] $entry.purpose) -or
+            [string]::IsNullOrWhiteSpace([string] $entry.exit_condition)) {
+            return $null
+        }
+        return [pscustomobject]@{
+            policy = [string] $entry.policy
+            owner = [string] $entry.owner
+            purpose = [string] $entry.purpose
+            exit_condition = [string] $entry.exit_condition
+            reason = 'explicit_repository_override'
         }
     }
     return $null
@@ -829,6 +880,7 @@ function Add-GitArtifactGovernanceEvidence {
         [object[]] $Branches = @()
     )
 
+    $repositoryOverride = Get-GitRepositoryOverride -Repo $Repo
     foreach ($artifact in @($Worktrees) + @($Branches)) {
         $branchName = if ($null -ne $artifact.PSObject.Properties['branch']) {
             [string] $artifact.branch
@@ -843,6 +895,19 @@ function Add-GitArtifactGovernanceEvidence {
             -NotePropertyValue $(if ($governance) { [string] $governance.owner } else { $null }) -Force
         $artifact | Add-Member -NotePropertyName governance_reason `
             -NotePropertyValue $(if ($governance) { [string] $governance.reason } else { $null }) -Force
+        $isBranchInventoryRecord = $null -ne $artifact.PSObject.Properties['has_worktree']
+        $isDefaultBranch = $null -ne $artifact.PSObject.Properties['is_default_branch'] -and
+            [bool] $artifact.is_default_branch
+        $historicalRetention = $null -ne $repositoryOverride -and
+            $isBranchInventoryRecord -and -not $isDefaultBranch
+        $artifact | Add-Member -NotePropertyName historical_retention `
+            -NotePropertyValue $historicalRetention -Force
+        $artifact | Add-Member -NotePropertyName historical_retention_owner `
+            -NotePropertyValue $(if ($historicalRetention) { [string] $repositoryOverride.owner } else { $null }) -Force
+        $artifact | Add-Member -NotePropertyName historical_retention_purpose `
+            -NotePropertyValue $(if ($historicalRetention) { [string] $repositoryOverride.purpose } else { $null }) -Force
+        $artifact | Add-Member -NotePropertyName historical_retention_exit_condition `
+            -NotePropertyValue $(if ($historicalRetention) { [string] $repositoryOverride.exit_condition } else { $null }) -Force
         $retention = if ($null -ne $artifact.PSObject.Properties['path'] -and
             $null -ne $artifact.PSObject.Properties['head']) {
             Get-GitArtifactRetention `
@@ -1538,19 +1603,19 @@ function Get-ProjectAdmissionRecord {
     }
     if ([string]::IsNullOrWhiteSpace($TargetWorktree) -and [string]::IsNullOrWhiteSpace($TargetRef)) {
         if (@($branches | Where-Object {
-            -not $_.external_governance -and -not $_.has_worktree -and
+            -not $_.external_governance -and -not $_.historical_retention -and -not $_.has_worktree -and
             -not $_.is_default_branch -and $_.integration_state -eq 'unmerged'
         }).Count -gt 0) {
             $reasons.Add('default_branch_missing_commits')
         }
         if (@($branches | Where-Object {
-            -not $_.external_governance -and -not $_.has_worktree -and
+            -not $_.external_governance -and -not $_.historical_retention -and -not $_.has_worktree -and
             -not $_.is_default_branch -and $_.integration_state -eq 'unknown'
         }).Count -gt 0) {
             $reasons.Add('default_branch_integration_unknown')
         }
         if (@($branches | Where-Object {
-            -not $_.external_governance -and $_.retirement_candidate
+            -not $_.external_governance -and -not $_.historical_retention -and $_.retirement_candidate
         }).Count -gt 0) {
             $reasons.Add('merged_residual_branch')
         }
@@ -1622,6 +1687,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-GitHubRepoSlug',
     'Test-IsExternallyGovernedGitHubRepository',
     'Get-GitArtifactGovernance',
+    'Get-GitRepositoryOverride',
     'Get-GitArtifactRetention',
     'Test-IsExternallyGovernedLocalPath',
     'ConvertTo-PublicGitHubRemoteUrl',

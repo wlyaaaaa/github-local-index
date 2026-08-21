@@ -133,6 +133,48 @@ $duplicateLogicalRefRegistry = ConvertTo-GitOwnerGovernanceRegistryIdentity -Reg
 })
 Assert-OwnerTrue (-not [bool]$duplicateLogicalRefRegistry.valid) 'logically duplicate refs are rejected across registry entries'
 
+$overrideRegistryA = ConvertTo-GitOwnerGovernanceRegistryIdentity -Registry ([pscustomobject]@{
+    schema = 'github-local-index.git-artifact-governance.v1'
+    entries = @()
+    repository_overrides = @([pscustomobject]@{
+        repo = 'wlyaaaaa/PersonalOS-Retired'
+        policy = 'frozen_history'
+        owner = 'retirement owner'
+        purpose = 'retain historical refs'
+        exit_condition = 'explicit retirement-history migration approval'
+    })
+    retentions = @()
+})
+$overrideRegistryB = ConvertTo-GitOwnerGovernanceRegistryIdentity -Registry ([pscustomobject]@{
+    retentions = @()
+    repository_overrides = @([pscustomobject]@{
+        exit_condition = 'explicit retirement-history migration approval'
+        purpose = 'retain historical refs'
+        owner = 'retirement owner'
+        policy = 'FROZEN_HISTORY'
+        repo = 'WLYAAAAA/PERSONALOS-RETIRED'
+    })
+    entries = @()
+    schema = 'github-local-index.git-artifact-governance.v1'
+})
+Assert-OwnerTrue ([bool]$overrideRegistryA.valid) 'frozen-history repository override validates'
+Assert-OwnerEqual $overrideRegistryA.fingerprint $overrideRegistryB.fingerprint `
+    'repository override fingerprint is stable across case and property order'
+
+$invalidOverrideRegistry = ConvertTo-GitOwnerGovernanceRegistryIdentity -Registry ([pscustomobject]@{
+    schema = 'github-local-index.git-artifact-governance.v1'
+    entries = @()
+    repository_overrides = @([pscustomobject]@{
+        repo = 'wlyaaaaa/example'
+        policy = 'merge_history'
+        owner = 'fixture-owner'
+        purpose = 'invalid policy'
+        exit_condition = 'never'
+    })
+    retentions = @()
+})
+Assert-OwnerTrue (-not [bool]$invalidOverrideRegistry.valid) 'unknown repository override policy is rejected'
+
 $invalidRetentionRegistry = ConvertTo-GitOwnerGovernanceRegistryIdentity -Registry ([pscustomobject]@{
     schema = 'github-local-index.git-artifact-governance.v1'
     entries = @()

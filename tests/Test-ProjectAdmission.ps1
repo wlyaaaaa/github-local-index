@@ -172,6 +172,18 @@ try {
         $duplicateRefBlocked = $true
     }
     Assert-True $duplicateRefBlocked 'duplicate normalized artifact ref fails closed'
+    $invalidOverridePath = Join-Path $registryTestRoot 'invalid-repository-override.json'
+    Set-Content -LiteralPath $invalidOverridePath -Value @'
+{"schema":"github-local-index.git-artifact-governance.v1","entries":[],"repository_overrides":[{"repo":"wlyaaaaa/example","policy":"merge_history","owner":"fixture-owner","purpose":"invalid","exit_condition":"never"}],"retentions":[]}
+'@ -Encoding utf8
+    $invalidOverrideBlocked = $false
+    try {
+        Read-GitArtifactGovernanceRegistry -Path $invalidOverridePath | Out-Null
+    }
+    catch {
+        $invalidOverrideBlocked = $true
+    }
+    Assert-True $invalidOverrideBlocked 'unknown repository override policy fails closed'
 }
 finally {
     if (Test-Path -LiteralPath $registryTestRoot) {
@@ -204,6 +216,26 @@ Assert-True (-not $governedEvidence.worktree.external_governance) `
     'former PersonalOS worktree evidence has no active external owner'
 Assert-True (-not $governedEvidence.branch.external_governance) `
     'former PersonalOS branch evidence has no active external owner'
+$frozenHistoryOverride = Get-GitRepositoryOverride -Repo 'wlyaaaaa/PersonalOS-Retired'
+Assert-Equal 'frozen_history' $frozenHistoryOverride.policy `
+    'retired repository resolves the repository-level frozen-history override'
+$frozenHistoryEvidence = & $admissionModule {
+    $branch = [pscustomobject]@{
+        branch = 'codex/historical-only'
+        has_worktree = $false
+        is_default_branch = $false
+    }
+    Add-GitArtifactGovernanceEvidence `
+        -Repo 'wlyaaaaa/PersonalOS-Retired' `
+        -Branches @($branch)
+    $branch
+}
+Assert-True $frozenHistoryEvidence.historical_retention `
+    'non-default retired-repository ref is retained as history'
+Assert-True (-not $frozenHistoryEvidence.external_governance) `
+    'frozen history remains visible evidence instead of becoming an opaque external owner'
+Assert-True ($frozenHistoryEvidence.historical_retention_purpose -match 'Git 历史保留') `
+    'frozen-history evidence preserves the reason for not integrating or deleting the ref'
 $runtimeRetention = Get-GitArtifactRetention `
     -Repo 'wlyaaaaa/codex-local-remote' `
     -Path 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' `

@@ -372,6 +372,13 @@ if ($convergenceClassifier) {
     Assert-True (-not $pinnedMerged.needs_review) 'pinned snapshot takes precedence over convergence cleanup'
     Assert-True (-not $pinnedMerged.retirement_candidate) 'pinned snapshot is never a retirement candidate'
 
+    $frozenHistoryBranch = Get-BranchConvergenceDisposition `
+        -IntegrationState 'unmerged' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$false -HistoricalRetention
+    Assert-True (-not $frozenHistoryBranch.needs_review) 'frozen repository history is not a default-branch integration task'
+    Assert-True (-not $frozenHistoryBranch.retirement_candidate) 'frozen repository history is never a branch deletion candidate'
+    Assert-True ($frozenHistoryBranch.next_action -match '不回灌默认分支.*不自动删除') `
+        'frozen repository history keeps its explicit preservation action'
+
     $unknownConvergence = Get-BranchConvergenceDisposition `
         -IntegrationState 'unknown' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$true
     Assert-True $unknownConvergence.needs_review 'unknown integration state fails closed'
@@ -581,6 +588,30 @@ $cachedEvidenceRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobjec
 Assert-True $cachedEvidenceRows[0].NeedsReview 'cached remote evidence is aggregated into repository NeedsReview'
 Assert-True ($cachedEvidenceRows[0].QueueReason -match 'cached 远端引用') 'cached remote evidence remains visible in the repository queue reason'
 
+$frozenHistoryRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
+    nameWithOwner = 'wlyaaaaa/PersonalOS-Retired'
+    visibility = 'PRIVATE'
+    url = 'https://github.com/wlyaaaaa/PersonalOS-Retired'
+    defaultBranchRef = [pscustomobject]@{ name = 'main' }
+}) -CloneMap @{
+    'wlyaaaaa/PersonalOS-Retired' = @([pscustomobject]@{
+        Path = 'E:\PersonalOS-Retired'
+        Branch = 'codex/historical-only'
+        Upstream = ''
+        Ahead = 0
+        Behind = 0
+        DirtyCount = 0
+        State = 'frozen history'
+        NextAction = 'preserve history'
+        NeedsReview = $false
+        RemoteMode = 'live'
+        HistoricalRetention = $true
+        QueueReasons = @()
+    })
+})
+Assert-True (-not $frozenHistoryRows[0].NeedsReview) 'live frozen history remains outside the action queue'
+Assert-Equal '' $frozenHistoryRows[0].QueueReason 'frozen historical refs do not create no-upstream noise'
+
 $pinnedRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
     nameWithOwner = 'wlyaaaaa/pinned-demo'
     visibility = 'PRIVATE'
@@ -728,6 +759,7 @@ Assert-True (-not ($updateSource -match "Join-Path\s+\`$ownerVolumeRoot\s+'Perso
 Assert-True (-not ($updateSource -match '--iglob.{0,80}personal(?:os|so)')) 'future repository discovery has no PersonalOS name exclusion'
 Assert-True ($updateSource -match 'external_governance') 'index generator consumes explicit artifact-owner evidence'
 Assert-True ($updateSource -match 'necessary_retention') 'index generator consumes explicit necessary-retention evidence'
+Assert-True ($updateSource -match 'historical_retention') 'index generator consumes repository-level frozen-history evidence'
 Assert-True ($updateSource -match '不纳入 Codex 收敛判断') 'externally governed artifacts do not become Codex cleanup recommendations'
 $artifactGovernancePath = Join-Path $repoRoot 'config/git-artifact-governance.json'
 Assert-True (Test-Path -LiteralPath $artifactGovernancePath -PathType Leaf) 'explicit Git artifact-owner registry exists'
@@ -748,6 +780,15 @@ Assert-True (@($artifactGovernance.entries | Where-Object {
     $_.purpose -eq '由 .github/workflows/snake.yml 发布并被 README SVG 引用的 orphan 生成分支' -and
     $_.exit_condition -eq '同时移除 README 中的 output 引用并修改或停用该 workflow'
 }).Count -eq 1) 'artifact-owner registry retains the workflow-backed output deployment branch with its exit condition'
+$frozenHistoryOverride = Get-GitRepositoryOverride -Repo 'wlyaaaaa/PersonalOS-Retired'
+Assert-Equal 'frozen_history' $frozenHistoryOverride.policy 'retired repository resolves its repo-level frozen-history override'
+Assert-True (-not [string]::IsNullOrWhiteSpace($frozenHistoryOverride.exit_condition)) `
+    'frozen-history override carries an explicit exit condition'
+Assert-True (@($artifactGovernance.repository_overrides | Where-Object {
+    $_.repo -eq 'wlyaaaaa/PersonalOS-Retired' -and
+    $_.policy -eq 'frozen_history' -and
+    $_.purpose -match '非默认 refs 及独有提交仅作为 Git 历史保留'
+}).Count -eq 1) 'artifact registry keeps PersonalOS-Retired history without restoring it into frozen main'
 $outputGovernance = Get-GitArtifactGovernance -Repo 'wlyaaaaa/wlyaaaaa' -Branch 'origin/output'
 Assert-Equal 'GitHub Actions deployment artifact' $outputGovernance.owner 'output deployment branch resolves to its explicit external owner'
 Assert-True (@($artifactGovernance.retentions | Where-Object {

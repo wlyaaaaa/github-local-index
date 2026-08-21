@@ -456,6 +456,7 @@ function Get-BranchConvergenceDisposition {
         [AllowNull()] [object] $DirtyCount,
         [bool] $HasWorktree = $true,
         [switch] $PinnedSnapshot,
+        [switch] $HistoricalRetention,
         [switch] $Locked,
         [switch] $Prunable,
         [switch] $Detached,
@@ -469,6 +470,10 @@ function Get-BranchConvergenceDisposition {
         next_action = ''
     }
     if ($IsDefaultBranch) {
+        return [pscustomobject] $result
+    }
+    if ($HistoricalRetention) {
+        $result.next_action = '保留冻结仓库历史 ref；不回灌默认分支，不自动删除'
         return [pscustomobject] $result
     }
     if ($PinnedSnapshot) {
@@ -964,6 +969,7 @@ function ConvertTo-GitHubIndexRows {
             if (@($clones | Where-Object {
                 (-not ($null -ne $_.PSObject.Properties['IsPinnedSnapshot'] -and [bool] $_.IsPinnedSnapshot)) -and
                 (-not ($null -ne $_.PSObject.Properties['IsNecessaryRetention'] -and [bool] $_.IsNecessaryRetention)) -and
+                (-not ($null -ne $_.PSObject.Properties['HistoricalRetention'] -and [bool] $_.HistoricalRetention)) -and
                 [string]::IsNullOrWhiteSpace([string] $_.Upstream)
             }).Count -gt 0) { $reasons += '无 upstream' }
             if (@($clones | Where-Object { [string] $_.RemoteMode -eq 'cached' }).Count -gt 0) {
@@ -1314,11 +1320,32 @@ function Resolve-CloneStatuses {
                 else {
                     $null
                 }
+                $branchHistoricalRetention = $null -ne $branchRecord.PSObject.Properties['historical_retention'] -and
+                    [bool] $branchRecord.historical_retention
+                $branchHistoricalRetentionOwner = if ($branchHistoricalRetention) {
+                    [string] $branchRecord.historical_retention_owner
+                }
+                else {
+                    $null
+                }
+                $branchHistoricalRetentionPurpose = if ($branchHistoricalRetention) {
+                    [string] $branchRecord.historical_retention_purpose
+                }
+                else {
+                    $null
+                }
+                $branchHistoricalRetentionExitCondition = if ($branchHistoricalRetention) {
+                    [string] $branchRecord.historical_retention_exit_condition
+                }
+                else {
+                    $null
+                }
                 $branchConvergence = Get-BranchConvergenceDisposition `
                     -IntegrationState $branchIntegrationState `
                     -IsDefaultBranch:$false `
                     -DirtyCount 0 `
-                    -HasWorktree:$false
+                    -HasWorktree:$false `
+                    -HistoricalRetention:$branchHistoricalRetention
                 $branchRefLabel = if ($branchRecord.ref_kind -eq 'remote_tracking') {
                     'remote-tracking branch ref'
                 }
@@ -1327,6 +1354,9 @@ function Resolve-CloneStatuses {
                 }
                 $branchState = if ($branchExternalGovernance) {
                     "``$($branchRecord.branch)`` 由 $branchGovernanceOwner 专门 owner 治理，不纳入 Codex 收敛判断"
+                }
+                elseif ($branchHistoricalRetention) {
+                    "``$($branchRecord.branch)`` 是冻结仓库历史 ref；保留独有提交，不回灌默认分支且不自动删除；owner：$branchHistoricalRetentionOwner"
                 }
                 elseif ($branchIntegrationState -eq 'unmerged') {
                     $missingText = if ($null -ne $branchRecord.missing_default_commits) {
@@ -1345,11 +1375,15 @@ function Resolve-CloneStatuses {
                 }
                 $branchState += "（$($admission.remote_mode)）"
                 $branchQueueReasons = [System.Collections.Generic.List[string]]::new()
-                if (-not $branchExternalGovernance) {
+                if (-not $branchExternalGovernance -and -not $branchHistoricalRetention) {
                     if (-not [string]::IsNullOrWhiteSpace([string] $branchConvergence.queue_reason)) {
                         $branchQueueReasons.Add([string] $branchConvergence.queue_reason)
                     }
-                    if ($admission.remote_mode -eq 'cached') { $branchQueueReasons.Add('cached 远端引用') }
+                }
+                if (-not $branchExternalGovernance -and $admission.remote_mode -eq 'cached') {
+                    $branchQueueReasons.Add('cached 远端引用')
+                }
+                if (-not $branchExternalGovernance) {
                     foreach ($errorReason in $repoErrorReasons) { $branchQueueReasons.Add($errorReason) }
                 }
 
@@ -1369,6 +1403,12 @@ function Resolve-CloneStatuses {
                     NextAction = if ($branchExternalGovernance) {
                         "无；由 $branchGovernanceOwner owner 管理"
                     }
+                    elseif ($repoErrorReasons.Count -gt 0) {
+                        '远端观察失败；当前仅使用 cached 引用，需人工复查'
+                    }
+                    elseif ($branchHistoricalRetention) {
+                        "保留冻结仓库历史 ref；不回灌默认分支，不自动删除；退出条件：$branchHistoricalRetentionExitCondition"
+                    }
                     else {
                         [string] $branchConvergence.next_action
                     }
@@ -1380,14 +1420,19 @@ function Resolve-CloneStatuses {
                     RetentionOwner = $null
                     RetentionPurpose = $null
                     RetentionExitCondition = $null
+                    HistoricalRetention = $branchHistoricalRetention
+                    HistoricalRetentionOwner = $branchHistoricalRetentionOwner
+                    HistoricalRetentionPurpose = $branchHistoricalRetentionPurpose
+                    HistoricalRetentionExitCondition = $branchHistoricalRetentionExitCondition
                     IntegrationState = $branchIntegrationState
                     IsDefaultBranch = $false
                     UniqueCommitsVsDefault = $branchRecord.unique_commits_vs_default
                     MissingDefaultCommits = $branchRecord.missing_default_commits
-                    RetirementCandidate = (-not $branchExternalGovernance) -and
+                    RetirementCandidate = (-not $branchExternalGovernance) -and (-not $branchHistoricalRetention) -and
                         [bool] $branchConvergence.retirement_candidate
                     NeedsReview = (-not $branchExternalGovernance) -and (
-                        $repoErrorReasons.Count -gt 0 -or [bool] $branchConvergence.needs_review -or
+                        $repoErrorReasons.Count -gt 0 -or
+                        ((-not $branchHistoricalRetention) -and [bool] $branchConvergence.needs_review) -or
                         $admission.remote_mode -eq 'cached'
                     )
                     QueueReasons = @($branchQueueReasons)

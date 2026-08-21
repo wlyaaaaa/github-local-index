@@ -1495,6 +1495,110 @@ function Test-LiveProposalBinding {
         $Request.executor_sha256 -ceq $live.adapter_sha256
 }
 
+function Test-FastRenameProposalBinding {
+    param(
+        [Parameter(Mandatory)][object] $Request,
+        [Parameter(Mandatory)][scriptblock] $MetadataInvoker,
+        [Parameter(Mandatory)][scriptblock] $NativeInvoker
+    )
+    if ($Request.effect_family -cne 'github-api' -or
+        $Request.parameters.operation -cne 'rename-repository' -or
+        (Get-FileSha256 $script:AdapterEntry) -cne $Request.executor_sha256) {
+        return $false
+    }
+    $arguments = $Request.parameters.arguments
+    $repo = [string]$Request.stable_target.repository
+    $repoPath = [string]$Request.stable_target.canonical_worktree
+    $plan = Get-EffectPlan `
+        -EffectFamily 'github-api' -Operation 'rename-repository' `
+        -Repository $repo -RepoPath $repoPath -Arguments $arguments
+    if ($plan.kind -cne $Request.parameters.executor_kind -or
+        $plan.native_executor_sha256 -cne
+            $Request.parameters.native_executor_sha256 -or
+        -not (Test-ExactValue @($plan.argv) @($Request.parameters.argv))) {
+        return $false
+    }
+    $sourceResult = & $MetadataInvoker $repo $false
+    if ($null -eq $sourceResult -or $sourceResult.exit_code -ne 0 -or
+        $null -eq $sourceResult.value) { return $false }
+    $source = $sourceResult.value
+    if ([string]$source.id -cne
+            [string]$Request.stable_target.repository_database_id -or
+        [string]$source.node_id -cne
+            [string]$Request.stable_target.repository_node_id -or
+        [string]$source.full_name -ine $repo -or
+        [string]$source.visibility -ine
+            [string]$Request.stable_target.visibility -or
+        [string]$source.default_branch -cne
+            [string]$Request.stable_target.default_branch) {
+        return $false
+    }
+    $owner = $repo.Split('/')[0]
+    $newName = [string](Get-MapValue $arguments 'new_name')
+    $targetRepo = "$owner/$newName"
+    $targetResult = & $MetadataInvoker $targetRepo $true
+    if ($null -eq $targetResult -or $targetResult.exit_code -eq 0 -or
+        (Get-OptionalMapValue $targetResult 'missing' $false) -ne $true -or
+        $null -ne (Get-OptionalMapValue $targetResult 'value')) {
+        return $false
+    }
+    $git = Get-FixedExecutor -Kind git
+    $prefix = @(Get-GitArgumentsPrefix $repoPath)
+    $checks = @(
+        [pscustomobject]@{
+            arguments = @('rev-parse', '--show-toplevel')
+            expected = [IO.Path]::GetFullPath($repoPath)
+            path = $true
+        },
+        [pscustomobject]@{
+            arguments = @('symbolic-ref', '--quiet', '--short', 'HEAD')
+            expected = [string]$Request.stable_target.default_branch
+            path = $false
+        },
+        [pscustomobject]@{
+            arguments = @('remote', 'get-url', '--all', 'origin')
+            expected = [string]$Request.stable_target.remote_url
+            path = $false
+        }
+    )
+    foreach ($check in $checks) {
+        $result = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @($check.arguments)) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        if ($result.exit_code -ne 0) { return $false }
+        $actual = $result.stdout.Trim()
+        if ($check.path) {
+            try { $actual = [IO.Path]::GetFullPath($actual) }
+            catch { return $false }
+        }
+        if ($actual -cne [string]$check.expected) { return $false }
+    }
+    $status = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @(
+                'status', '--porcelain=v1', '--untracked-files=all',
+                '--ignore-submodules=none'
+            )) `
+        -WorkingDirectory $repoPath -AllowFailure $true
+    if ($status.exit_code -ne 0 -or
+        -not [string]::IsNullOrWhiteSpace($status.stdout)) { return $false }
+    $head = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @('rev-parse', '--verify', 'HEAD')) `
+        -WorkingDirectory $repoPath -AllowFailure $true
+    $remoteHead = Invoke-NativeAdapter `
+        -Invoker $NativeInvoker -Kind git -Executable $git `
+        -Arguments ($prefix + @(
+                'rev-parse', '--verify',
+                "refs/remotes/origin/$($Request.stable_target.default_branch)"
+            )) `
+        -WorkingDirectory $repoPath -AllowFailure $true
+    return ($head.exit_code -eq 0 -and $remoteHead.exit_code -eq 0 -and
+        $head.stdout.Trim() -cmatch '^(?:[a-f0-9]{40}|[a-f0-9]{64})$' -and
+        $head.stdout.Trim() -ceq $remoteHead.stdout.Trim())
+}
+
 function Invoke-ReadBack {
     param(
         [Parameter(Mandatory)][object] $Request,
@@ -1695,11 +1799,22 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             $null -eq $authorization.value.major_action_capability) {
             return New-BlockedResult 'major_action_authorization_failed'
         }
-        if (-not (Test-LiveProposalBinding `
+        $postAuthorizationBindingValid = if (
+            $request.effect_family -ceq 'github-api' -and
+            $request.parameters.operation -ceq 'rename-repository'
+        ) {
+            Test-FastRenameProposalBinding `
+                -Request $request -MetadataInvoker $MetadataInvoker `
+                -NativeInvoker $NativeInvoker
+        }
+        else {
+            Test-LiveProposalBinding `
                 -Request $request -AdmissionInvoker $AdmissionInvoker `
                 -MetadataInvoker $MetadataInvoker `
                 -AccountInvoker $AccountInvoker `
-                -NativeInvoker $NativeInvoker)) {
+                -NativeInvoker $NativeInvoker
+        }
+        if (-not $postAuthorizationBindingValid) {
             return New-BlockedResult 'target_precondition_changed'
         }
         $consumeEnvelope = [pscustomobject][ordered]@{

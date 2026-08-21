@@ -493,6 +493,32 @@ $renameNativeInvoker = {
         [bool] $AllowFailure
     )
     $joined = $Arguments -join ' '
+    if ($Kind -eq 'git') {
+        if ($joined -match 'rev-parse --show-toplevel') {
+            return [pscustomobject]@{
+                exit_code = 0; stdout = 'C:\synthetic\protected-repo'; stderr = ''
+            }
+        }
+        if ($joined -match 'symbolic-ref --quiet --short HEAD') {
+            return [pscustomobject]@{ exit_code = 0; stdout = 'main'; stderr = '' }
+        }
+        if ($joined -match 'remote get-url --all origin') {
+            return [pscustomobject]@{
+                exit_code = 0
+                stdout = 'https://github.com/synthetic-owner/protected-repo'
+                stderr = ''
+            }
+        }
+        if ($joined -match 'status --porcelain=v1') {
+            return [pscustomobject]@{ exit_code = 0; stdout = ''; stderr = '' }
+        }
+        if ($joined -match 'rev-parse --verify (?:HEAD|refs/remotes/origin/main)') {
+            return [pscustomobject]@{
+                exit_code = 0; stdout = ('d' * 40); stderr = ''
+            }
+        }
+        throw "unexpected rename git invocation: $joined"
+    }
     if ($Kind -ne 'gh' -or
         $joined -notmatch 'api --method PATCH .*repos/synthetic-owner/protected-repo' -or
         $joined -notmatch 'name=renamed-repo') {

@@ -127,6 +127,11 @@ create 绕过该边界。
 确认同 owner 下的新 slug 不存在；effect 只能对旧 slug 固定 `PATCH name=<new_name>`。
 read-back 必须从新 slug 观察到相同 database ID、node ID、visibility 与 default
 branch。它不允许改 owner、公开性或默认分支，也不接受任意 endpoint 或 payload。
+仓库分支很多时，全量 admission 可能超过 30 秒 capability TTL；因此授权后、consume
+前的复核使用 rename 专用快速 preimage，仍精确复核 adapter/native hash、固定 argv、
+source/target provider identity、目标缺失、canonical worktree、branch、origin、clean
+状态与本地 `HEAD=origin/<default>`。授权前及 consume 后的最终 effect gate 仍运行完整
+admission，快速复核不成为其他 operation 的通用旁路。
 
 ### Schema 与内部执行器边界
 

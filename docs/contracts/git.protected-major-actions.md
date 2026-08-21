@@ -48,8 +48,9 @@ broker 和 effect 之前返回 `highest_authority_verification_required`。
 
 `Execute` 只读取上述提案，按以下顺序运行：
 
-1. 重新取得 admission、provider metadata、precondition、adapter 与 native
-   executor hash；
+1. 以 `RepoPath` 作为精确 target worktree 重新取得 admission、provider metadata、
+   precondition、adapter 与 native executor hash；其他无关历史分支仍保留为证据，
+   但不污染这次精确目标的 effect 判定；
 2. 调用固定入口
    `C:\ProgramData\PCConfig\AuthorityHost\tools\Invoke-SecretBroker.ps1`
    的 `AuthorizeMajorAction`；adapter 把冻结后解析出的单一因子传给 broker，

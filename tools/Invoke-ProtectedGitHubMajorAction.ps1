@@ -365,6 +365,7 @@ function Get-DefaultAdmissionInvoker {
                 $script:AdmissionEntry,
                 '-Repo', $Repository,
                 '-RepoPath', $RepoPath,
+                '-TargetWorktree', $RepoPath,
                 '-LiveMetadata', '-RefreshRefs', '-Json'
             ) `
             -WorkingDirectory $PSScriptRoot `

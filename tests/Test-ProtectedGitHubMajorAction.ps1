@@ -1189,6 +1189,8 @@ Assert-True ($toolText.Contains("'GIT_CONFIG_NOSYSTEM'")) `
     'native invocation suppresses system Git configuration'
 Assert-True ($toolText.Contains('-AllowHostGitConfig $true')) `
     'read-only admission can use the host Git credential configuration'
+Assert-True ($toolText.Contains("'-TargetWorktree', `$RepoPath")) `
+    'protected admission scopes repository effects to the exact worktree'
 Assert-True ($toolText.Contains("'GIT_REDIRECT_STDOUT'")) `
     'native invocation removes Git output redirection controls'
 Assert-True ($toolText.Contains('.ArgumentList.Add(')) `

@@ -1732,6 +1732,100 @@ function Test-FastRenameProposalBinding {
         $head.stdout.Trim() -ceq $remoteHead.stdout.Trim())
 }
 
+function Test-FastRemoteReplacementProposalBinding {
+    param(
+        [Parameter(Mandatory)][object] $Request,
+        [Parameter(Mandatory)][scriptblock] $MetadataInvoker,
+        [Parameter(Mandatory)][scriptblock] $NativeInvoker
+    )
+    if ($Request.effect_family -cne 'git-local' -or
+        $Request.parameters.operation -cne 'replace-remote-url' -or
+        (Get-FileSha256 $script:AdapterEntry) -cne $Request.executor_sha256) {
+        return $false
+    }
+    try {
+        $arguments = $Request.parameters.arguments
+        $repo = [string]$Request.stable_target.repository
+        $repoPath = [IO.Path]::GetFullPath(
+            [string]$Request.stable_target.canonical_worktree)
+        $plan = Get-EffectPlan `
+            -EffectFamily 'git-local' -Operation 'replace-remote-url' `
+            -Repository $repo -RepoPath $repoPath -Arguments $arguments
+        if ($plan.kind -cne $Request.parameters.executor_kind -or
+            $plan.native_executor_sha256 -cne
+                $Request.parameters.native_executor_sha256 -or
+            -not (Test-ExactValue @($plan.argv) @($Request.parameters.argv))) {
+            return $false
+        }
+        $metadataResult = & $MetadataInvoker $repo $false
+        if ($null -eq $metadataResult -or $metadataResult.exit_code -ne 0 -or
+            $null -eq $metadataResult.value) {
+            return $false
+        }
+        $metadata = $metadataResult.value
+        if ([string]$metadata.full_name -ine $repo -or
+            [string]$metadata.id -cne
+                [string]$Request.stable_target.repository_database_id -or
+            [string]$metadata.node_id -cne
+                [string]$Request.stable_target.repository_node_id -or
+            [string]$metadata.visibility -ine
+                [string]$Request.stable_target.visibility -or
+            [string]$metadata.default_branch -cne
+                [string]$Request.stable_target.default_branch) {
+            return $false
+        }
+        $git = Get-FixedExecutor -Kind git
+        $prefix = @(Get-GitArgumentsPrefix $repoPath)
+        $topLevel = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @('rev-parse', '--show-toplevel')) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        $branch = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @(
+                    'symbolic-ref', '--quiet', '--short', 'HEAD')) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        $status = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @(
+                    'status', '--porcelain=v1', '--untracked-files=all',
+                    '--ignore-submodules=none')) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        $head = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @('rev-parse', '--verify', 'HEAD')) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        $remoteHead = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @(
+                    'rev-parse', '--verify',
+                    'refs/remotes/origin/' +
+                        [string]$Request.stable_target.default_branch)) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        $remote = [string](Get-MapValue $arguments 'remote')
+        $remoteUrl = Invoke-NativeAdapter `
+            -Invoker $NativeInvoker -Kind git -Executable $git `
+            -Arguments ($prefix + @('remote', 'get-url', '--all', $remote)) `
+            -WorkingDirectory $repoPath -AllowFailure $true
+        $urls = @($remoteUrl.stdout -split "`r?`n" | Where-Object { $_ })
+        return $topLevel.exit_code -eq 0 -and
+            [IO.Path]::GetFullPath($topLevel.stdout.Trim()) -ieq $repoPath -and
+            $branch.exit_code -eq 0 -and
+            $branch.stdout.Trim() -ceq
+                [string]$Request.stable_target.default_branch -and
+            $status.exit_code -eq 0 -and
+            [string]::IsNullOrWhiteSpace([string]$status.stdout) -and
+            $head.exit_code -eq 0 -and $remoteHead.exit_code -eq 0 -and
+            $head.stdout.Trim() -ceq $remoteHead.stdout.Trim() -and
+            $remoteUrl.exit_code -eq 0 -and $urls.Count -eq 1 -and
+            $urls[0] -ceq [string](Get-MapValue $arguments 'expected_url') -and
+            [string]$Request.preconditions.operation_state.remote -ceq $remote -and
+            [string]$Request.preconditions.operation_state.remote_url -ceq
+                [string](Get-MapValue $arguments 'expected_url')
+    }
+    catch { return $false }
+}
+
 function Invoke-ReadBack {
     param(
         [Parameter(Mandatory)][object] $Request,
@@ -1880,11 +1974,22 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         return New-BlockedResult 'execution_mode_mismatch'
     }
     try {
-        if (-not (Test-LiveProposalBinding `
+        $preAuthorizationBindingValid = if (
+            $request.effect_family -ceq 'git-local' -and
+            $request.parameters.operation -ceq 'replace-remote-url'
+        ) {
+            Test-FastRemoteReplacementProposalBinding `
+                -Request $request -MetadataInvoker $MetadataInvoker `
+                -NativeInvoker $NativeInvoker
+        }
+        else {
+            Test-LiveProposalBinding `
                 -Request $request -AdmissionInvoker $AdmissionInvoker `
                 -MetadataInvoker $MetadataInvoker `
                 -AccountInvoker $AccountInvoker `
-                -NativeInvoker $NativeInvoker)) {
+                -NativeInvoker $NativeInvoker
+        }
+        if (-not $preAuthorizationBindingValid) {
             return New-BlockedResult 'target_precondition_changed'
         }
     }
@@ -1937,6 +2042,12 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             $request.parameters.operation -ceq 'rename-repository'
         ) {
             Test-FastRenameProposalBinding `
+                -Request $request -MetadataInvoker $MetadataInvoker `
+                -NativeInvoker $NativeInvoker
+        }
+        elseif ($request.effect_family -ceq 'git-local' -and
+            $request.parameters.operation -ceq 'replace-remote-url') {
+            Test-FastRemoteReplacementProposalBinding `
                 -Request $request -MetadataInvoker $MetadataInvoker `
                 -NativeInvoker $NativeInvoker
         }

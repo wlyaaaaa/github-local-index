@@ -1804,8 +1804,8 @@ function Test-FastRemoteReplacementProposalBinding {
             -Invoker $NativeInvoker -Kind git -Executable $git `
             -Arguments ($prefix + @(
                     'rev-parse', '--verify',
-                    'refs/remotes/origin/' +
-                        [string]$Request.stable_target.default_branch)) `
+                    ('refs/remotes/origin/' +
+                        [string]$Request.stable_target.default_branch))) `
             -WorkingDirectory $repoPath -AllowFailure $true
         $remote = [string](Get-MapValue $arguments 'remote')
         $remoteUrl = Invoke-NativeAdapter `
@@ -1813,20 +1813,35 @@ function Test-FastRemoteReplacementProposalBinding {
             -Arguments ($prefix + @('remote', 'get-url', '--all', $remote)) `
             -WorkingDirectory $repoPath -AllowFailure $true
         $urls = @($remoteUrl.stdout -split "`r?`n" | Where-Object { $_ })
-        return $topLevel.exit_code -eq 0 -and
-            [IO.Path]::GetFullPath($topLevel.stdout.Trim()) -ieq $repoPath -and
-            $branch.exit_code -eq 0 -and
-            $branch.stdout.Trim() -ceq
-                [string]$Request.stable_target.default_branch -and
-            $status.exit_code -eq 0 -and
-            [string]::IsNullOrWhiteSpace([string]$status.stdout) -and
-            $head.exit_code -eq 0 -and $remoteHead.exit_code -eq 0 -and
-            $head.stdout.Trim() -ceq $remoteHead.stdout.Trim() -and
-            $remoteUrl.exit_code -eq 0 -and $urls.Count -eq 1 -and
-            $urls[0] -ceq [string](Get-MapValue $arguments 'expected_url') -and
-            [string]$Request.preconditions.operation_state.remote -ceq $remote -and
-            [string]$Request.preconditions.operation_state.remote_url -ceq
-                [string](Get-MapValue $arguments 'expected_url')
+        if ($topLevel.exit_code -ne 0 -or
+            [IO.Path]::GetFullPath($topLevel.stdout.Trim()) -ine $repoPath) {
+            return $false
+        }
+        if ($branch.exit_code -ne 0 -or
+            $branch.stdout.Trim() -cne
+                [string]$Request.stable_target.default_branch) {
+            return $false
+        }
+        if ($status.exit_code -ne 0 -or
+            -not [string]::IsNullOrWhiteSpace([string]$status.stdout)) {
+            return $false
+        }
+        if ($head.exit_code -ne 0 -or $remoteHead.exit_code -ne 0 -or
+            $head.stdout.Trim() -cne $remoteHead.stdout.Trim()) {
+            return $false
+        }
+        if ($remoteUrl.exit_code -ne 0 -or $urls.Count -ne 1 -or
+            $urls[0] -cne
+                [string](Get-MapValue $arguments 'expected_url')) {
+            return $false
+        }
+        if ([string]$Request.preconditions.operation_state.remote -cne
+            $remote -or
+            [string]$Request.preconditions.operation_state.remote_url -cne
+                [string](Get-MapValue $arguments 'expected_url')) {
+            return $false
+        }
+        return $true
     }
     catch { return $false }
 }
@@ -2111,11 +2126,28 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             $consume.value.capability_consumed -ne $true) {
             return New-BlockedResult 'major_action_capability_not_consumed'
         }
-        if (-not (Test-LiveProposalBinding `
+        $finalBindingValid = if (
+            $request.effect_family -ceq 'github-api' -and
+            $request.parameters.operation -ceq 'rename-repository'
+        ) {
+            Test-FastRenameProposalBinding `
+                -Request $request -MetadataInvoker $MetadataInvoker `
+                -NativeInvoker $NativeInvoker
+        }
+        elseif ($request.effect_family -ceq 'git-local' -and
+            $request.parameters.operation -ceq 'replace-remote-url') {
+            Test-FastRemoteReplacementProposalBinding `
+                -Request $request -MetadataInvoker $MetadataInvoker `
+                -NativeInvoker $NativeInvoker
+        }
+        else {
+            Test-LiveProposalBinding `
                 -Request $request -AdmissionInvoker $AdmissionInvoker `
                 -MetadataInvoker $MetadataInvoker `
                 -AccountInvoker $AccountInvoker `
-                -NativeInvoker $NativeInvoker)) {
+                -NativeInvoker $NativeInvoker
+        }
+        if (-not $finalBindingValid) {
             return New-BlockedResult 'target_precondition_changed_after_consume'
         }
         $plan = Get-EffectPlan `

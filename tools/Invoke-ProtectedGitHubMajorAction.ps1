@@ -15,6 +15,7 @@ param(
         'force-update-local-ref',
         'replace-remote-url',
         'create-repository',
+        'rename-repository',
         'set-visibility',
         'set-default-branch',
         'delete-repository',
@@ -507,6 +508,14 @@ function Assert-RepositorySlug {
     }
 }
 
+function Assert-RepositoryName {
+    param([Parameter(Mandatory)][string] $Name)
+    if ($Name -cnotmatch '^[A-Za-z0-9._-]{1,100}$' -or
+        $Name -in @('.', '..')) {
+        Throw-ProtectedActionError 'typed_arguments_invalid'
+    }
+}
+
 function Assert-GitOid {
     param([Parameter(Mandatory)][string] $Oid)
     if ($Oid -cnotmatch '^(?:[a-f0-9]{40}|[a-f0-9]{64})$') {
@@ -545,8 +554,8 @@ function Assert-TypedArguments {
     }
     else {
         @(
-            'create-repository', 'set-visibility', 'set-default-branch', 'delete-repository',
-            'transfer-repository'
+            'create-repository', 'rename-repository', 'set-visibility',
+            'set-default-branch', 'delete-repository', 'transfer-repository'
         )
     }
     if ($Operation -notin $allowed) {
@@ -560,6 +569,12 @@ function Assert-TypedArguments {
             @(
                 'expected_absent', 'visibility', 'expected_local_branch',
                 'expected_head_oid'
+            )
+        }
+        'rename-repository' {
+            @(
+                'expected_name', 'new_name', 'expected_visibility',
+                'expected_default_branch', 'expected_target_absent'
             )
         }
         'set-visibility' { @('expected_visibility', 'new_visibility') }
@@ -605,6 +620,23 @@ function Assert-TypedArguments {
             Assert-GitBranchName ([string](Get-MapValue `
                     $Arguments 'expected_local_branch'))
             Assert-GitOid ([string](Get-MapValue $Arguments 'expected_head_oid'))
+        }
+        'rename-repository' {
+            $expectedName = [string](Get-MapValue $Arguments 'expected_name')
+            $newName = [string](Get-MapValue $Arguments 'new_name')
+            Assert-RepositoryName $expectedName
+            Assert-RepositoryName $newName
+            $visibility = [string](Get-MapValue $Arguments 'expected_visibility')
+            $branch = [string](Get-MapValue $Arguments 'expected_default_branch')
+            $targetAbsent = Get-MapValue $Arguments 'expected_target_absent'
+            if ($expectedName -ieq $newName -or
+                $visibility.ToUpperInvariant() -notin @(
+                    'PUBLIC', 'PRIVATE', 'INTERNAL'
+                ) -or [string]::IsNullOrWhiteSpace($branch) -or
+                $targetAbsent -isnot [bool] -or $targetAbsent -ne $true) {
+                Throw-ProtectedActionError 'typed_arguments_invalid'
+            }
+            Assert-GitBranchName $branch
         }
         'set-visibility' {
             $old = [string](Get-MapValue $Arguments 'expected_visibility')
@@ -775,6 +807,12 @@ function Get-EffectPlan {
                 '-f', "name=$name",
                 '-f', 'private=true',
                 '-f', 'auto_init=false'
+            )
+        }
+        'rename-repository' {
+            $base += @(
+                '-f', ('name=' +
+                    [string](Get-MapValue $Arguments 'new_name'))
             )
         }
         'set-visibility' {
@@ -1029,6 +1067,17 @@ function Get-OperationState {
                     Throw-ProtectedActionError 'operation_precondition_mismatch'
                 }
             }
+            'rename-repository' {
+                $currentName = ([string]$Identity.provider.repository).Split('/')[1]
+                if ($currentName -ine
+                    [string](Get-MapValue $Arguments 'expected_name') -or
+                    $Identity.provider.visibility -ine
+                    [string](Get-MapValue $Arguments 'expected_visibility') -or
+                    $Identity.provider.default_branch -cne
+                    [string](Get-MapValue $Arguments 'expected_default_branch')) {
+                    Throw-ProtectedActionError 'operation_precondition_mismatch'
+                }
+            }
             'set-default-branch' {
                 if ($Identity.provider.default_branch -cne
                     [string](Get-MapValue $Arguments 'expected_default_branch')) {
@@ -1153,6 +1202,22 @@ function Get-LiveBinding {
         -Repository $Repository -RepoPath $RepoPath `
         -AdmissionInvoker $AdmissionInvoker `
         -MetadataInvoker $MetadataInvoker
+    $renameTarget = $null
+    if ($EffectFamily -eq 'github-api' -and $Operation -eq 'rename-repository') {
+        $owner = $Repository.Split('/')[0]
+        $newName = [string](Get-MapValue $Arguments 'new_name')
+        $targetRepository = "$owner/$newName"
+        $targetResult = & $MetadataInvoker $targetRepository $true
+        if ($null -eq $targetResult -or $targetResult.exit_code -eq 0 -or
+            (Get-OptionalMapValue $targetResult 'missing' $false) -ne $true -or
+            $null -ne (Get-OptionalMapValue $targetResult 'value')) {
+            Throw-ProtectedActionError 'rename_repository_target_not_absent'
+        }
+        $renameTarget = [pscustomobject][ordered]@{
+            repository = $targetRepository.ToLowerInvariant()
+            absent = $true
+        }
+    }
     $plan = Get-EffectPlan `
         -EffectFamily $EffectFamily -Operation $Operation `
         -Repository $Repository -RepoPath $RepoPath -Arguments $Arguments
@@ -1168,6 +1233,14 @@ function Get-LiveBinding {
             'remote:' + [string](Get-MapValue $Arguments 'remote')
         }
         default { 'repository:' + $identity.provider.repository_node_id }
+    }
+    $preconditions = [ordered]@{
+        admission = $identity.admission
+        provider = $identity.provider
+        operation_state = $operationState
+    }
+    if ($null -ne $renameTarget) {
+        $preconditions.rename_target = $renameTarget
     }
     [pscustomobject][ordered]@{
         stable_target = [pscustomobject][ordered]@{
@@ -1189,11 +1262,7 @@ function Get-LiveBinding {
             argv = @($plan.argv)
             arguments = ConvertTo-CanonicalNode $Arguments
         }
-        preconditions = [pscustomobject][ordered]@{
-            admission = $identity.admission
-            provider = $identity.provider
-            operation_state = $operationState
-        }
+        preconditions = [pscustomobject]$preconditions
         plan = $plan
         adapter_sha256 = Get-FileSha256 $script:AdapterEntry
     }
@@ -1409,6 +1478,7 @@ function Test-LiveProposalBinding {
                 'project_admission_blocked',
                 'github_metadata_unavailable',
                 'create_repository_target_not_absent',
+                'rename_repository_target_not_absent',
                 'github_authenticated_account_unavailable',
                 'authenticated_owner_mismatch',
                 'create_repository_local_worktree_invalid',
@@ -1465,6 +1535,11 @@ function Invoke-ReadBack {
         $name = $repo.Split('/')[1]
         "$newOwner/$name"
     }
+    elseif ($operation -eq 'rename-repository') {
+        $owner = $repo.Split('/')[0]
+        $newName = [string](Get-MapValue $arguments 'new_name')
+        "$owner/$newName"
+    }
     else { $repo }
     $metadataResult = & $MetadataInvoker `
         $readBackRepo ($operation -eq 'delete-repository')
@@ -1502,6 +1577,9 @@ function Invoke-ReadBack {
     }
     if ([string]$metadata.node_id -cne
         [string]$Request.stable_target.repository_node_id) { return $false }
+    if ($operation -eq 'rename-repository' -and
+        [string]$metadata.id -cne
+        [string]$Request.stable_target.repository_database_id) { return $false }
     switch ($operation) {
         'set-visibility' {
             return ([string]$metadata.visibility -ieq
@@ -1510,6 +1588,17 @@ function Invoke-ReadBack {
         'set-default-branch' {
             return ([string]$metadata.default_branch -ceq
                 [string](Get-MapValue $arguments 'new_default_branch'))
+        }
+        'rename-repository' {
+            $owner = $repo.Split('/')[0]
+            $newName = [string](Get-MapValue $arguments 'new_name')
+            return (
+                [string]$metadata.full_name -ieq "$owner/$newName" -and
+                [string]$metadata.visibility -ieq
+                    [string](Get-MapValue $arguments 'expected_visibility') -and
+                [string]$metadata.default_branch -ceq
+                    [string](Get-MapValue $arguments 'expected_default_branch')
+            )
         }
         'transfer-repository' {
             $newOwner = [string](Get-MapValue $arguments 'new_owner')
@@ -1568,6 +1657,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
                 'project_admission_blocked',
                 'github_metadata_unavailable',
                 'create_repository_target_not_absent',
+                'rename_repository_target_not_absent',
                 'github_authenticated_account_unavailable',
                 'authenticated_owner_mismatch',
                 'create_repository_local_worktree_invalid',

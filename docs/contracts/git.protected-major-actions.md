@@ -22,7 +22,7 @@ adapter 从冻结请求的 typed effect 与 preimage 机械派生
 
 - `delete-repository`、`transfer-repository`、`set-visibility` 的
   `PRIVATE` → `PUBLIC` 为 `human_required`；
-- `create-repository`（仅 PRIVATE）、`set-default-branch`、全部 `git-local`、
+- `create-repository`（仅 PRIVATE）、`rename-repository`、`set-default-branch`、全部 `git-local`、
   `PUBLIC` → `PRIVATE` 及其他非上述关键 typed 变化为 `runtime_allowed`。
 
 `AuthorityFactor=Auto` 是默认值，并且只在 proposal 完成类型校验、请求冻结后解析：
@@ -79,7 +79,8 @@ adapter 只接受两类固定 effect，不接受 shell string 或 executable 参
 - `git-local`：`delete-local-ref`、`force-update-local-ref`、
   `replace-remote-url`；
 - `github-api`：`create-repository`、`set-visibility`、
-  `set-default-branch`、`delete-repository`、`transfer-repository`。
+  `rename-repository`、`set-default-branch`、`delete-repository`、
+  `transfer-repository`。
 
 Git 本地 effect 只调用固定 Git for Windows 路径，以
 `ProcessStartInfo.ArgumentList` 逐参数执行；清除 Git 目录、exec、SSH、askpass、
@@ -116,6 +117,16 @@ read-back 只在 POST 成功并返回合法 `full_name`、PRIVATE、database ID 
 公开，必须使用既有 typed `set-visibility`，并先完成 PUBLIC 内容审查；不得以 direct
 create 绕过该边界。
 
+### `github-api/rename-repository`
+
+这是“同一 GitHub repository identity 原地改名”的专用通道。参数对象必须精确且
+仅包含 `expected_name`、`new_name`、`expected_visibility`、
+`expected_default_branch`、`expected_target_absent=true`。Prepare 与每次 effect
+前复核旧 slug 的 database ID、node ID、visibility、default branch，并以固定 GET
+确认同 owner 下的新 slug 不存在；effect 只能对旧 slug 固定 `PATCH name=<new_name>`。
+read-back 必须从新 slug 观察到相同 database ID、node ID、visibility 与 default
+branch。它不允许改 owner、公开性或默认分支，也不接受任意 endpoint 或 payload。
+
 ### Schema 与内部执行器边界
 
 adapter schema 规定可授权的 typed effect、preimage 和 read-back；内部执行器只把
@@ -134,8 +145,7 @@ integrity incident；是否失陷仍由顶级模型结合 provider 与本地证�
 本身不改变设备信任，也不直接触发 BitLocker containment。
 
 本实现保护受管 Codex 路径，不承诺拦截已经取得系统管理员、其他高权限 token
-或 GitHub 账号完全控制权的外部程序。PersonalOS 不属于本 adapter 的生产激活
-依赖，本仓不读取或治理其本地数据。
+或 GitHub 账号完全控制权的外部程序。本仓不读取或治理业务仓库的私有数据。
 
 ## 无破坏验收
 

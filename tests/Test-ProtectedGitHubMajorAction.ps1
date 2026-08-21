@@ -432,6 +432,113 @@ Assert-Equal 'runtime_allowed' `
     $setDefaultBranchProposal.authorization_request.authorization_requirement `
     'set-default-branch remains runtime-allowed'
 
+$renameArguments = [ordered]@{
+    expected_name = 'protected-repo'
+    new_name = 'renamed-repo'
+    expected_visibility = 'PRIVATE'
+    expected_default_branch = 'main'
+    expected_target_absent = $true
+}
+$script:RenameApplied = $false
+$script:RenameEffects = 0
+$renameMetadataInvoker = {
+    param([string] $Repository, [bool] $AllowMissing)
+    if ($Repository -ceq 'synthetic-owner/protected-repo' -and
+        -not $script:RenameApplied) {
+        return [pscustomobject]@{
+            exit_code = 0
+            value = [pscustomobject][ordered]@{
+                id = 17001
+                node_id = 'R_synthetic_protected_repo'
+                full_name = 'synthetic-owner/protected-repo'
+                html_url = 'https://github.com/synthetic-owner/protected-repo'
+                visibility = 'private'
+                default_branch = 'main'
+            }
+            missing = $false
+            stderr = ''
+        }
+    }
+    if ($Repository -ceq 'synthetic-owner/renamed-repo') {
+        if (-not $script:RenameApplied) {
+            return [pscustomobject]@{
+                exit_code = 1
+                value = $null
+                missing = $true
+                stderr = 'not found'
+            }
+        }
+        return [pscustomobject]@{
+            exit_code = 0
+            value = [pscustomobject][ordered]@{
+                id = 17001
+                node_id = 'R_synthetic_protected_repo'
+                full_name = 'synthetic-owner/renamed-repo'
+                html_url = 'https://github.com/synthetic-owner/renamed-repo'
+                visibility = 'private'
+                default_branch = 'main'
+            }
+            missing = $false
+            stderr = ''
+        }
+    }
+    throw "unexpected rename metadata target: $Repository"
+}
+$renameNativeInvoker = {
+    param(
+        [string] $Kind,
+        [string] $Executable,
+        [string[]] $Arguments,
+        [string] $WorkingDirectory,
+        [bool] $AllowFailure
+    )
+    $joined = $Arguments -join ' '
+    if ($Kind -ne 'gh' -or
+        $joined -notmatch 'api --method PATCH .*repos/synthetic-owner/protected-repo' -or
+        $joined -notmatch 'name=renamed-repo') {
+        throw "unexpected rename native invocation: $Kind $joined"
+    }
+    $script:RenameEffects++
+    $script:RenameApplied = $true
+    [pscustomobject]@{ exit_code = 0; stdout = '{}'; stderr = '' }
+}
+$renameProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -Operation 'rename-repository' `
+    -Repository 'synthetic-owner/protected-repo' `
+    -RepoPath 'C:\synthetic\protected-repo' `
+    -Arguments $renameArguments `
+    -Decision 'allow' `
+    -Reason 'synthetic stable-identity repository rename' `
+    -UserIntent 'verify same-repository rename stays private and unattended' `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $renameMetadataInvoker `
+    -NativeInvoker $renameNativeInvoker
+Assert-Equal 'runtime_allowed' `
+    $renameProposal.authorization_request.authorization_requirement `
+    'same-owner repository rename remains runtime-allowed'
+Assert-Equal 'synthetic-owner/renamed-repo' `
+    $renameProposal.authorization_request.preconditions.rename_target.repository `
+    'rename proposal binds the absent destination slug'
+Assert-True `
+    ($renameProposal.authorization_request.parameters.argv -contains
+        'name=renamed-repo') `
+    'rename plan closes the GitHub payload to the new name'
+$script:Fixture.broker_calls.Clear()
+$renameExecuted = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $renameProposal `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $renameMetadataInvoker `
+    -NativeInvoker $renameNativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'pass' $renameExecuted.status `
+    'rename executes after capability consumption and stable-id read-back'
+Assert-Equal 1 $script:RenameEffects `
+    'rename performs the exact typed effect once'
+Assert-True $renameExecuted.read_back_verified `
+    'rename read-back observes the same database and node identities'
+$script:RenameApplied = $false
+
 $script:Fixture.visibility = 'PUBLIC'
 try {
     $publicToPrivateArguments = [ordered]@{
@@ -1068,7 +1175,7 @@ Assert-True ($contractText -match
     '(?s)authorization_requirement.{0,500}(delete-repository|delete).{0,180}(transfer-repository|transfer).{0,220}PRIVATE.{0,80}PUBLIC.{0,300}human_required') `
     'owner contract records the closed human-required GitHub matrix'
 Assert-True ($contractText -match
-    '(?s)create-repository.{0,260}set-default-branch.{0,260}git-local.{0,260}runtime_allowed') `
+    '(?s)create-repository.{0,260}rename-repository.{0,260}set-default-branch.{0,260}git-local.{0,260}runtime_allowed') `
     'owner contract preserves unattended ordinary GitHub and local Git work'
 Assert-True ($contractText -match
     '(?s)Auto.{0,260}human_required.{0,100}Passkey.{0,220}runtime_allowed.{0,100}Runtime') `

@@ -377,13 +377,19 @@ function Get-DefaultAdmissionInvoker {
             -AllowHostGitConfig $true
         try { $record = $result.stdout | ConvertFrom-Json -Depth 30 }
         catch { Throw-ProtectedActionError 'project_admission_invalid' }
-        $renameEligible = $RequestedOperation -ceq 'rename-repository' -and
-            (Test-RenameAdmissionRecord `
-                -Admission $record `
-                -Repository $Repository `
-                -RepoPath $RepoPath)
+        $operationEligible =
+            ($RequestedOperation -ceq 'rename-repository' -and
+                (Test-RenameAdmissionRecord `
+                    -Admission $record `
+                    -Repository $Repository `
+                    -RepoPath $RepoPath)) -or
+            ($RequestedOperation -ceq 'replace-remote-url' -and
+                (Test-RemoteReplacementAdmissionRecord `
+                    -Admission $record `
+                    -Repository $Repository `
+                    -RepoPath $RepoPath))
         if ($result.exit_code -ne 0 -or
-            ($record.decision -ne 'proceed' -and -not $renameEligible)) {
+            ($record.decision -ne 'proceed' -and -not $operationEligible)) {
             Throw-ProtectedActionError 'project_admission_blocked'
         }
         $record
@@ -414,6 +420,46 @@ function Test-RenameAdmissionRecord {
     $reasons = @($Admission.reasons | ForEach-Object { [string]$_ })
     if ($reasons.Count -eq 0 -or
         @($reasons | Where-Object { $_ -notin $allowedReasons }).Count -ne 0) {
+        return $false
+    }
+    $expectedRoot = [IO.Path]::GetFullPath($RepoPath)
+    if ([IO.Path]::GetFullPath([string]$Admission.local_root) -ine
+        $expectedRoot) {
+        return $false
+    }
+    $targets = @($Admission.worktrees | Where-Object {
+        $_.exists -eq $true -and
+        [IO.Path]::GetFullPath([string]$_.path) -ieq $expectedRoot
+    })
+    if ($targets.Count -ne 1) { return $false }
+    $target = $targets[0]
+    return $target.inspection_error -ne $true -and
+        $target.is_default_branch -eq $true -and
+        [string]$target.branch -ceq [string]$Admission.default_branch -and
+        [int]$target.dirty_count -eq 0 -and
+        [int]$target.ahead -eq 0 -and
+        [int]$target.behind -eq 0 -and
+        [string]$target.sync_state -ceq 'in_sync' -and
+        [string]$target.head -ceq [string]$target.default_head
+}
+
+function Test-RemoteReplacementAdmissionRecord {
+    param(
+        [Parameter(Mandatory)][object] $Admission,
+        [Parameter(Mandatory)][string] $Repository,
+        [Parameter(Mandatory)][string] $RepoPath
+    )
+    if ($null -eq $Admission -or
+        [string]$Admission.schema -cne
+            'github-local-index.project-admission.v1' -or
+        [string]$Admission.decision -cne 'block' -or
+        [string]$Admission.remote_mode -cne 'live' -or
+        [string]$Admission.metadata_mode -cne 'live' -or
+        [string]$Admission.refs_mode -cne 'live' -or
+        [string]$Admission.repo -ine $Repository -or
+        @($Admission.errors).Count -ne 0 -or
+        (@($Admission.reasons | ForEach-Object { [string]$_ }) -join "`n") `
+            -cne 'remote_mismatch') {
         return $false
     }
     $expectedRoot = [IO.Path]::GetFullPath($RepoPath)
@@ -917,14 +963,20 @@ function Get-NormalizedIdentity {
     )
     Assert-RepositorySlug $Repository
     $admission = & $AdmissionInvoker $Repository $RepoPath $Operation
-    $renameEligible = $Operation -ceq 'rename-repository' -and
-        (Test-RenameAdmissionRecord `
-            -Admission $admission `
-            -Repository $Repository `
-            -RepoPath $RepoPath)
+    $operationEligible =
+        ($Operation -ceq 'rename-repository' -and
+            (Test-RenameAdmissionRecord `
+                -Admission $admission `
+                -Repository $Repository `
+                -RepoPath $RepoPath)) -or
+        ($Operation -ceq 'replace-remote-url' -and
+            (Test-RemoteReplacementAdmissionRecord `
+                -Admission $admission `
+                -Repository $Repository `
+                -RepoPath $RepoPath))
     if ($null -eq $admission -or
         $admission.schema -cne 'github-local-index.project-admission.v1' -or
-        ($admission.decision -cne 'proceed' -and -not $renameEligible) -or
+        ($admission.decision -cne 'proceed' -and -not $operationEligible) -or
         $admission.remote_mode -cne 'live' -or
         $admission.metadata_mode -cne 'live' -or
         $admission.refs_mode -cne 'live' -or

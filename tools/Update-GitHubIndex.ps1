@@ -569,9 +569,7 @@ function Get-GitConfigPaths {
         $args += @(
             '-g', '**/.git/config',
             '-g', '!**/node_modules/**',
-            '-g', '!**/.cache/**',
-            '--iglob', '!**/*personalos*/**',
-            '--iglob', '!**/*personalso*/**'
+            '-g', '!**/.cache/**'
         )
         $rgConfigs = @(& rg @args 2>$null | Where-Object { -not (Test-IsTransientGitConfigPath $_) })
         return @(@($rootConfigs) + $rgConfigs | Sort-Object -Unique)
@@ -653,9 +651,7 @@ function Get-GitRepositorySeedPaths {
                 '-g', '**/.git',
                 '-g', '**/.git/config',
                 '-g', '!**/node_modules/**',
-                '-g', '!**/.cache/**',
-                '--iglob', '!**/*personalos*/**',
-                '--iglob', '!**/*personalso*/**'
+                '-g', '!**/.cache/**'
             )
             $gitMarkers = @(& rg @arguments 2>$null)
         }
@@ -685,10 +681,8 @@ function Get-GitRepositorySeedPaths {
         }
     }
 
-    # PersonalOS paths remain excluded from recursive discovery.  This one
-    # independently owned governance repository is admitted only by its exact
-    # physical root and exact GitHub origin identity; the stable junction and
-    # every other similarly named path remain outside the scan.
+    # The independently owned governance input remains admitted only by its
+    # exact physical root and exact GitHub origin identity.
     if (Test-IsExactGovernanceClonePath -Path $script:ExactGovernanceCloneRoot) {
         $seeds.Add($script:ExactGovernanceCloneRoot)
     }

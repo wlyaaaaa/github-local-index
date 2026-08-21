@@ -397,9 +397,9 @@ finally {
 
 $seedDiscovery = Get-Command Get-GitRepositorySeedPaths -ErrorAction SilentlyContinue
 Assert-True ($null -ne $seedDiscovery) 'repository discovery exposes common-dir/worktree seed enumeration'
-Assert-True (Test-IsExternallyGovernedGitHubRepository -Repo 'wlyaaaaa/PersonalOS') 'PersonalOS remote is marked as externally governed'
-Assert-True (Test-IsExternallyGovernedLocalPath -Path 'X:\fixtures\PersonalOS-worktrees\fixture') 'PersonalOS worktree paths are excluded before local discovery'
-Assert-True (Test-IsExternallyGovernedLocalPath -Path 'E:\PersonalOS') 'PersonalOS product root remains excluded before local discovery'
+Assert-True (-not (Test-IsExternallyGovernedGitHubRepository -Repo 'wlyaaaaa/PersonalOS')) 'retired PersonalOS remote is not externally governed'
+Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'X:\fixtures\PersonalOS-worktrees\fixture')) 'retired PersonalOS names do not suppress repository discovery'
+Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'E:\PersonalOS')) 'retired PersonalOS product path has no active external-owner exclusion'
 Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'V:\Personal\Projects\ordinary-project')) 'ordinary project paths remain discoverable'
 Assert-True (Test-IsExactGovernanceCloneCandidate `
     -Path 'V:\Personal\Projects\personalos-user-governance' `
@@ -445,7 +445,7 @@ if ($seedDiscovery) {
         & git init --initial-branch=main $externalFutureRepo 2>&1 | Out-Null
         $futureSeeds = @(Get-GitRepositorySeedPaths -Roots @($futureProjectsRoot))
         Assert-True ($futureSeeds -contains [System.IO.Path]::GetFullPath($futureRepo)) 'central discovery finds a future repository without per-repo injection'
-        Assert-True (-not ($futureSeeds -contains [System.IO.Path]::GetFullPath($externalFutureRepo))) 'central discovery excludes future externally governed PersonalOS paths before Git inspection'
+        Assert-True ($futureSeeds -contains [System.IO.Path]::GetFullPath($externalFutureRepo)) 'central discovery has no PersonalOS name-based exclusion'
     }
     finally {
         if (Test-Path -LiteralPath $seedRoot) { Remove-Item -LiteralPath $seedRoot -Recurse -Force }
@@ -628,26 +628,6 @@ Assert-Equal 0 $pinnedRows[0].Behind 'pinned observed behind never becomes actio
 Assert-True (-not $pinnedRows[0].NeedsReview) 'clean pinned snapshots do not create a review queue'
 Assert-Equal '' $pinnedRows[0].QueueReason 'pinned detached snapshot does not create no-upstream noise'
 
-$externalRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
-    nameWithOwner = 'wlyaaaaa/PersonalOS'
-    visibility = 'PRIVATE'
-    url = 'https://github.com/wlyaaaaa/PersonalOS'
-    defaultBranchRef = [pscustomobject]@{ name = 'main' }
-    pushedAt = '2026-07-01T00:00:00Z'
-    updatedAt = '2026-07-01T00:00:00Z'
-}) -CloneMap @{
-    'wlyaaaaa/PersonalOS' = @([pscustomobject]@{ Path = 'SHOULD_NOT_BE_EXPOSED' })
-})
-Assert-Equal '外部治理（不读取本地路径）' $externalRows[0].LocalPath 'external governance never publishes or acts on a PersonalOS local path'
-Assert-Equal '不行动；由外部治理 owner 维护' $externalRows[0].NextAction 'external governance remote fact has an explicit no-action decision'
-$externalRecommendation = Get-RepositoryTaskRecommendation `
-    -NameWithOwner 'wlyaaaaa/PersonalOS' `
-    -LocalPath '外部治理（不读取本地路径）' `
-    -Visibility 'PRIVATE' `
-    -ExistingTaskHints @('SHOULD_NOT_BE_USED')
-Assert-Equal '外部治理' $externalRecommendation.Decision 'automation recommendation preserves the external-governance no-action boundary'
-Assert-Equal '无' $externalRecommendation.Frequency 'external governance never creates a task cadence'
-
 $documentRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-docs-' + [guid]::NewGuid().ToString('N'))
 try {
     Write-GitHubIndexDocuments -RepoRoot $documentRoot -Owner 'wlyaaaaa' -Rows $rows
@@ -745,7 +725,7 @@ Assert-True ($updateSource -match 'UtcNow\.AddHours\(8\)') 'Git index document d
 Assert-True (-not ($updateSource -match 'C:\\Users\\10979|G:\\')) 'index generator derives default scan roots from Git-owned facts'
 Assert-True (-not ($updateSource -match '&\s*git\s+-C\s+\$Path\s+fetch')) 'index generator has no legacy fetch path that discards exit status'
 Assert-True (-not ($updateSource -match "Join-Path\s+\`$ownerVolumeRoot\s+'PersonalOS")) 'default discovery does not seed PersonalOS local roots'
-Assert-True ($updateSource -match 'Test-IsExternallyGovernedLocalPath') 'future repository discovery applies the central external-governance path exclusion'
+Assert-True (-not ($updateSource -match '--iglob.{0,80}personal(?:os|so)')) 'future repository discovery has no PersonalOS name exclusion'
 Assert-True ($updateSource -match 'external_governance') 'index generator consumes explicit artifact-owner evidence'
 Assert-True ($updateSource -match 'necessary_retention') 'index generator consumes explicit necessary-retention evidence'
 Assert-True ($updateSource -match '不纳入 Codex 收敛判断') 'externally governed artifacts do not become Codex cleanup recommendations'
@@ -754,8 +734,8 @@ Assert-True (Test-Path -LiteralPath $artifactGovernancePath -PathType Leaf) 'exp
 $artifactGovernance = Get-Content -LiteralPath $artifactGovernancePath -Raw -Encoding utf8 | ConvertFrom-Json
 Assert-Equal 'github-local-index.git-artifact-governance.v1' $artifactGovernance.schema 'artifact-owner registry has a stable schema'
 Assert-True (@($artifactGovernance.entries | Where-Object {
-    $_.repo -eq 'wlyaaaaa/.agents' -and $_.owner -eq 'PersonalOS'
-}).Count -eq 1) 'artifact-owner registry protects explicit PersonalOS refs without suppressing the whole .agents repository'
+    $_.owner -eq 'PersonalOS'
+}).Count -eq 0) 'artifact-owner registry contains no active PersonalOS owner bindings'
 Assert-True (@($artifactGovernance.entries | Where-Object {
     $_.repo -eq 'wlyaaaaa/PCConfig' -and
     $_.owner -eq 'PCConfig Secret Broker' -and

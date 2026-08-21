@@ -181,7 +181,8 @@ finally {
 $personalOSArtifact = Get-GitArtifactGovernance `
     -Repo 'wlyaaaaa/.agents' `
     -Branch 'origin/codex/personalos-beacon-receipt'
-Assert-Equal 'PersonalOS' $personalOSArtifact.owner 'artifact registry identifies the explicit PersonalOS owner'
+Assert-True ($null -eq $personalOSArtifact) `
+    'artifact registry contains no active PersonalOS owner entry'
 Assert-True ($null -eq (Get-GitArtifactGovernance `
     -Repo 'wlyaaaaa/.agents' `
     -Branch 'codex/ordinary-feature')) 'artifact registry does not suppress ordinary future feature branches'
@@ -199,8 +200,10 @@ $governedEvidence = & $admissionModule {
         -Branches @($branch)
     [pscustomobject]@{ worktree = $worktree; branch = $branch }
 }
-Assert-True $governedEvidence.worktree.external_governance 'worktree evidence marks the explicit external owner'
-Assert-True $governedEvidence.branch.external_governance 'remote branch evidence marks the explicit external owner'
+Assert-True (-not $governedEvidence.worktree.external_governance) `
+    'former PersonalOS worktree evidence has no active external owner'
+Assert-True (-not $governedEvidence.branch.external_governance) `
+    'former PersonalOS branch evidence has no active external owner'
 $runtimeRetention = Get-GitArtifactRetention `
     -Repo 'wlyaaaaa/codex-local-remote' `
     -Path 'V:\Personal\Worktrees\codex-local-remote-v1-rollback' `
@@ -405,15 +408,12 @@ try {
     Assert-Equal 'INTERNAL' $internalVisibility.visibility 'INTERNAL is accepted as the third closed-enum visibility'
     Assert-True (-not ($internalVisibility.reasons -contains 'visibility_invalid')) 'valid INTERNAL visibility is not rejected'
 
-    $externalGovernance = Get-ProjectAdmissionRecord `
-        -Repo 'wlyaaaaa/PersonalOS' `
-        -RepoPath $primaryPath `
-        -Visibility 'PRIVATE' `
-        -DefaultBranch 'main'
-    Assert-Equal 'block' $externalGovernance.decision 'external governance blocks local admission actions'
-    Assert-True ($externalGovernance.reasons -contains 'external_governance_excluded') 'external governance has a stable blocking reason'
-    Assert-True ($null -eq $externalGovernance.local_root) 'external governance ignores an explicitly supplied local path before Git inspection'
-    Assert-Equal 0 @($externalGovernance.worktrees).Count 'external governance returns no local worktree evidence'
+    Assert-True (-not (Test-IsExternallyGovernedGitHubRepository `
+        -Repo 'wlyaaaaa/PersonalOS')) `
+        'retired PersonalOS repository identity is no longer an external-governance exception'
+    Assert-True (-not (Test-IsExternallyGovernedLocalPath `
+        -Path 'E:\PersonalOS')) `
+        'retired PersonalOS paths are no longer suppressed by project-name heuristics'
 
     $admissionParameters = (Get-Command Get-ProjectAdmissionRecord).Parameters.Keys
     Assert-True ($admissionParameters -contains 'LiveMetadata') 'admission exposes a read-only live metadata switch'
@@ -696,10 +696,13 @@ try {
     $protectedOwnerBranch = $ownerBoundaryAdmission.branches | Where-Object {
         $_.branch -eq 'codex/personalos-beacon-receipt'
     }
-    Assert-True $protectedOwnerBranch.external_governance 'admission preserves explicit cross-owner branch evidence'
-    Assert-Equal 'PersonalOS' $protectedOwnerBranch.governance_owner 'admission reports the explicit artifact owner'
-    Assert-True (-not ($ownerBoundaryAdmission.reasons -contains 'default_branch_missing_commits')) `
-        'cross-owner branch commits do not become Codex default-branch integration actions'
+    Assert-True (-not $protectedOwnerBranch.external_governance) `
+        'former PersonalOS branch has no active cross-owner evidence'
+    Assert-True ([string]::IsNullOrWhiteSpace(
+        [string]$protectedOwnerBranch.governance_owner)) `
+        'former PersonalOS branch has no active artifact owner'
+    Assert-Equal 'unmerged' $protectedOwnerBranch.integration_state `
+        'former PersonalOS branch returns to ordinary integration evidence'
 
     $failedFetch = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchFailure -GitHubInvoker $ghSuccess
     Assert-Equal 'cached' $failedFetch.remote_mode 'falls back to cached when fetch fails'

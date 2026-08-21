@@ -2,26 +2,6 @@
   "schema": "github-local-index.git-artifact-governance.v1",
   "entries": [
     {
-      "repo": "wlyaaaaa/.agents",
-      "owner": "PersonalOS",
-      "refs": [
-        "codex/personalos-beacon-receipt",
-        "codex/s8-wp4-personalos-router",
-        "codex/s9-beta-total-deadline",
-        "codex/s9-health-route-doc"
-      ]
-    },
-    {
-      "repo": "wlyaaaaa/PCConfig",
-      "owner": "PersonalOS",
-      "refs": [
-        "codex/personalos-m1-runtime-upgrade",
-        "codex/personalos-shadow-root-fact",
-        "codex/s8-wp4-personalos-runtime",
-        "codex/s9-wp4-release"
-      ]
-    },
-    {
       "repo": "wlyaaaaa/PCConfig",
       "owner": "PCConfig Secret Broker",
       "refs": [

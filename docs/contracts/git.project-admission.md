@@ -10,7 +10,7 @@ triggers: `git_project|repo_identity|project_entry`；语义条件是当前决�
 owner: E:\GitHub总索引
 
 ## 权威输入
-运行时结构化入口是 `tools/Get-ProjectAdmission.ps1 -Json`，schema 保持 `github-local-index.project-admission.v1`；当前 `.git` 与远端证据比旧 Markdown 快照更有权威。PersonalOS 仅保留 GitHub 目录事实，禁止本 provider 读取其本地路径或给出行动建议。
+运行时结构化入口是 `tools/Get-ProjectAdmission.ps1 -Json`，schema 保持 `github-local-index.project-admission.v1`；当前 `.git` 与远端证据比旧 Markdown 快照更有权威。provider 不按业务项目名称硬编码外部治理例外；跨 owner 边界只来自精确 artifact/retention registry 与项目规则。
 
 ## 核心机制
 provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTERNAL` 闭集，非法值 fail closed。`-LiveMetadata` 只读查询 GitHub 且 never fetch；`-RefreshRefs` 才运行 `git fetch`；兼容 `-Fetch` 等价于两者。`-ForPublication` 是发布决策的只读 live profile，同时要求 GitHub metadata 与 remote refs 新鲜，任一失败即保持阻断；普通本地/只读任务不默认使用。`-TargetWorktree` / `-TargetRef` 让顶层 decision 只使用精确目标，仍保留全部 worktree 与 branch inventory 作为证据，并比较 target 与实际 remote default branch reachability。exact artifact-owner registry 只排除明确跨 owner ref，不隐藏普通未来分支；exact necessary-retention registry 只为同时匹配 repo、路径和 HEAD 的已查明保留项附带 owner、用途与退出条件，不把名称猜测当作保留依据。
@@ -22,7 +22,7 @@ provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTER
 provider、schema、identity 不明确或证据仍为 cached 时保留限制；artifact registry 缺失、JSON/schema 无效、owner/ref/retention entry 不完整或重复时在模块加载阶段 fail closed，避免静默失去 owner 边界。`decision=block` 阻止依赖不足证据的写入和直接 transport，但保留 read-only diagnosis。
 
 ## 验证证据
-`tests/Test-ProjectAdmission.ps1` 验证 V1 schema、显式证据来源/新鲜度、visibility 闭集、只读 metadata、refs refresh、publication live profile、ref/worktree scope、外部治理排除与兼容 `-Fetch`。
+`tests/Test-ProjectAdmission.ps1` 验证 V1 schema、显式证据来源/新鲜度、visibility 闭集、只读 metadata、refs refresh、publication live profile、ref/worktree scope 与兼容 `-Fetch`。
 
 ## 上下文策略
 按信息价值查询单个项目；证据已新鲜明确时可跳过 provider。合同卡不复制动态记录或历史快照。

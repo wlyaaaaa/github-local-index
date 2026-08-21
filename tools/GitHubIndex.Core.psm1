@@ -61,7 +61,7 @@ function Read-GitArtifactGovernanceRegistry {
 }
 
 $script:AdmissionSchema = 'github-local-index.project-admission.v1'
-$script:ExternalGovernanceRepositories = @('wlyaaaaa/PersonalOS')
+$script:ExternalGovernanceRepositories = @()
 $script:PublicExposurePolicyPath = Join-Path $PSScriptRoot 'PublicExposurePolicy.psd1'
 $script:PublicExposurePolicy = Import-PowerShellDataFile -LiteralPath $script:PublicExposurePolicyPath
 $script:GitArtifactGovernancePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config/git-artifact-governance.json'
@@ -280,8 +280,7 @@ function Test-IsExternallyGovernedLocalPath {
     if ([string]::IsNullOrWhiteSpace($Path)) {
         return $false
     }
-    $components = @(($Path -replace '/', '\') -split '\\' | Where-Object { $_ })
-    return @($components | Where-Object { $_ -match '(?i)personal(?:os|so)' }).Count -gt 0
+    return $false
 }
 
 function ConvertTo-PublicGitHubRemoteUrl {

@@ -1,5 +1,5 @@
-<!-- generation_id=7f6fab1d2be04906a81b49a210be47ea -->
-<!-- observed_at=2026-08-21T14:10:13.2815174+00:00 -->
+<!-- generation_id=902e5701b75f4229804d99e47f32b9a2 -->
+<!-- observed_at=2026-08-21T14:24:25.7421336+00:00 -->
 
 # 本地 Clone 索引
 
@@ -22,7 +22,7 @@
 | wlyaaaaa/devconfig-backup | E:\Projects\Backups\devconfig-backup | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/emerald-veil | V:\Personal\Projects\emerald-veil | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/gemini-memory | E:\Projects\Backups\gemini-memory | `main` 已同步，`0/0`（cached） |
-| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`，脏工作区 15 项（cached） |
+| wlyaaaaa/github-local-index | E:\GitHub总索引 | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/Key | V:\Personal\Projects\Key | `main` 已同步，`0/0`（cached） |
 | wlyaaaaa/legal-filing-kit | E:\Projects\Tools\legal-filing-kit<br>V:\Personal\Worktrees\legal-filing-kit-1.0-audit-87dcfd1<br>V:\Personal\Worktrees\legal-filing-kit-1.0-reaudit-859b083<br>V:\Personal\Worktrees\legal-filing-kit-s3-audit-25529a0 | `main` 已同步，`0/0`，脏工作区 72 项（cached）<br>历史审计快照固定于 `87dcfd1`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `859b083`，detached 且无 upstream，不自动同步（cached）<br>历史审计快照固定于 `25529a0`，detached 且无 upstream，不自动同步（cached） |
 | wlyaaaaa/llm-backend-toolkit | V:\Personal\Projects\llm-backend-toolkit | `main` 已同步，`0/0`（cached） |

@@ -377,21 +377,26 @@ function Get-DefaultAdmissionInvoker {
             -AllowHostGitConfig $true
         try { $record = $result.stdout | ConvertFrom-Json -Depth 30 }
         catch { Throw-ProtectedActionError 'project_admission_invalid' }
+        $remoteRepairEligible =
+            $RequestedOperation -ceq 'replace-remote-url' -and
+            [string]$record.schema -ceq
+                'github-local-index.project-admission.v1' -and
+            [string]$record.decision -ceq 'block' -and
+            @($record.errors).Count -eq 0 -and
+            (@($record.reasons | ForEach-Object { [string]$_ }) -join "`n") `
+                -ceq 'remote_mismatch'
         $operationEligible =
             ($RequestedOperation -ceq 'rename-repository' -and
                 (Test-RenameAdmissionRecord `
                     -Admission $record `
                     -Repository $Repository `
                     -RepoPath $RepoPath)) -or
-            ($RequestedOperation -ceq 'replace-remote-url' -and
-                (Test-RemoteReplacementAdmissionRecord `
-                    -Admission $record `
-                    -Repository $Repository `
-                    -RepoPath $RepoPath))
+            $remoteRepairEligible
         if (($result.exit_code -ne 0 -and -not $operationEligible) -or
             ($record.decision -ne 'proceed' -and -not $operationEligible)) {
             Throw-ProtectedActionError 'project_admission_blocked'
         }
+        if ($remoteRepairEligible) { $record.decision = 'proceed' }
         $record
     }
 }

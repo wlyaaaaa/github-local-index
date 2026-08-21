@@ -1,90 +1,90 @@
 {
   "schema": "github-local-index.current-generation.v1",
-  "generation_id": "902e5701b75f4229804d99e47f32b9a2",
-  "observed_at": "2026-08-21T14:24:25.7421336+00:00",
+  "generation_id": "c75af3f3e4e64f728962cf3aff8663ce",
+  "observed_at": "2026-08-21T20:04:35.1208771+00:00",
   "authoritative": false,
   "integrity_authoritative_for_generation": true,
   "decision_authority": false,
-  "as_of_observed_at": "2026-08-21T14:24:25.7421336+00:00",
+  "as_of_observed_at": "2026-08-21T20:04:35.1208771+00:00",
   "owner": "E:\\GitHub总索引",
-  "generation_root": "00_总览/generations/902e5701b75f4229804d99e47f32b9a2",
-  "generation_manifest_sha256": "85201CBBE8A6509EDDE9BA0CA6AD286ECBC6B2F9923079567A53BACD60DDC0DC",
+  "generation_root": "00_总览/generations/c75af3f3e4e64f728962cf3aff8663ce",
+  "generation_manifest_sha256": "728DDA8940E1A077C428EF314CE38FDEC96B4441F0EF63D33FC636E944D3B5CC",
   "projection_role": "compatibility_only",
   "documents": [
     {
       "path": "documents/00_总览/GitHub总览.md",
       "projection_path": "00_总览/GitHub总览.md",
-      "sha256": "0E408984D7841994833AB762D30507506F23588CB6C091BBBA3978359E8FBD76",
+      "sha256": "BB7282F98796D3F91F24B49532311F66AF15C3F622D2EF284DC74A9493CADDE6",
       "bytes": 1009
     },
     {
       "path": "documents/00_总览/当前同步看板.md",
       "projection_path": "00_总览/当前同步看板.md",
-      "sha256": "A480DFD5BDEC76BBF0568ED61AD81FF4AB2EA9472279FDBC401B7660E2F52CC1",
+      "sha256": "4F109161839BAB957581F5E17DB6A36412BE96104DA45062692B07BF6FA14021",
       "bytes": 1345
     },
     {
       "path": "documents/01_仓库索引/GitHub仓库索引.md",
       "projection_path": "01_仓库索引/GitHub仓库索引.md",
-      "sha256": "CE13E6374843F8D7AE7315053109E857816074438EECF44E232EA7E34F85E054",
-      "bytes": 27083
+      "sha256": "440CEDA0259D31DC8316D6A68E94EBE4E8AE4C11E3A3B2206DB7D278E426C592",
+      "bytes": 25701
     },
     {
       "path": "documents/01_仓库索引/本地clone索引.md",
       "projection_path": "01_仓库索引/本地clone索引.md",
-      "sha256": "DA2F755FF421A1EBE7018CA72E0610CFDA5AE96BCBCB8E324553176DB49FDB45",
-      "bytes": 24336
+      "sha256": "54731CD8E77BF63B3A320023EBCDE583014CBCABDF7C7860E2E44AAAC4CDF6D6",
+      "bytes": 23194
     },
     {
       "path": "documents/01_仓库索引/未发现本地clone.md",
       "projection_path": "01_仓库索引/未发现本地clone.md",
-      "sha256": "BAA33EEB643AC5AB7DC8B06E767523BFD9A1A7A53130183ADDD0D63E29058301",
+      "sha256": "CD39B1D5D6239EB48D7AC73A862A8ED157F5CB23F7749FEB3055E43C02E391C2",
       "bytes": 762
     },
     {
       "path": "documents/02_同步诊断/未推送队列.md",
       "projection_path": "02_同步诊断/未推送队列.md",
-      "sha256": "AFCE52B6C4DEF907A04707EC62D99104A812E474E15D5B37BBDBB32380E62D95",
-      "bytes": 25322
+      "sha256": "F2D0B123853A094D63875DA29D7C42F8C9BD968B93EDD2C1876FCA2C388BADFF",
+      "bytes": 23995
     },
     {
       "path": "documents/02_同步诊断/工作区脏状态.md",
       "projection_path": "02_同步诊断/工作区脏状态.md",
-      "sha256": "B0FBB3F7544301739DA11663D8B675C5C3DE1BFC93F38B088C93B2FA450036D3",
-      "bytes": 3659
+      "sha256": "C955A1A08BF2E141D597B49B5E092D8910783D7000EADD3E861E69E2AA2D0596",
+      "bytes": 1092
     },
     {
       "path": "documents/02_同步诊断/分支与远端诊断.md",
       "projection_path": "02_同步诊断/分支与远端诊断.md",
-      "sha256": "12B21172EF0D1C9CB899C174DEEF6D68DEC9BCD6A8614ADD62A9B94DF60BA8C6",
-      "bytes": 23498
+      "sha256": "B230AF1EA80A2976C9E220AE735D0378C4089EF98D282F68F63E30D82C5FF23C",
+      "bytes": 22411
     },
     {
       "path": "documents/04_计划任务/计划任务健康摘要.md",
       "projection_path": "04_计划任务/计划任务健康摘要.md",
-      "sha256": "53F28B71C0F753C8056B3F5BB6BA6B0FAAA597422317A880D1197695EDDB0F9F",
-      "bytes": 4861
+      "sha256": "2A4C0FD4C76D2FDA627E72DE87A843A7F668BB4ACBBAD62BC9DE17A7304F4A11",
+      "bytes": 4899
     },
     {
       "path": "documents/04_计划任务/计划任务异常清单.md",
       "projection_path": "04_计划任务/计划任务异常清单.md",
-      "sha256": "110ED9FB79D75A6F52A02F78497FA8DAA78D72A15368244CBE893877F3D28D3A",
-      "bytes": 1523
+      "sha256": "0EA6F1DE41F8AA206847D89280A4015F37A5DBADAD89161617DBD9D879E51377",
+      "bytes": 1659
     },
     {
       "path": "documents/04_计划任务/用户自动化任务地图.md",
       "projection_path": "04_计划任务/用户自动化任务地图.md",
-      "sha256": "3E8A23A0CFA3B10DA6F035028D1D95477EF833C65E2A570ADF385C950A3F1A82",
-      "bytes": 21215
+      "sha256": "FD353F0724819899B33337625AA9CD421F22B95B2D78AAC0AB95D8063EB0F113",
+      "bytes": 21313
     },
     {
       "path": "documents/04_计划任务/仓库计划任务建议.md",
       "projection_path": "04_计划任务/仓库计划任务建议.md",
-      "sha256": "1D858ECFAC08DD1956A8361396800FC03466A647B33093A0A6A404585CEB0BF6",
-      "bytes": 14968
+      "sha256": "338BCBB83800E13B01F44F9BCB22EC21FD34845AD74B43C17394CC5A966828EE",
+      "bytes": 14757
     }
   ],
   "retention_policy": "current+previous",
-  "previous_generation_id": "8243261f28624f948df717274e4acfc9",
+  "previous_generation_id": "902e5701b75f4229804d99e47f32b9a2",
   "publication": "pointer_switch_after_immutable_generation_and_projection_readback"
 }

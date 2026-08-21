@@ -1550,16 +1550,19 @@ function Test-FastRenameProposalBinding {
             arguments = @('rev-parse', '--show-toplevel')
             expected = [IO.Path]::GetFullPath($repoPath)
             path = $true
+            remote = $false
         },
         [pscustomobject]@{
             arguments = @('symbolic-ref', '--quiet', '--short', 'HEAD')
             expected = [string]$Request.stable_target.default_branch
             path = $false
+            remote = $false
         },
         [pscustomobject]@{
             arguments = @('remote', 'get-url', '--all', 'origin')
             expected = [string]$Request.stable_target.remote_url
             path = $false
+            remote = $true
         }
     )
     foreach ($check in $checks) {
@@ -1573,7 +1576,13 @@ function Test-FastRenameProposalBinding {
             try { $actual = [IO.Path]::GetFullPath($actual) }
             catch { return $false }
         }
-        if ($actual -cne [string]$check.expected) { return $false }
+        if ($check.remote) {
+            $actual = $actual.TrimEnd('/') -replace '(?i)\.git$', ''
+            $expected = ([string]$check.expected).TrimEnd('/') -replace
+                '(?i)\.git$', ''
+            if ($actual -ine $expected) { return $false }
+        }
+        elseif ($actual -cne [string]$check.expected) { return $false }
     }
     $status = Invoke-NativeAdapter `
         -Invoker $NativeInvoker -Kind git -Executable $git `

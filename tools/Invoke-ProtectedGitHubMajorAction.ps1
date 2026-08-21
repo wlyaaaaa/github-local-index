@@ -1221,7 +1221,8 @@ function Get-LiveBinding {
     }
     $plan = Get-EffectPlan `
         -EffectFamily $EffectFamily -Operation $Operation `
-        -Repository $Repository -RepoPath $RepoPath -Arguments $Arguments
+        -Repository $identity.provider.repository `
+        -RepoPath $RepoPath -Arguments $Arguments
     $operationState = Get-OperationState `
         -EffectFamily $EffectFamily -Operation $Operation `
         -RepoPath $RepoPath -Arguments $Arguments -Identity $identity `

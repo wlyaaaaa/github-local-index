@@ -540,6 +540,43 @@ $renameProposal = New-ProtectedGitHubMajorActionProposal `
     -AdmissionInvoker $admissionInvoker `
     -MetadataInvoker $renameMetadataInvoker `
     -NativeInvoker $renameNativeInvoker
+
+$renameWarnAdmission = [pscustomobject][ordered]@{
+    schema = 'github-local-index.project-admission.v1'
+    decision = 'warn'
+    remote_mode = 'live'
+    metadata_mode = 'live'
+    refs_mode = 'live'
+    repo = 'synthetic-owner/protected-repo'
+    local_root = 'C:\synthetic\protected-repo'
+    default_branch = 'main'
+    reasons = @('default_branch_missing_commits', 'merged_residual_branch')
+    errors = @()
+    worktrees = @([pscustomobject][ordered]@{
+        path = 'C:\synthetic\protected-repo'
+        exists = $true
+        head = ('d' * 40)
+        branch = 'main'
+        ahead = 0
+        behind = 0
+        dirty_count = 0
+        sync_state = 'in_sync'
+        inspection_error = $false
+        is_default_branch = $true
+        default_head = ('d' * 40)
+    })
+}
+Assert-True (Test-RenameAdmissionRecord `
+        -Admission $renameWarnAdmission `
+        -Repository 'synthetic-owner/protected-repo' `
+        -RepoPath 'C:\synthetic\protected-repo') `
+    'rename admits only default-clean branch-history warnings without discarding refs'
+$renameWarnAdmission.reasons = @('dirty_worktree')
+Assert-True (-not (Test-RenameAdmissionRecord `
+        -Admission $renameWarnAdmission `
+        -Repository 'synthetic-owner/protected-repo' `
+        -RepoPath 'C:\synthetic\protected-repo')) `
+    'rename rejects unrelated admission warnings'
 Assert-Equal 'runtime_allowed' `
     $renameProposal.authorization_request.authorization_requirement `
     'same-owner repository rename remains runtime-allowed'

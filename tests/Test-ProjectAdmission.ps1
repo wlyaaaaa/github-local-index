@@ -688,6 +688,12 @@ try {
     Invoke-TestGit -Path $ownerBoundaryPath -Arguments @(
         'remote', 'add', 'origin', 'https://github.com/wlyaaaaa/.agents.git'
     ) | Out-Null
+    # Completion evidence intentionally uses the remote-tracking default ref.
+    # Seed that cached ref so this fixture tests owner removal rather than
+    # the separate fail-closed behavior for an unknown remote default.
+    Invoke-TestGit -Path $ownerBoundaryPath -Arguments @(
+        'update-ref', 'refs/remotes/origin/main', 'refs/heads/main'
+    ) | Out-Null
     $ownerBoundaryAdmission = Get-ProjectAdmissionRecord `
         -Repo 'wlyaaaaa/.agents' `
         -RepoPath $ownerBoundaryPath `

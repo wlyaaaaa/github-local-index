@@ -104,13 +104,12 @@ Git remote 可达、分支 ahead、工作区干净，只能说明 transport 条�
 | `01_仓库索引/` | GitHub 仓库与本地 clone | 快速定位，不替代当前 Git 事实 |
 | `02_同步诊断/` | 分支、远端、脏状态与同步问题 | 发现候选问题 |
 | `03_推送决策/` | 公开安全的里程碑记录 | 只在有长期价值时更新 |
-| `04_计划任务/` | 可公开的自动化健康摘要 | 不拥有完整 Action/trigger/XML |
+| `04_计划任务/` | 计划任务 owner 路由 | 不保存任务名、状态、Action、trigger 或 XML |
 | `05_规则与模板/` | 发布和脱敏规则 | 准备公开结果时参考 |
 | `docs/contracts/` | owner-local 稳定机制卡 | 机制、兼容或故障任务按需读取 |
-| `90_历史审计/` | 历史证据 | 不代表当前状态 |
 | `99_private/` | 本机原始材料 | Git ignored，禁止进入公开仓库 |
 
-结构化 provider 与当前 Git 命令适合做机器判断；生成 Markdown 适合人类总览。历史快照有观察时间，不能取代当前证据。
+结构化 provider 与当前 Git 命令适合做机器判断；生成 Markdown 适合人类总览，只展开 PUBLIC 仓库并隐藏本机绝对路径。PRIVATE identity 和精确 clone 路径保存在 ignored 私有导航 cache，使用时仍校验真实 `.git` origin。历史快照有观察时间，不能取代当前证据。
 
 ## 6. 维护和刷新
 

@@ -1,15 +1,13 @@
 {
-  "schema": "github-local-index.current-generation.v1",
+  "schema": "github-local-index.generation.v1",
   "generation_id": "d31c41be1542452dbe65dcfc8b70dd01",
   "observed_at": "2026-08-22T06:59:06.3894436+00:00",
-  "authoritative": false,
+  "immutable": true,
   "integrity_authoritative_for_generation": true,
   "decision_authority": false,
   "as_of_observed_at": "2026-08-22T06:59:06.3894436+00:00",
   "owner": "github-local-index",
-  "generation_root": "00_总览/generations/d31c41be1542452dbe65dcfc8b70dd01",
-  "generation_manifest_sha256": "B58F4530308D789D990D4979EE36814852961A3FD3C4AE8AD0BBBAB97B93CE9E",
-  "projection_role": "compatibility_only",
+  "source": "validated temporary generation from Git and GitHub owner providers",
   "documents": [
     {
       "path": "documents/00_总览/GitHub总览.md",
@@ -59,8 +57,5 @@
       "sha256": "A28E9C0CDF557D5627E68C45360C54C8B6B6F5222495EBD2C27032A7E7D591DF",
       "bytes": 3235
     }
-  ],
-  "retention_policy": "current+previous",
-  "previous_generation_id": "bd040122ea40473d8e64b60687eaad72",
-  "publication": "pointer_switch_after_immutable_generation_and_projection_readback"
+  ]
 }

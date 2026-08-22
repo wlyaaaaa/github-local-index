@@ -21,11 +21,7 @@ function Get-GitHubLocalIndexGeneratedDocumentPaths {
         '01_仓库索引\未发现本地clone.md',
         '02_同步诊断\未推送队列.md',
         '02_同步诊断\工作区脏状态.md',
-        '02_同步诊断\分支与远端诊断.md',
-        '04_计划任务\计划任务健康摘要.md',
-        '04_计划任务\计划任务异常清单.md',
-        '04_计划任务\用户自动化任务地图.md',
-        '04_计划任务\仓库计划任务建议.md'
+        '02_同步诊断\分支与远端诊断.md'
     )
 }
 
@@ -564,16 +560,12 @@ function Invoke-GitHubLocalIndexConsistencyCheck {
         # caller's values explicitly so their defaults cannot silently reset
         # the requested observation mode or repository root.
         . (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') -RepoRoot $RepoRoot -Owner $Owner -ScanRoots $ScanRoots -SkipFetch:$SkipFetch -NoWrite
-        . (Join-Path $RepoRoot 'tools\Update-ScheduledTaskHealth.ps1') -RepoRoot $RepoRoot -NoWrite
-        . (Join-Path $RepoRoot 'tools\Update-UserAutomationMap.ps1') -RepoRoot $RepoRoot -NoWrite
 
         $effectiveScanRoots = @($ScanRoots)
         if ($effectiveScanRoots.Count -eq 0) {
             $effectiveScanRoots = @(Get-IndexedCloneScanRoots -RepoRoot $RepoRoot)
         }
         Invoke-UpdateGitHubIndex -Owner $Owner -RepoRoot $RepoRoot -OutputRoot $generatedRoot -GenerationId $currentGeneration.generation_id -ObservedAt $currentGeneration.observed_at -ScanRoots $effectiveScanRoots -SkipFetch:$SkipFetch | Out-Null
-        Invoke-UpdateScheduledTaskHealth -RepoRoot $RepoRoot -OutputRoot $generatedRoot -GenerationId $currentGeneration.generation_id -ObservedAt $currentGeneration.observed_at | Out-Null
-        Invoke-UpdateUserAutomationMap -RepoRoot $RepoRoot -OutputRoot $generatedRoot -GenerationId $currentGeneration.generation_id -ObservedAt $currentGeneration.observed_at | Out-Null
 
         $comparisons = @(Compare-GitHubLocalIndexDocuments -RepoRoot $RepoRoot -GeneratedRoot $generatedRoot)
         $driftRows = @($comparisons | Where-Object { -not $_.Same })

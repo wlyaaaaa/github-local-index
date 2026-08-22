@@ -6,8 +6,6 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $repoRoot 'tools/Update-GitHubIndex.ps1')
-. (Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1')
-. (Join-Path $repoRoot 'tools/Update-UserAutomationMap.ps1')
 . (Join-Path $repoRoot 'tools/Test-GitHubLocalIndexConsistency.ps1')
 . (Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex.ps1')
 
@@ -386,24 +384,27 @@ if ($convergenceClassifier) {
     Assert-True ($unknownConvergence.next_action -match '继续追溯.*BLOCK') 'unknown state cannot become a permanent keep-for-later outcome'
 }
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-unit-' + [guid]::NewGuid().ToString('N'))
-try {
-    New-Item -ItemType Directory -Force -Path (Join-Path $tempRoot '.git') | Out-Null
-    Set-Content -LiteralPath (Join-Path $tempRoot '.git/config') -Value @'
-[remote "origin"]
-    url = https://github.com/wlyaaaaa/TURZX-SideScreen.git
-'@ -Encoding utf8
-    $rootConfigPaths = @(Get-GitConfigPaths -Roots @($tempRoot))
-    Assert-Equal (Join-Path $tempRoot '.git\config') $rootConfigPaths[0] 'discovers git config when scan root is repository'
-}
-finally {
-    if (Test-Path -LiteralPath $tempRoot) {
-        Remove-Item -LiteralPath $tempRoot -Recurse -Force
-    }
-}
-
 $seedDiscovery = Get-Command Get-GitRepositorySeedPaths -ErrorAction SilentlyContinue
 Assert-True ($null -ne $seedDiscovery) 'repository discovery exposes common-dir/worktree seed enumeration'
+$privateSeedRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-private-seed-' + [guid]::NewGuid().ToString('N'))
+try {
+    $cachedRepositoryPath = Join-Path $privateSeedRoot 'outside-canonical-root\project'
+    New-Item -ItemType Directory -Force -Path $cachedRepositoryPath | Out-Null
+    Write-GitHubIndexPrivateNavigationCache -RepoRoot $privateSeedRoot -Rows @([pscustomobject]@{
+        NameWithOwner = 'example/project'
+        NavigationPath = $cachedRepositoryPath
+        Visibility = 'PUBLIC'
+        DefaultBranch = 'main'
+    }) | Out-Null
+    $indexedRoots = @(Get-IndexedCloneScanRoots -RepoRoot $privateSeedRoot)
+    Assert-True ($indexedRoots -contains [System.IO.Path]::GetFullPath($cachedRepositoryPath)) `
+        'full discovery preserves known paths through the ignored private cache'
+}
+finally {
+    if (Test-Path -LiteralPath $privateSeedRoot) {
+        Remove-Item -LiteralPath $privateSeedRoot -Recurse -Force
+    }
+}
 Assert-True (-not (Test-IsExternallyGovernedGitHubRepository -Repo 'wlyaaaaa/PersonalOS')) 'retired PersonalOS remote is not externally governed'
 Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'X:\fixtures\PersonalOS-worktrees\fixture')) 'retired PersonalOS names do not suppress repository discovery'
 Assert-True (-not (Test-IsExternallyGovernedLocalPath -Path 'E:\PersonalOS')) 'retired PersonalOS product path has no active external-owner exclusion'
@@ -612,9 +613,48 @@ $frozenHistoryRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject
 Assert-True (-not $frozenHistoryRows[0].NeedsReview) 'live frozen history remains outside the action queue'
 Assert-Equal '' $frozenHistoryRows[0].QueueReason 'frozen historical refs do not create no-upstream noise'
 
+$historySummary = New-HistoricalRetentionSummaryRecord -BranchRecords @(
+    [pscustomobject]@{
+        branch = 'codex/private-detail-one'
+        historical_retention_owner = 'retirement owner'
+        historical_retention_purpose = 'preserve Git-only evidence'
+        historical_retention_exit_condition = 'explicit owner retirement'
+    },
+    [pscustomobject]@{
+        branch = 'codex/private-detail-two'
+        historical_retention_owner = 'retirement owner'
+        historical_retention_purpose = 'preserve Git-only evidence'
+        historical_retention_exit_condition = 'explicit owner retirement'
+    }
+) -ClonePath 'E:\retired-fixture' -Repo 'example/retired' -RemoteMode live
+Assert-Equal 2 $historySummary.HistoricalRefCount 'frozen history emits one bounded ref count'
+Assert-True ($historySummary.State -match 'ref_count=2.*owner=.*purpose=.*exit_condition=') `
+    'frozen history summary carries only owner, purpose, count, and exit semantics'
+Assert-True (-not ($historySummary.State -match 'private-detail')) `
+    'frozen history summary never expands exact ref names'
+$inconsistentHistoryRejected = $false
+try {
+    New-HistoricalRetentionSummaryRecord -BranchRecords @(
+        [pscustomobject]@{
+            historical_retention_owner = 'owner one'
+            historical_retention_purpose = 'purpose'
+            historical_retention_exit_condition = 'exit'
+        },
+        [pscustomobject]@{
+            historical_retention_owner = 'owner two'
+            historical_retention_purpose = 'purpose'
+            historical_retention_exit_condition = 'exit'
+        }
+    ) -ClonePath 'E:\retired-fixture' -Repo 'example/retired' | Out-Null
+}
+catch {
+    $inconsistentHistoryRejected = $true
+}
+Assert-True $inconsistentHistoryRejected 'frozen history fails closed on ambiguous retention ownership'
+
 $pinnedRows = @(ConvertTo-GitHubIndexRows -Repositories @([pscustomobject]@{
     nameWithOwner = 'wlyaaaaa/pinned-demo'
-    visibility = 'PRIVATE'
+    visibility = 'PUBLIC'
     url = 'https://github.com/wlyaaaaa/pinned-demo'
     defaultBranchRef = [pscustomobject]@{ name = 'main' }
     pushedAt = '2026-07-01T00:00:00Z'
@@ -664,7 +704,20 @@ try {
     Write-GitHubIndexDocuments -RepoRoot $documentRoot -Owner 'wlyaaaaa' -Rows $rows
     $overviewPath = Join-Path $documentRoot '00_总览/GitHub总览.md'
     $overviewText = Get-Content -LiteralPath $overviewPath -Raw -Encoding utf8
-    Assert-True ($overviewText -match '\| 2 \| 1 \| 1 \| 1 \|') 'overview counts come from the same repository row set'
+    Assert-True ($overviewText -match '\| 2 \| 1 \| 1 \| 1 \| 1 \|') `
+        'overview retains account totals while aggregating private repositories'
+    Assert-True ($overviewText.Contains('owner=github-local-index') -and
+        $overviewText.Contains('authoritative=false') -and
+        $overviewText.Contains('freshness=as_of_observed_at') -and
+        $overviewText.Contains('expires_after=next_successful_refresh')) `
+        'generated documents declare owner, authority, freshness, and expiry metadata'
+    $publicIndexText = Get-Content -LiteralPath (Join-Path $documentRoot '01_仓库索引/GitHub仓库索引.md') -Raw -Encoding utf8
+    Assert-True (-not $publicIndexText.Contains('wlyaaaaa/Key')) `
+        'public projection does not reveal private repository identities'
+    Assert-True (-not ($publicIndexText -match '(?i)[A-Z]:\\')) `
+        'public projection does not reveal drive-qualified clone paths'
+    Assert-True ($publicIndexText.Contains('本机已发现 clone（路径不公开）')) `
+        'public projection retains useful clone-presence experience without a machine path'
     $dashboardPath = Join-Path $documentRoot '00_总览/当前同步看板.md'
     $dashboardText = Get-Content -LiteralPath $dashboardPath -Raw -Encoding utf8
     Assert-True ($dashboardText.Contains('不确定性会影响决策时，按需用')) 'generated dashboard makes admission conditional on decision-relevant uncertainty'
@@ -677,6 +730,8 @@ try {
     Assert-True ($pinnedBranchText.Contains('## 无行动项')) 'pinned-only repository is grouped as no-action, not synchronized'
     Assert-True (-not $pinnedBranchText.Contains('## 已同步')) 'pinned-only repository is never labeled synchronized by its section'
     Assert-True ($pinnedBranchText.Contains('wlyaaaaa/pinned-demo') -and $pinnedBranchText.Contains('pinned detached')) 'pinned-only grouping retains explicit snapshot state'
+    Assert-True (-not ($pinnedBranchText -match '(?i)[A-Z]:\\')) `
+        'public pinned-snapshot view preserves state without publishing its worktree path'
 }
 finally {
     if (Test-Path -LiteralPath $documentRoot) { Remove-Item -LiteralPath $documentRoot -Recurse -Force }
@@ -687,30 +742,6 @@ $sortedRows = @(Sort-GitHubIndexRows @(
     [pscustomobject]@{ NameWithOwner = 'wlyaaaaa/alpha' }
 ))
 Assert-Equal 'wlyaaaaa/alpha' $sortedRows[0].NameWithOwner 'sorts repository rows deterministically'
-
-$normalTask = ConvertTo-TaskResultAssessment -LastTaskResult 0
-$interruptedTask = ConvertTo-TaskResultAssessment -LastTaskResult 3221225786
-Assert-Equal '正常' $normalTask.Severity 'classifies zero task result'
-Assert-Equal '异常' $interruptedTask.Severity 'classifies interrupted task result'
-Assert-True ($interruptedTask.Summary -match '中断') 'explains interrupted task result'
-
-$userTask = [pscustomobject]@{
-    TaskName = 'Demo Backup'
-    TaskPath = '\'
-    Actions = @([pscustomobject]@{
-        Execute = 'wscript.exe'
-        Arguments = '"E:\Projects\Tools\demo\backup.ps1" --token should-not-appear'
-    })
-}
-$actionSummary = Get-PublicActionSummary -Task $userTask
-Assert-True ($actionSummary -match 'wscript\.exe') 'keeps executable name in public task summary'
-Assert-True ($actionSummary -match 'backup\.ps1') 'keeps only the script leaf name in public task summary'
-Assert-True (-not ($actionSummary -match '[A-Z]:\\')) 'public task summary omits drive-qualified action paths'
-Assert-True (-not ($actionSummary -match 'should-not-appear')) 'drops task arguments after the script path'
-$internalPathHint = Get-RelatedPathHint -TaskName $userTask.TaskName -ActionSummary ((Get-TaskActionTexts -Task $userTask) -join ' ')
-Assert-Equal 'E:\Projects\Tools\demo' $internalPathHint 'keeps full paths only in memory for repository coverage matching'
-Assert-Equal '有运行记录' (Get-PublicLastRunLabel -LastRunTime ([datetime]'2026-07-09T12:00:00')) 'public task map redacts exact last-run timestamps'
-Assert-Equal '已计划' (Get-PublicNextRunLabel -State 'Ready' -NextRunTime ([datetime]'2026-07-09T23:10:00')) 'public task map redacts exact next-run timestamps'
 
 $generatedPaths = @(Get-GitHubLocalIndexGeneratedDocumentPaths)
 Assert-True ($generatedPaths -contains '00_总览\GitHub总览.md') 'consistency coverage includes GitHub overview'
@@ -751,6 +782,8 @@ finally {
 $updateSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Update-GitHubIndex.ps1') -Raw -Encoding utf8
 Assert-True ($updateSource -match 'GitHubIndex\.Core\.psm1') 'index generator imports the shared admission core'
 Assert-True ($updateSource -match 'Get-ProjectAdmissionRecord') 'index generator consumes admission records'
+Assert-True ($updateSource -match 'Get-GitHubIndexPrivateNavigationEntries') `
+    'index discovery consumes the ignored private navigation cache instead of public Markdown paths'
 Assert-True (-not ($updateSource -match 'PCConfig v0\.1|GitHub-indexed 项目迁移|计划任务治理')) 'Git index dashboard does not embed machine-configuration milestones'
 Assert-True ($updateSource -match 'UtcNow\.AddHours\(8\)') 'Git index document date uses China time'
 Assert-True (-not ($updateSource -match 'C:\\Users\\10979|G:\\')) 'index generator derives default scan roots from Git-owned facts'
@@ -1025,15 +1058,6 @@ finally {
     }
 }
 
-$scheduledTaskSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Update-ScheduledTaskHealth.ps1') -Raw -Encoding utf8
-Assert-True (-not ($scheduledTaskSource -match 'PurposeCatalogPath|E:\\PCConfig')) 'task health generator does not embed PCConfig registry paths'
-Assert-True ($scheduledTaskSource -match 'UtcNow\.AddHours\(8\)') 'task health document date uses China time'
-
-$automationSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Update-UserAutomationMap.ps1') -Raw -Encoding utf8
-Assert-True (-not ($automationSource -match 'E:\\Projects\\(?:Backups|Tools|Decisions)|C:\\Users\\10979|32100')) 'automation map does not embed mutable project paths or ports'
-Assert-True (-not ($automationSource -match 'rtx5090d-ollama-agent-bundle|steam-millennium-config-backup|OpenClawGateway|WeFlowBridge|TimeAudit')) 'automation map does not embed project-specific task policy'
-Assert-True ($automationSource -match 'UtcNow\.AddHours\(8\)') 'automation document date uses China time'
-
 $hookPath = Join-Path $repoRoot 'tools/Install-GitHook.ps1'
 $hookTokens = $null
 $hookErrors = $null
@@ -1211,24 +1235,6 @@ if ($hookParameters -contains 'RepoPath') {
     }
 }
 
-$registerPath = Join-Path $repoRoot 'tools/Register-GitHubLocalIndexRefreshTask.ps1'
-$registerTokens = $null
-$registerErrors = $null
-$registerAst = [System.Management.Automation.Language.Parser]::ParseFile($registerPath, [ref] $registerTokens, [ref] $registerErrors)
-$registerParameters = @($registerAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-Assert-True ($registerParameters -contains 'Json') 'task registration dry-run exposes JSON output'
-Assert-True ($registerParameters -contains 'Apply') 'task registration requires an explicit apply switch for live mutation'
-$registerSource = Get-Content -LiteralPath $registerPath -Raw -Encoding utf8
-Assert-True ($registerSource -match 'Get-GitHubLocalIndexTaskDefinition') 'task registration separates definition from live apply'
-if ($registerParameters -contains 'Json' -and $registerParameters -contains 'Apply') {
-    $definitionJson = @(& pwsh -NoProfile -ExecutionPolicy Bypass -File $registerPath -CheckOnly -Json 2>&1)
-    Assert-Equal 0 $LASTEXITCODE 'task definition dry-run succeeds without registration'
-    $definition = ($definitionJson -join "`n") | ConvertFrom-Json
-    Assert-Equal 'GitHubLocalIndex Consistency Check' $definition.task_name 'dry-run targets the read-only consistency task'
-    Assert-True ($definition.action.arguments -match 'Refresh-GitHubLocalIndex-Hidden\.vbs"\s+-CheckOnly$') 'dry-run action must invoke the hidden launcher with the explicit -CheckOnly token'
-    Assert-True (-not ($definition.action.arguments -match 'Refresh-GitHubLocalIndex\.ps1|commit|push')) 'dry-run action cannot invoke write refresh, commit or push'
-}
-
 $hiddenLauncherSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Refresh-GitHubLocalIndex-Hidden.vbs') -Raw -Encoding utf8
 Assert-True ($hiddenLauncherSource -match 'Test-GitHubLocalIndexConsistency\.ps1') 'hidden task launcher calls the read-only consistency script'
 Assert-True (-not ($hiddenLauncherSource -match 'Refresh-GitHubLocalIndex\.ps1')) 'hidden task launcher cannot call the write refresh wrapper'
@@ -1293,6 +1299,7 @@ try {
         Visibility = 'PUBLIC'
         DefaultBranch = 'main'
         LocalPath = 'E:\GitHub总索引'
+        NavigationPath = 'E:\GitHub总索引'
         LocalState = '`main` 已同步，`0/0`，脏工作区 2 项'
         NextAction = 'review public exposure'
         HasLocalClone = $true
@@ -1307,6 +1314,10 @@ try {
     }))[0]
     Assert-Equal 2 $selfDocumentRow.DirtyCount 'document rows retain real self-index dirty count'
     Assert-True ($selfDocumentRow.LocalState -match '脏工作区 2 项') 'document rows retain real self-index dirty state'
+    Assert-Equal '本机已发现 clone（路径不公开）' $selfDocumentRow.LocalPath `
+        'document rows replace exact machine paths with a public-safe presence label'
+    Assert-True (-not ($selfDocumentRow.PSObject.Properties.Name -contains 'NavigationPath')) `
+        'private navigation fields never enter public document rows'
 }
 finally {
     if (Test-Path -LiteralPath $compareRoot) {

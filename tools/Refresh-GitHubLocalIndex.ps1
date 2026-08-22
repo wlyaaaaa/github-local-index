@@ -12,6 +12,7 @@
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.PrivateNavigation.psm1') -Force
 
 $logDir = Join-Path $RepoRoot '99_private\logs'
 $logPath = Join-Path $logDir 'GitHubLocalIndexRefresh.log'
@@ -60,31 +61,10 @@ function Resolve-IndexedClonePath {
         return $null
     }
 
-    $indexPath = Join-Path $RepoRoot '01_仓库索引\本地clone索引.md'
-    if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
-        return $null
+    $navigation = Get-GitHubIndexPrivateRepositoryNavigation -RepoRoot $RepoRoot -Repo $normalizedRepo
+    if ($navigation.status -eq 'current') {
+        return [string] $navigation.path
     }
-
-    foreach ($line in Get-Content -LiteralPath $indexPath) {
-        if ($line -notmatch '^\|\s*(?<repo>[^|]+?)\s*\|\s*(?<path>[^|]+?)\s*\|') {
-            continue
-        }
-
-        $rowRepo = Normalize-RefreshRepoSlug $matches['repo']
-        if ($rowRepo -ne $normalizedRepo) {
-            continue
-        }
-
-        $paths = @([string] $matches['path'] -split '<br>' | ForEach-Object { $_.Trim(' ', '`') } | Where-Object { $_ })
-        foreach ($path in $paths) {
-            if (Test-Path -LiteralPath $path -PathType Container) {
-                return $path
-            }
-        }
-
-        return ($paths | Select-Object -First 1)
-    }
-
     return $null
 }
 
@@ -119,7 +99,7 @@ function Invoke-FastRepositoryRefresh {
     }
 
     if ([string]::IsNullOrWhiteSpace($targetPath)) {
-        throw "Cannot resolve local clone path for repo '$Repo'."
+        throw "Cannot resolve local clone path for repo '$Repo'. Run a full refresh to rebuild the ignored private navigation cache, or pass -RepoPath for bootstrap."
     }
 
     if (-not (Test-Path -LiteralPath $targetPath -PathType Container)) {
@@ -343,11 +323,7 @@ function Get-RefreshGeneratedDocumentPaths {
         '01_仓库索引/未发现本地clone.md',
         '02_同步诊断/未推送队列.md',
         '02_同步诊断/工作区脏状态.md',
-        '02_同步诊断/分支与远端诊断.md',
-        '04_计划任务/计划任务健康摘要.md',
-        '04_计划任务/计划任务异常清单.md',
-        '04_计划任务/用户自动化任务地图.md',
-        '04_计划任务/仓库计划任务建议.md'
+        '02_同步诊断/分支与远端诊断.md'
     )
 }
 
@@ -826,8 +802,8 @@ function Publish-GitHubLocalIndexGeneration {
         integrity_authoritative_for_generation = $true
         decision_authority = $false
         as_of_observed_at = $ObservedAt
-        owner = 'E:\GitHub总索引'
-        source = 'validated temporary generation from GitHub/PCConfig-owned providers'
+        owner = 'github-local-index'
+        source = 'validated temporary generation from Git and GitHub owner providers'
         documents = @($documents)
     }
     $generationManifestPath = Join-Path $generationIncomingDirectory 'manifest.json'
@@ -885,7 +861,7 @@ function Publish-GitHubLocalIndexGeneration {
         integrity_authoritative_for_generation = $true
         decision_authority = $false
         as_of_observed_at = $ObservedAt
-        owner = 'E:\GitHub总索引'
+        owner = 'github-local-index'
         generation_root = ('00_总览/generations/' + $GenerationId)
         generation_manifest_sha256 = $generationManifestHash
         projection_role = 'compatibility_only'
@@ -945,14 +921,6 @@ function Invoke-AtomicGitHubLocalIndexRefresh {
         Invoke-RefreshStep 'GitHub repository index (temporary generation)' {
             & (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') `
                 -RepoRoot $RepoRoot -OutputRoot $generationRoot -GenerationId $generationId -ObservedAt $observedAt -SkipFetch | Out-Null
-        }
-        Invoke-RefreshStep 'scheduled task health (temporary generation)' {
-            & (Join-Path $RepoRoot 'tools\Update-ScheduledTaskHealth.ps1') `
-                -RepoRoot $RepoRoot -OutputRoot $generationRoot -GenerationId $generationId -ObservedAt $observedAt | Out-Null
-        }
-        Invoke-RefreshStep 'user automation map (temporary generation)' {
-            & (Join-Path $RepoRoot 'tools\Update-UserAutomationMap.ps1') `
-                -RepoRoot $RepoRoot -OutputRoot $generationRoot -GenerationId $generationId -ObservedAt $observedAt | Out-Null
         }
         $publication = Publish-GitHubLocalIndexGeneration `
             -GenerationRoot $generationRoot `

@@ -270,31 +270,12 @@ foreach ($duplicateHeading in @('## 禁止进入公开仓库', '## 可以进入�
 }
 
 $derivedMachineDocuments = @(
-    '02_同步诊断/本机配置状态.md',
-    '02_同步诊断/云端备份状态.md',
     '04_计划任务/用户自动化任务治理建议.md'
 )
 foreach ($relativePath in $derivedMachineDocuments) {
     $documentText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
     Assert-True ($documentText.Contains('authoritative=false')) "$relativePath is non-authoritative"
     Assert-True ($documentText.Contains('derived_from=')) "$relativePath declares its machine-fact owner"
-    Assert-True ($documentText.Contains('freshness=')) "$relativePath declares freshness"
-    Assert-True ($documentText.Contains('expires_after=')) "$relativePath declares expiry semantics"
-}
-
-$dynamicSnapshotDocuments = @(
-    '02_同步诊断/H盘U盘收尾状态.md',
-    '04_计划任务/计划任务健康摘要.md',
-    '04_计划任务/计划任务异常清单.md',
-    '04_计划任务/用户自动化任务地图.md',
-    '04_计划任务/仓库计划任务建议.md'
-)
-foreach ($relativePath in $dynamicSnapshotDocuments) {
-    $documentText = Get-Content -LiteralPath (Join-Path $repoRoot $relativePath) -Raw -Encoding utf8
-    Assert-True ($documentText.Contains('authoritative=false')) "$relativePath is non-authoritative"
-    Assert-True ($documentText.Contains('owner=')) "$relativePath declares an owner"
-    Assert-True ($documentText.Contains('source=')) "$relativePath declares a source"
-    Assert-True ($documentText.Contains('observed_at=')) "$relativePath declares observation time"
     Assert-True ($documentText.Contains('freshness=')) "$relativePath declares freshness"
     Assert-True ($documentText.Contains('expires_after=')) "$relativePath declares expiry semantics"
 }
@@ -314,9 +295,18 @@ foreach ($relativePath in $summaryDocuments) {
     }
 }
 
+$retiredDocumentationRoots = @('90_历史审计', 'docs/superpowers')
+foreach ($relativeRoot in $retiredDocumentationRoots) {
+    $retiredFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot $relativeRoot) -Recurse -File -ErrorAction SilentlyContinue)
+    Assert-Equal 0 $retiredFiles.Count "$relativeRoot cannot regain tracked or working-tree documents"
+}
+$rgIgnoreText = Get-Content -LiteralPath (Join-Path $repoRoot '.rgignore') -Raw -Encoding utf8
+Assert-True (-not $rgIgnoreText.Contains('/90_历史审计/')) 'rgignore cannot hide a recreated history-audit tree'
+Assert-True (-not $rgIgnoreText.Contains('/docs/superpowers/')) 'rgignore cannot hide recreated superpowers plans'
+
 $activeMarkdownFiles = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter '*.md' | Where-Object {
     $relativePath = $_.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
-    $relativePath -notmatch '^(?:99_private|docs/superpowers/plans|90_历史审计)/'
+    $relativePath -notmatch '^99_private/'
 })
 $absolutePathPcConfigRequirement = '(?im)^(?=[^\r\n]*涉及绝对路径)(?=[^\r\n]*PCConfig)(?=[^\r\n]*(?:必须|都应|应当|需要|需查询))[^\r\n]*$'
 $ordinaryRefreshRequirement = '(?im)^(?=[^\r\n]*(?:任何|普通))(?=[^\r\n]*(?:移动|归档|删除|总索引更新))(?=[^\r\n]*(?:刷新|refresh))(?=[^\r\n]*PCConfig)(?=[^\r\n]*(?:必须|都应|应当|需要|需查询))[^\r\n]*$'

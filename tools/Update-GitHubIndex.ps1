@@ -12,6 +12,7 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.PrivateNavigation.psm1') -Force
 
 $script:ExactGovernanceCloneRepo = 'wlyaaaaa/personalos-user-governance'
 $script:ExactGovernanceCloneRoot = [System.IO.Path]::GetFullPath(
@@ -448,6 +449,72 @@ function Get-RegisteredNecessaryRetentionState {
     }
 }
 
+function New-HistoricalRetentionSummaryRecord {
+    param(
+        [Parameter(Mandatory = $true)] [object[]] $BranchRecords,
+        [Parameter(Mandatory = $true)] [string] $ClonePath,
+        [Parameter(Mandatory = $true)] [string] $Repo,
+        [string[]] $ErrorReasons = @(),
+        [string] $RemoteMode = 'cached'
+    )
+
+    $records = @($BranchRecords)
+    if ($records.Count -eq 0) {
+        return $null
+    }
+    $owners = @($records | ForEach-Object {
+        [string] $_.historical_retention_owner
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $purposes = @($records | ForEach-Object {
+        [string] $_.historical_retention_purpose
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $exitConditions = @($records | ForEach-Object {
+        [string] $_.historical_retention_exit_condition
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    if ($owners.Count -ne 1 -or $purposes.Count -ne 1 -or $exitConditions.Count -ne 1) {
+        throw "Frozen-history metadata must have one owner, purpose, and exit condition: $Repo"
+    }
+
+    $owner = $owners[0]
+    $purpose = $purposes[0]
+    $exitCondition = $exitConditions[0]
+    return [pscustomobject]@{
+        Path = $ClonePath
+        Branch = '[历史 refs 汇总]'
+        Upstream = '[provider-only]'
+        Ahead = 0
+        Behind = 0
+        DirtyCount = 0
+        State = "ref_count=$($records.Count)；owner=$owner；purpose=$purpose；exit_condition=$exitCondition"
+        NextAction = '精确 refs 仅通过 Get-ProjectAdmission provider 按需读取；不写入公开投影'
+        IsDirty = $false
+        IsPinnedSnapshot = $false
+        PinnedSnapshotCommit = $null
+        PinnedObservedBehind = $null
+        IsNecessaryRetention = $false
+        RetentionOwner = $null
+        RetentionPurpose = $null
+        RetentionExitCondition = $null
+        HistoricalRetention = $true
+        HistoricalRefCount = $records.Count
+        HistoricalRetentionOwner = $owner
+        HistoricalRetentionPurpose = $purpose
+        HistoricalRetentionExitCondition = $exitCondition
+        IntegrationState = 'historical_retention'
+        IsDefaultBranch = $false
+        UniqueCommitsVsDefault = $null
+        MissingDefaultCommits = $null
+        RetirementCandidate = $false
+        NeedsReview = @($ErrorReasons).Count -gt 0
+        QueueReasons = @($ErrorReasons)
+        RemoteMode = $RemoteMode
+        IsBranchOnly = $true
+        IsHistoricalRetentionSummary = $true
+        ExternalGovernance = $false
+        GovernanceOwner = $null
+    }
+}
+
 function Get-BranchConvergenceDisposition {
     param(
         [ValidateSet('default', 'merged_ancestry', 'patch_equivalent', 'unmerged', 'unknown')]
@@ -551,82 +618,6 @@ function Get-BranchConvergenceDisposition {
     return [pscustomobject] $result
 }
 
-function Get-GitConfigPaths {
-    param([string[]] $Roots)
-
-    $existingRoots = @($Roots |
-        Where-Object { -not (Test-IsExternallyGovernedLocalPath -Path $_) } |
-        Where-Object { Test-Path -LiteralPath $_ })
-    if ($existingRoots.Count -eq 0) {
-        return @()
-    }
-
-    $rootConfigs = foreach ($root in $existingRoots) {
-        $configPath = Join-Path $root '.git\config'
-        if (Test-Path -LiteralPath $configPath) {
-            $configPath
-        }
-    }
-
-    if (Get-Command rg -ErrorAction SilentlyContinue) {
-        $args = @('--files', '--hidden', '--no-ignore')
-        $args += $existingRoots
-        $args += @(
-            '-g', '**/.git/config',
-            '-g', '!**/node_modules/**',
-            '-g', '!**/.cache/**'
-        )
-        $rgConfigs = @(& rg @args 2>$null | Where-Object { -not (Test-IsTransientGitConfigPath $_) })
-        return @(@($rootConfigs) + $rgConfigs | Sort-Object -Unique)
-    }
-
-    return @($rootConfigs | Sort-Object -Unique)
-}
-
-function Test-IsTransientGitConfigPath {
-    param([string] $ConfigPath)
-
-    $normalized = ([string] $ConfigPath) -replace '\\', '/'
-    $normalized = $normalized.ToLowerInvariant()
-    $transientFragments = @(
-        '/appdata/local/temp/',
-        '/.cache/',
-        '/node_modules/'
-    )
-
-    foreach ($fragment in $transientFragments) {
-        if ($normalized.Contains($fragment)) {
-            return $true
-        }
-    }
-
-    return $false
-}
-
-function Get-GitConfigRemoteSlugs {
-    param([string] $ConfigPath)
-
-    $content = Get-Content -LiteralPath $ConfigPath -ErrorAction SilentlyContinue
-    if (-not $content) {
-        return @()
-    }
-
-    $slugs = foreach ($line in $content) {
-        if ($line -match '^\s*url\s*=\s*(?<url>.+?)\s*$') {
-            Normalize-GitHubRepoSlug $matches['url']
-        }
-    }
-
-    return @($slugs | Where-Object { $_ } | Sort-Object -Unique)
-}
-
-function Get-RepoPathFromConfigPath {
-    param([string] $ConfigPath)
-
-    $gitDir = Split-Path -Parent $ConfigPath
-    return Split-Path -Parent $gitDir
-}
-
 function Get-GitRepositorySeedPaths {
     param([string[]] $Roots)
 
@@ -698,21 +689,14 @@ function Get-GitRepositorySeedPaths {
 function Get-IndexedCloneScanRoots {
     param([Parameter(Mandatory = $true)] [string] $RepoRoot)
 
-    $indexPath = Join-Path $RepoRoot '01_仓库索引/本地clone索引.md'
     $roots = [System.Collections.Generic.List[string]]::new()
-    if (Test-Path -LiteralPath $indexPath -PathType Leaf) {
-        foreach ($line in Get-Content -LiteralPath $indexPath -Encoding utf8) {
-            if ($line -notmatch '^\|\s*(?<repo>[^|]+/[^|]+?)\s*\|\s*(?<paths>[^|]+?)\s*\|') {
-                continue
-            }
-            if (Test-IsExternallyGovernedGitHubRepository -Repo $matches['repo'].Trim(' ', '`')) {
-                continue
-            }
-            foreach ($candidate in @($matches['paths'] -split '<br>')) {
-                $path = $candidate.Trim(' ', '`')
-                if ($path -and $path -ne '未发现本地 clone' -and (Test-Path -LiteralPath $path -PathType Container)) {
-                    $roots.Add([System.IO.Path]::GetFullPath($path))
-                }
+    $navigation = Get-GitHubIndexPrivateNavigationEntries -RepoRoot $RepoRoot
+    if ($navigation.status -eq 'current') {
+        foreach ($entry in @($navigation.entries)) {
+            if (-not (Test-IsExternallyGovernedGitHubRepository -Repo ([string] $entry.repo)) -and
+                -not (Test-IsExternallyGovernedLocalPath -Path ([string] $entry.path)) -and
+                (Test-Path -LiteralPath ([string] $entry.path) -PathType Container)) {
+                $roots.Add([string] $entry.path)
             }
         }
     }
@@ -720,9 +704,9 @@ function Get-IndexedCloneScanRoots {
         $roots.Add([System.IO.Path]::GetFullPath($RepoRoot))
     }
 
-    # The previous index is useful for preserving existing worktree paths, but it
-    # cannot discover a repository that was created under a newly adopted root.
-    # Seed every current canonical/compatibility root as well, then let the
+    # The ignored private cache preserves existing worktree paths, but it cannot
+    # discover a repository that was created under a newly adopted root. Seed
+    # every current canonical/compatibility root as well, then let the
     # repository map keep only remotes owned by the indexed GitHub account.
     $ownerVolumeRoot = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($RepoRoot))
     $canonicalCandidates = @(
@@ -782,11 +766,7 @@ function Get-GitHubIndexPublishableDirtyCount {
         '01_仓库索引\未发现本地clone.md',
         '02_同步诊断\未推送队列.md',
         '02_同步诊断\工作区脏状态.md',
-        '02_同步诊断\分支与远端诊断.md',
-        '04_计划任务\计划任务健康摘要.md',
-        '04_计划任务\计划任务异常清单.md',
-        '04_计划任务\用户自动化任务地图.md',
-        '04_计划任务\仓库计划任务建议.md'
+        '02_同步诊断\分支与远端诊断.md'
     )
     $generated = @{}
     foreach ($relativePath in $generatedPaths) {
@@ -879,6 +859,7 @@ function ConvertTo-GitHubIndexRows {
                 Visibility    = $visibility
                 DefaultBranch = $defaultBranch
                 LocalPath     = '外部治理（不读取本地路径）'
+                NavigationPath = $null
                 LocalState    = '仅保留 GitHub 目录事实'
                 NextAction    = '不行动；由外部治理 owner 维护'
                 HasLocalClone = $false
@@ -907,6 +888,7 @@ function ConvertTo-GitHubIndexRows {
                 Visibility    = $visibility
                 DefaultBranch = $defaultBranch
                 LocalPath     = '未发现本地 clone'
+                NavigationPath = $null
                 LocalState    = '无法评估本地变化'
                 NextAction    = Get-MissingCloneAction -NameWithOwner $name -Visibility $visibility
                 HasLocalClone = $false
@@ -988,6 +970,7 @@ function ConvertTo-GitHubIndexRows {
             Visibility    = $visibility
             DefaultBranch = $defaultBranch
             LocalPath     = $paths
+            NavigationPath = [string] $primary.Path
             LocalState    = $states
             NextAction    = $actions
             HasLocalClone = $true
@@ -1012,7 +995,24 @@ function ConvertTo-DocumentRows {
         [string] $Owner
     )
 
-    return @($Rows)
+    foreach ($row in @($Rows)) {
+        if ([string] $row.Visibility -ne 'PUBLIC') {
+            continue
+        }
+
+        $publicRow = [ordered]@{}
+        foreach ($property in @($row.PSObject.Properties)) {
+            $publicRow[$property.Name] = $property.Value
+        }
+        $publicRow.Remove('NavigationPath')
+        $publicRow['LocalPath'] = if ([bool] $row.HasLocalClone) {
+            '本机已发现 clone（路径不公开）'
+        }
+        else {
+            '未发现本地 clone'
+        }
+        [pscustomobject] $publicRow
+    }
 }
 
 function Get-GitHubRepositories {
@@ -1303,8 +1303,16 @@ function Resolve-CloneStatuses {
                     GovernanceOwner = $governanceOwner
                 }
             }
-            foreach ($branchRecord in @($admission.branches | Where-Object {
+            $branchRecords = @($admission.branches | Where-Object {
                 -not $_.has_worktree -and -not $_.is_default_branch
+            })
+            $historicalBranchRecords = @($branchRecords | Where-Object {
+                $null -ne $_.PSObject.Properties['historical_retention'] -and
+                [bool] $_.historical_retention
+            })
+            foreach ($branchRecord in @($branchRecords | Where-Object {
+                $null -eq $_.PSObject.Properties['historical_retention'] -or
+                -not [bool] $_.historical_retention
             })) {
                 $branchIntegrationState = if ([string]::IsNullOrWhiteSpace([string] $branchRecord.integration_state)) {
                     'unknown'
@@ -1320,32 +1328,11 @@ function Resolve-CloneStatuses {
                 else {
                     $null
                 }
-                $branchHistoricalRetention = $null -ne $branchRecord.PSObject.Properties['historical_retention'] -and
-                    [bool] $branchRecord.historical_retention
-                $branchHistoricalRetentionOwner = if ($branchHistoricalRetention) {
-                    [string] $branchRecord.historical_retention_owner
-                }
-                else {
-                    $null
-                }
-                $branchHistoricalRetentionPurpose = if ($branchHistoricalRetention) {
-                    [string] $branchRecord.historical_retention_purpose
-                }
-                else {
-                    $null
-                }
-                $branchHistoricalRetentionExitCondition = if ($branchHistoricalRetention) {
-                    [string] $branchRecord.historical_retention_exit_condition
-                }
-                else {
-                    $null
-                }
                 $branchConvergence = Get-BranchConvergenceDisposition `
                     -IntegrationState $branchIntegrationState `
                     -IsDefaultBranch:$false `
                     -DirtyCount 0 `
-                    -HasWorktree:$false `
-                    -HistoricalRetention:$branchHistoricalRetention
+                    -HasWorktree:$false
                 $branchRefLabel = if ($branchRecord.ref_kind -eq 'remote_tracking') {
                     'remote-tracking branch ref'
                 }
@@ -1354,9 +1341,6 @@ function Resolve-CloneStatuses {
                 }
                 $branchState = if ($branchExternalGovernance) {
                     "``$($branchRecord.branch)`` 由 $branchGovernanceOwner 专门 owner 治理，不纳入 Codex 收敛判断"
-                }
-                elseif ($branchHistoricalRetention) {
-                    "``$($branchRecord.branch)`` 是冻结仓库历史 ref；保留独有提交，不回灌默认分支且不自动删除；owner：$branchHistoricalRetentionOwner"
                 }
                 elseif ($branchIntegrationState -eq 'unmerged') {
                     $missingText = if ($null -ne $branchRecord.missing_default_commits) {
@@ -1375,7 +1359,7 @@ function Resolve-CloneStatuses {
                 }
                 $branchState += "（$($admission.remote_mode)）"
                 $branchQueueReasons = [System.Collections.Generic.List[string]]::new()
-                if (-not $branchExternalGovernance -and -not $branchHistoricalRetention) {
+                if (-not $branchExternalGovernance) {
                     if (-not [string]::IsNullOrWhiteSpace([string] $branchConvergence.queue_reason)) {
                         $branchQueueReasons.Add([string] $branchConvergence.queue_reason)
                     }
@@ -1406,9 +1390,6 @@ function Resolve-CloneStatuses {
                     elseif ($repoErrorReasons.Count -gt 0) {
                         '远端观察失败；当前仅使用 cached 引用，需人工复查'
                     }
-                    elseif ($branchHistoricalRetention) {
-                        "保留冻结仓库历史 ref；不回灌默认分支，不自动删除；退出条件：$branchHistoricalRetentionExitCondition"
-                    }
                     else {
                         [string] $branchConvergence.next_action
                     }
@@ -1420,19 +1401,19 @@ function Resolve-CloneStatuses {
                     RetentionOwner = $null
                     RetentionPurpose = $null
                     RetentionExitCondition = $null
-                    HistoricalRetention = $branchHistoricalRetention
-                    HistoricalRetentionOwner = $branchHistoricalRetentionOwner
-                    HistoricalRetentionPurpose = $branchHistoricalRetentionPurpose
-                    HistoricalRetentionExitCondition = $branchHistoricalRetentionExitCondition
+                    HistoricalRetention = $false
+                    HistoricalRetentionOwner = $null
+                    HistoricalRetentionPurpose = $null
+                    HistoricalRetentionExitCondition = $null
                     IntegrationState = $branchIntegrationState
                     IsDefaultBranch = $false
                     UniqueCommitsVsDefault = $branchRecord.unique_commits_vs_default
                     MissingDefaultCommits = $branchRecord.missing_default_commits
-                    RetirementCandidate = (-not $branchExternalGovernance) -and (-not $branchHistoricalRetention) -and
+                    RetirementCandidate = (-not $branchExternalGovernance) -and
                         [bool] $branchConvergence.retirement_candidate
                     NeedsReview = (-not $branchExternalGovernance) -and (
                         $repoErrorReasons.Count -gt 0 -or
-                        ((-not $branchHistoricalRetention) -and [bool] $branchConvergence.needs_review) -or
+                        [bool] $branchConvergence.needs_review -or
                         $admission.remote_mode -eq 'cached'
                     )
                     QueueReasons = @($branchQueueReasons)
@@ -1441,6 +1422,14 @@ function Resolve-CloneStatuses {
                     ExternalGovernance = $branchExternalGovernance
                     GovernanceOwner = $branchGovernanceOwner
                 }
+            }
+            if ($historicalBranchRecords.Count -gt 0) {
+                New-HistoricalRetentionSummaryRecord `
+                    -BranchRecords $historicalBranchRecords `
+                    -ClonePath $clone.Path `
+                    -Repo $name `
+                    -ErrorReasons $repoErrorReasons `
+                    -RemoteMode $admission.remote_mode
             }
         }
 
@@ -1501,27 +1490,39 @@ function Write-GitHubIndexDocuments {
     if (-not [string]::IsNullOrWhiteSpace($GenerationId) -and [string]::IsNullOrWhiteSpace($ObservedAt)) {
         $ObservedAt = [DateTimeOffset]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     }
-    $generationHeader = if ([string]::IsNullOrWhiteSpace($GenerationId)) {
-        @()
+    $resolvedObservedAt = if ([string]::IsNullOrWhiteSpace($ObservedAt)) {
+        'not_recorded'
     }
     else {
-        @(
-            "<!-- generation_id=$GenerationId -->",
-            "<!-- observed_at=$ObservedAt -->",
-            ''
-        )
+        $ObservedAt
     }
+    $metadataHeader = @(
+        '<!-- document_role=derived_public_projection -->',
+        '<!-- owner=github-local-index -->',
+        '<!-- authoritative=false -->',
+        '<!-- source=git_and_github_owner_providers -->',
+        '<!-- freshness=as_of_observed_at -->',
+        '<!-- expires_after=next_successful_refresh -->',
+        "<!-- observed_at=$resolvedObservedAt -->"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($GenerationId)) {
+        $metadataHeader += "<!-- generation_id=$GenerationId -->"
+    }
+    $metadataHeader += ''
 
-    $Rows = @(Sort-GitHubIndexRows (ConvertTo-DocumentRows -Rows $Rows -Owner $Owner))
+    $sourceRows = @(Sort-GitHubIndexRows $Rows)
+    $privateRepositoryCount = @($sourceRows | Where-Object { [string] $_.Visibility -eq 'PRIVATE' }).Count
+    $Rows = @(Sort-GitHubIndexRows (ConvertTo-DocumentRows -Rows $sourceRows -Owner $Owner))
     $date = [DateTime]::UtcNow.AddHours(8).ToString('yyyy-MM-dd')
-    $total = $Rows.Count
+    $total = $sourceRows.Count
+    $publicTotal = $Rows.Count
     $localRows = @($Rows | Where-Object { $_.HasLocalClone } | Sort-Object NameWithOwner)
     $missingRows = @($Rows | Where-Object { -not $_.HasLocalClone } | Sort-Object NameWithOwner)
     $queueRows = @($Rows | Where-Object { $_.HasLocalClone -and $_.NeedsReview } | Sort-Object NameWithOwner)
     $noActionRows = @($Rows | Where-Object { $_.HasLocalClone -and -not $_.NeedsReview } | Sort-Object NameWithOwner)
     $dirtyRows = @($Rows | Where-Object { $_.DirtyCount -gt 0 } | Sort-Object NameWithOwner)
 
-    $overviewLines = @($generationHeader + @(
+    $overviewLines = @($metadataHeader + @(
         '# GitHub 总览',
         '',
         "更新时间：$date",
@@ -1530,9 +1531,9 @@ function Write-GitHubIndexDocuments {
         '',
         '## 当前计数',
         '',
-        '| GitHub 仓库 | 已发现本地 clone | 未发现 clone | 当前审核队列 |',
-        '|---|---|---|---|',
-        "| $total | $($localRows.Count) | $($missingRows.Count) | $($queueRows.Count) |",
+        '| 账户仓库总数 | PUBLIC 明细 | PRIVATE 汇总（不展开） | PUBLIC 已发现 clone | PUBLIC 审核队列 |',
+        '|---|---|---|---|---|',
+        "| $total | $publicTotal | $privateRepositoryCount | $($localRows.Count) | $($queueRows.Count) |",
         '',
         '## 发布边界',
         '',
@@ -1540,24 +1541,22 @@ function Write-GitHubIndexDocuments {
         '- 公开仓库在提交前执行暴露面审查，不记录 secret 值、原始日志、任务 XML 或私有 payload。',
         '- Git 与 GitHub 事实由本仓库维护；机器路径、计划任务配置和恢复事实由 PCConfig 维护。',
         '',
-        '## 历史审计',
-        '',
-        '- [2026-07-05 GitHub 仓库与计划任务审计](../90_历史审计/2026/2026-07-05-GitHub仓库与计划任务审计.md)'
+        '历史实现、旧快照和已完成审计只保留在 Git 历史中，不进入当前默认阅读面。'
     ))
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '00_总览/GitHub总览.md') -Lines $overviewLines
 
-    $indexLines = @($generationHeader + @(
+    $indexLines = @($metadataHeader + @(
         '# GitHub 仓库索引',
         '',
         "更新时间：$date",
         '',
-        "当前 ``$Owner`` 账号共有 $total 个仓库。本文件由 ``tools/Update-GitHubIndex.ps1`` 刷新。",
+        "当前 ``$Owner`` 账号共有 $total 个仓库；仅展开 $publicTotal 个 PUBLIC 仓库，$privateRepositoryCount 个 PRIVATE 仓库只计数。本文件由 ``tools/Update-GitHubIndex.ps1`` 刷新。",
         ''
     ))
     $indexLines += New-MarkdownTable -Headers @('GitHub 仓库', '可见性', '默认分支', '本地路径', '本地状态', '下次动作') -Properties @('NameWithOwner', 'Visibility', 'DefaultBranch', 'LocalPath', 'LocalState', 'NextAction') -Rows $Rows
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '01_仓库索引/GitHub仓库索引.md') -Lines $indexLines
 
-    $cloneLines = @($generationHeader + @(
+    $cloneLines = @($metadataHeader + @(
         '# 本地 Clone 索引',
         '',
         "更新时间：$date",
@@ -1568,7 +1567,7 @@ function Write-GitHubIndexDocuments {
     $cloneLines += New-MarkdownTable -Headers @('GitHub 仓库', '本地路径', '状态') -Properties @('NameWithOwner', 'LocalPath', 'LocalState') -Rows $localRows
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '01_仓库索引/本地clone索引.md') -Lines $cloneLines
 
-    $missingLines = @($generationHeader + @(
+    $missingLines = @($metadataHeader + @(
         '# 未发现本地 Clone',
         '',
         "更新时间：$date",
@@ -1582,10 +1581,10 @@ function Write-GitHubIndexDocuments {
         $missingLines += '当前没有未发现本地 clone 的 GitHub 仓库。'
     }
     $missingLines += ''
-    $missingLines += '说明：`Key` 仓库可 clone 到受管私有路径，但 checkout 只允许密文和公开安全说明；解密明文、口令与密钥文件不得进入仓库。'
+    $missingLines += '说明：PRIVATE 仓库不在公开投影中展开；精确 identity 与本机路径只通过受保护 owner/provider 按需读取。'
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '01_仓库索引/未发现本地clone.md') -Lines $missingLines
 
-    $queueLines = @($generationHeader + @(
+    $queueLines = @($metadataHeader + @(
         '# 未推送队列',
         '',
         "更新时间：$date",
@@ -1602,7 +1601,7 @@ function Write-GitHubIndexDocuments {
     }
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '02_同步诊断/未推送队列.md') -Lines $queueLines
 
-    $branchLines = @($generationHeader + @(
+    $branchLines = @($metadataHeader + @(
         '# 分支与远端诊断',
         '',
         "更新时间：$date",
@@ -1627,7 +1626,7 @@ function Write-GitHubIndexDocuments {
     }
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '02_同步诊断/分支与远端诊断.md') -Lines $branchLines
 
-    $dirtyLines = @($generationHeader + @(
+    $dirtyLines = @($metadataHeader + @(
         '# 工作区脏状态',
         '',
         "更新时间：$date",
@@ -1646,7 +1645,7 @@ function Write-GitHubIndexDocuments {
         [pscustomobject]@{
             NameWithOwner = '仓库总数'
             Visibility    = '-'
-            LocalState    = "$total 个 GitHub 仓库，$($localRows.Count) 个已发现本地 clone，$($missingRows.Count) 个未发现 clone"
+            LocalState    = "$total 个 GitHub 仓库；$publicTotal 个 PUBLIC 仓库展开，$privateRepositoryCount 个 PRIVATE 仓库仅计数"
             NextAction    = '持续刷新'
         },
         [pscustomobject]@{
@@ -1668,7 +1667,7 @@ function Write-GitHubIndexDocuments {
             NextAction    = '发现 secret、原始日志或私有 payload 时阻止发布'
         }
     )
-    $dashboardLines = @($generationHeader + @(
+    $dashboardLines = @($metadataHeader + @(
         '# 当前同步看板',
         '',
         "更新时间：$date",
@@ -1681,7 +1680,7 @@ function Write-GitHubIndexDocuments {
     $dashboardLines += '1. 当仓库 identity、worktree、sync 或 visibility 的不确定性会影响决策时，按需用 `tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -Json` 取得单仓库证据。'
     $dashboardLines += '2. 定期运行 `tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`；只读检查不得提交或推送。'
     $dashboardLines += '3. 对未推送队列中的公开仓库先做暴露面审查。'
-    $dashboardLines += '4. 对未发现 clone 的仓库决定是否进入统一目录或标记远端存档；`wlyaaaaa/Key` 仅允许受管私有 clone 和密文维护。'
+    $dashboardLines += '4. PRIVATE 仓库 identity、路径和状态仅通过 owner/provider 按需读取，不复制到公开 Markdown。'
     $dashboardLines += '5. 只有明确里程碑或索引事实变化时才记录 push milestone；普通推送不制造索引提交。'
     Set-GitHubIndexTextFile -Path (Join-Path $documentRoot '00_总览/当前同步看板.md') -Lines $dashboardLines
 }
@@ -1711,6 +1710,7 @@ function Invoke-UpdateGitHubIndex {
     $rows = @(Sort-GitHubIndexRows (ConvertTo-GitHubIndexRows -Repositories $repositories -CloneMap $cloneMap))
 
     if (-not $NoWrite) {
+        Write-GitHubIndexPrivateNavigationCache -RepoRoot $RepoRoot -Rows $rows -ObservedAt $ObservedAt
         Write-GitHubIndexDocuments -RepoRoot $RepoRoot -OutputRoot $OutputRoot -Owner $Owner -Rows $rows -GenerationId $GenerationId -ObservedAt $ObservedAt
     }
 

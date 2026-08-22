@@ -21,20 +21,47 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.Core.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.PrivateNavigation.psm1') -Force
 
 function Invoke-ProjectAdmissionCli {
-    Get-ProjectAdmissionRecord `
+    $effectiveRepoPath = $RepoPath
+    $effectiveVisibility = $Visibility
+    $effectiveDefaultBranch = $DefaultBranch
+    $navigation = [pscustomobject]@{ status = 'explicit'; path = $RepoPath }
+    if ([string]::IsNullOrWhiteSpace($effectiveRepoPath)) {
+        $navigationRepo = ConvertTo-GitHubRepoSlug $Repo
+        if ([string]::IsNullOrWhiteSpace($navigationRepo)) {
+            $navigationRepo = $Repo
+        }
+        $navigation = Get-GitHubIndexPrivateRepositoryNavigation -RepoRoot $IndexRoot -Repo $navigationRepo
+        if ($navigation.status -eq 'current') {
+            $effectiveRepoPath = [string] $navigation.path
+            if ([string]::IsNullOrWhiteSpace($effectiveVisibility)) {
+                $effectiveVisibility = [string] $navigation.visibility
+            }
+            if ([string]::IsNullOrWhiteSpace($effectiveDefaultBranch)) {
+                $effectiveDefaultBranch = [string] $navigation.default_branch
+            }
+        }
+    }
+
+    $record = Get-ProjectAdmissionRecord `
         -Repo $Repo `
-        -RepoPath $RepoPath `
-        -Visibility $Visibility `
-        -DefaultBranch $DefaultBranch `
-        -IndexRoot $IndexRoot `
+        -RepoPath $effectiveRepoPath `
+        -Visibility $effectiveVisibility `
+        -DefaultBranch $effectiveDefaultBranch `
+        -IndexRoot $null `
         -Fetch:$Fetch `
         -LiveMetadata:$LiveMetadata `
         -RefreshRefs:$RefreshRefs `
         -ForPublication:$ForPublication `
         -TargetWorktree $TargetWorktree `
         -TargetRef $TargetRef
+    if ($navigation.status -notin @('explicit', 'current') -and
+        @($record.reasons) -contains 'missing_repo_path') {
+        $record.reasons = @($record.reasons + ('private_navigation_cache_' + $navigation.status + '_bootstrap_required') | Sort-Object -Unique)
+    }
+    return $record
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

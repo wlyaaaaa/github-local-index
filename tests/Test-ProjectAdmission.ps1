@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $modulePath = Join-Path $repoRoot 'tools/GitHubIndex.Core.psm1'
+$privateNavigationModulePath = Join-Path $repoRoot 'tools/GitHubIndex.PrivateNavigation.psm1'
 $cliPath = Join-Path $repoRoot 'tools/Get-ProjectAdmission.ps1'
 $publicExposurePolicyPath = Join-Path $repoRoot 'tools/PublicExposurePolicy.psd1'
 $script:Failures = 0
@@ -49,6 +50,7 @@ if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf) -or
 }
 
 Import-Module $modulePath -Force
+Import-Module $privateNavigationModulePath -Force
 $admissionModule = Get-Module GitHubIndex.Core
 
 $publicExposurePolicy = Import-PowerShellDataFile -LiteralPath $publicExposurePolicyPath
@@ -632,6 +634,62 @@ try {
     Assert-Equal 0 @($navigationAdmission.worktrees).Count 'mismatched navigation path is not enumerated'
     Assert-True ($null -eq $navigationAdmission.visibility) 'Markdown visibility is not used when caller omits live metadata'
     Assert-True ($null -eq $navigationAdmission.default_branch) 'Markdown default branch is not used when caller omits live metadata'
+
+    $privateNavigationIndexRoot = Join-Path $tempRoot 'private-navigation-index'
+    $privateNavigationRows = @([pscustomobject]@{
+        NameWithOwner = 'example/project'
+        NavigationPath = $primaryPath
+        Visibility = 'PUBLIC'
+        DefaultBranch = 'main'
+    })
+    $privateCachePath = Write-GitHubIndexPrivateNavigationCache `
+        -RepoRoot $privateNavigationIndexRoot `
+        -Rows $privateNavigationRows `
+        -ObservedAt ([DateTimeOffset]::UtcNow.ToString('o'))
+    Assert-True ($privateCachePath -like '*99_private*repository-paths.json') `
+        'private repository navigation cache stays under the ignored private root'
+    $cachedWrapperJson = & pwsh -NoProfile -ExecutionPolicy Bypass -File $cliPath `
+        -Repo 'example/project' -IndexRoot $privateNavigationIndexRoot -Json
+    $cachedWrapperExit = $LASTEXITCODE
+    $cachedWrapper = $cachedWrapperJson | ConvertFrom-Json
+    Assert-Equal 0 $cachedWrapperExit 'admission wrapper resolves a repo from the private navigation cache'
+    Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) $cachedWrapper.local_root `
+        'private navigation cache preserves no-RepoPath admission behavior'
+    Assert-Equal 'PUBLIC' $cachedWrapper.visibility 'private navigation cache preserves cached visibility'
+    Assert-Equal 'main' $cachedWrapper.default_branch 'private navigation cache preserves cached default branch'
+
+    $privateCacheDocument = Get-Content -LiteralPath $privateCachePath -Raw -Encoding utf8 | ConvertFrom-Json
+    $privateCacheDocument.source = 'unverified_source'
+    Set-Content -LiteralPath $privateCachePath -Encoding utf8 -Value ($privateCacheDocument | ConvertTo-Json -Depth 6)
+    $invalidSourceNavigation = Get-GitHubIndexPrivateRepositoryNavigation `
+        -RepoRoot $privateNavigationIndexRoot -Repo 'example/project'
+    Assert-Equal 'invalid' $invalidSourceNavigation.status `
+        'private navigation cache rejects an unknown evidence source'
+
+    $privateCacheDocument.source = 'verified_git_origin_and_worktree_discovery'
+    $privateCacheDocument.entries = @($privateCacheDocument.entries) + @($privateCacheDocument.entries[0])
+    Set-Content -LiteralPath $privateCachePath -Encoding utf8 -Value ($privateCacheDocument | ConvertTo-Json -Depth 6)
+    $duplicateNavigation = Get-GitHubIndexPrivateRepositoryNavigation `
+        -RepoRoot $privateNavigationIndexRoot -Repo 'example/project'
+    Assert-Equal 'invalid' $duplicateNavigation.status `
+        'private navigation cache rejects duplicate repository identities'
+
+    $noCacheIndexRoot = Join-Path $tempRoot 'no-private-navigation-index'
+    New-Item -ItemType Directory -Path (Join-Path $noCacheIndexRoot '01_仓库索引') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $noCacheIndexRoot '01_仓库索引/GitHub仓库索引.md') -Encoding utf8 -Value @(
+        '| GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |',
+        '|---|---|---|---|---|---|',
+        "| example/project | PUBLIC | main | $primaryPath | stale public path | ignore |"
+    )
+    $noCacheWrapperJson = & pwsh -NoProfile -ExecutionPolicy Bypass -File $cliPath `
+        -Repo 'example/project' -IndexRoot $noCacheIndexRoot -Json
+    $noCacheWrapperExit = $LASTEXITCODE
+    $noCacheWrapper = $noCacheWrapperJson | ConvertFrom-Json
+    Assert-Equal 2 $noCacheWrapperExit 'missing private navigation cache fails closed'
+    Assert-True ($noCacheWrapper.reasons -contains 'private_navigation_cache_missing_bootstrap_required') `
+        'missing cache reports the recoverable full-refresh or explicit-RepoPath bootstrap'
+    Assert-True ($null -eq $noCacheWrapper.local_root) `
+        'admission wrapper never falls back to an absolute path in public Markdown'
 
     $singleBranchPath = Join-Path $tempRoot 'single-snapshot-branch'
     Invoke-TestGit -Path $tempRoot -Arguments @(

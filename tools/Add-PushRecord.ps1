@@ -13,6 +13,7 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+$script:PushRecordRetentionLimit = 50
 
 function ConvertTo-PushRecordMarkdownCell {
     param([Parameter(Mandatory = $true)] [string] $Value)
@@ -180,15 +181,29 @@ function Add-PushRecord {
 
         $newLines = [System.Collections.Generic.List[string]]::new()
         $inserted = $false
+        $recordCount = 0
         foreach ($line in $lines) {
             if ($line -like '更新时间：*') {
                 $newLines.Add("更新时间：$time")
             }
             else {
-                $newLines.Add($line)
+                if (-not $inserted -or $line -eq '| 时间 | 仓库 | 分支 | Commit | 决策理由 |' -or
+                    $line -eq '|---|---|---|---|---|') {
+                    $newLines.Add($line)
+                }
+                else {
+                    $cells = @(Get-PushRecordCells -Line $line)
+                    if ($cells.Count -ne 5 -or $recordCount -lt $script:PushRecordRetentionLimit) {
+                        $newLines.Add($line)
+                    }
+                    if ($cells.Count -eq 5) {
+                        $recordCount++
+                    }
+                }
                 if (-not $inserted -and $line -eq '|---|---|---|---|---|') {
                     $newLines.Add($newRow)
                     $inserted = $true
+                    $recordCount = 1
                 }
             }
         }

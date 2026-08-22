@@ -17,10 +17,10 @@
 
 ## 核心能力
 
-- `01_仓库索引/`：公开安全的 GitHub 仓库与本地 clone 索引。
+- `01_仓库索引/`：PUBLIC 仓库的公开安全摘要；PRIVATE identity 和本机绝对路径不展开。
 - `02_同步诊断/`：分支、远端、ahead/behind、worktree 和脏状态快照。
 - `03_推送决策/`：真正有长期价值的公开里程碑记录，不是每次 push 的流水账。
-- `04_计划任务/`：可公开的自动化健康摘要，不拥有完整任务配置。
+- `04_计划任务/`：只提供 owner 路由；计划任务运行态与恢复事实由 PCConfig 和 Task Scheduler 提供。
 - `05_规则与模板/`：公开发布与脱敏规则。
 - `tools/Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`：按需取得当前仓库身份、worktree、同步与 transport 的结构化证据，schema 保持 `github-local-index.project-admission.v1`。
 
@@ -55,6 +55,8 @@ Git transport readiness 与内容 publication 是两个不同判断。完整且�
 - `tests/Run-UnitTests.ps1`、`tests/Test-ProjectAdmission.ps1`、`tests/Test-ControlPlaneContracts.ps1`：验证工具行为与稳定合同。
 
 兼容工具可以继续被已有自动化调用，但兼容存在不等于推荐日常调用。只有仓库身份、路径、可见性、生成口径、公开门禁或明确里程碑等 owner 事实变化时才更新本索引；普通业务提交留在目标项目。
+
+完整 refresh 会原子更新 ignored `99_private/registries/repository-paths.json` 导航 cache。Admission 和 Fast refresh 只把它当作待验证路径提示，随后仍核对真实 `.git` origin；cache 缺失时传 `-RepoPath` 完成 bootstrap，或先运行完整 refresh。公开 Markdown 不再充当机器路径数据库。
 
 ## 持久化与代际边界
 

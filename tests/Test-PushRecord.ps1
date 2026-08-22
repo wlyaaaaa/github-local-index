@@ -149,6 +149,28 @@ try {
     $concurrentRows = @(Get-Content -LiteralPath $concurrentLog -Encoding utf8 | Where-Object { $_ -match '^\| .*\| example/concurrent \| main \| deadbee \|' })
     Assert-Equal 1 $concurrentRows.Count 'concurrent duplicate writers produce one valid row'
 
+    $boundedLog = Join-Path $tempRoot 'bounded.md'
+    $boundedLines = @(
+        '# Push records',
+        '',
+        '更新时间：2026-01-01 00:00:00 +08:00',
+        '',
+        '| 时间 | 仓库 | 分支 | Commit | 决策理由 |',
+        '|---|---|---|---|---|'
+    )
+    for ($index = 0; $index -lt 55; $index++) {
+        $boundedLines += '| 2026-01-01 00:00:00 +08:00 | example/bounded | main | {0} | old {1} |' -f $index.ToString('x7'), $index
+    }
+    Set-Content -LiteralPath $boundedLog -Encoding utf8 -Value $boundedLines
+    $boundedHandle = Start-PushRecordProcess -LogPath $boundedLog -Repo 'example/bounded' -Branch 'main' -Commit 'fffffff' -Reason 'newest retained milestone'
+    $bounded = Complete-PushRecordProcess -Handle $boundedHandle
+    Assert-Equal 0 $bounded.ExitCode 'bounded record write succeeds'
+    $boundedRows = @(Get-Content -LiteralPath $boundedLog -Encoding utf8 | Where-Object { $_ -match '^\| .*\| example/bounded \|' })
+    Assert-Equal 50 $boundedRows.Count 'milestone log retains at most fifty rows'
+    Assert-True ($boundedRows[0] -match '\| fffffff \|') 'newest milestone remains first after retention trim'
+    Assert-True (-not ((Get-Content -LiteralPath $boundedLog -Raw -Encoding utf8).Contains('| 0000031 | old 49 |'))) `
+        'records beyond the bounded current view remain only in Git history'
+
     $beforeRejected = (Get-FileHash -LiteralPath $concurrentLog -Algorithm SHA256).Hash
     $fakeSecret = 'ghp_' + ('x' * 36)
     $rejectHandle = Start-PushRecordProcess -LogPath $concurrentLog -Repo 'example/reject' -Branch 'main' -Commit 'face123' -Reason $fakeSecret

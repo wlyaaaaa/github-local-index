@@ -1,178 +1,154 @@
 # 我的 GitHub 项目管理指南
 
-> 面向用户的产品与设计说明｜更新：2026-07-26（中国时间 UTC+8）
+> 面向用户｜非执行规则、非动态事实权威、非 AI 默认上下文｜更新：2026-08-22（中国时间 UTC+8）
+>
+> AI 仅在用户明确要求解释、入门、维护本文档，或具名验收确实需要时按需读取。执行时以 `AGENTS.md`、owner-local 合同、当前 Git/GitHub 证据和实际候选差异为准。
 
-GitHub 总索引把这台电脑上分散的 Git 仓库变成可查询的公开安全视图：项目在哪里、远端和可见性是什么、分支与 worktree 状态怎样，以及准备发布时应关注哪些风险。它是能力和证据来源，不是每个项目任务必须逐站通过的流水线。
+GitHub 总索引把本机分散的 Git 仓库整理成一个公开安全的查询入口：项目在哪里、远端和可见性是什么、分支/worktree 是否同步，以及准备发布时有哪些真实风险。它提供能力和证据，不是每个项目任务必须逐站通过的流水线。
 
-## 1. 四个 owner 是按问题分派，不是线性审批链
+## 1. 三个控制面和具体项目
 
-```mermaid
-flowchart TB
-    U["你的目标"] --> M["模型判断当前缺少什么证据"]
-    M -->|"Agent 行为或能力"| A[".agents"]
-    M -->|"Git 身份、同步或发布"| G["GitHub 总索引"]
-    M -->|"机器事实影响决策"| C["PCConfig"]
-    M -->|"业务、代码或测试"| P["具体项目"]
-    A -. "按需组合" .-> P
-    G -. "按需组合" .-> P
-    C -. "按需组合" .-> P
-```
+| 负责方 | 负责内容 |
+|---|---|
+| `E:\.agents` | Agent 行为、skills/plugins 和能力路由 |
+| `E:\GitHub总索引` | 仓库身份、远端、可见性、同步诊断和公开发布边界 |
+| `E:\PCConfig` | 路径迁移、计划任务、端口、运行时、本机数据和恢复 |
+| 具体项目 | 业务语义、源码、项目规则、测试和部署 |
 
-- `E:\.agents` 拥有 AI 行为、skills/plugins 与跨项目能力路由。
-- `E:\GitHub总索引` 拥有仓库身份、远端、可见性、同步诊断和公开发布边界。
-- `E:\PCConfig` 拥有路径迁移、计划任务、端口、运行时、本机数据与恢复事实。
-- 具体项目拥有业务语义、源码、项目规则、启动、测试和部署方式。
+它们按问题组合，不是线性审批链。例如，日志里出现 `E:\Projects\...` 不代表一定要读取 PCConfig；只有当前决定依赖路径是否迁移、任务 Action、端口占用或恢复方式时，机器事实才相关。
 
-模型依据任务耦合度、风险、证据新鲜度和调用成本选择一个或多个 owner。比如，错误日志里出现 `E:\Projects\...` 不代表决策依赖机器配置；只有需要判断路径是否已迁移、任务 Action 是否正确、端口由谁占用或怎样恢复时，PCConfig 才提供实质信息。
+### 新仓库放在哪里
 
-### 以后新仓库放在哪里
+- 现有三个控制面和旧仓库保持原位，不为目录统一批量迁移。
+- 新建或新 clone 的个人仓库默认放在 `V:\Personal\Projects\...`。
+- 个人临时 worktree 默认放在 `V:\Personal\Worktrees\...`，任务完成并确认没有独有内容后及时退役。
+- 新的工作项目使用 `V:\Work\...`，同时服从具体项目、设备和合规边界。
+- `V:\Dev` 只保留已经存在的 worktree，不手工搬动，也不继续创建新仓库。
+- `Z:` 是可丢缓存层，不放 Git 仓库、worktree 或唯一副本。
 
-- 四大基座和现有 `E:\Projects\...` 仓库保持原位，不为目录统一批量迁移。
-- 新建或新 clone 的个人 Git 仓库默认放在 `V:\Personal\Projects\...`；个人临时 worktree 默认放在 `V:\Personal\Worktrees\...`。
-- 未来工作仓库和 worktree 分别使用 `V:\Work\Projects\...` 与 `V:\Work\Worktrees\...`；这只是组织边界，不替代公司设备或合规隔离。
-- `V:\Dev` 只保留已经存在的 worktree；不要手动搬动它们，也不要再往旧根创建新仓库。由拥有它们的主仓库在任务完成后用 Git 正常退役。
-- 总索引记录实际存在的仓库路径，不把默认目录或空目录提前登记成仓库。若项目不兼容 ReFS、要求特定恢复方式或另有项目规则，以专项证据为准。
-- `Z:` 是可丢缓存层，不放 Git 仓库。
+总索引只登记实际存在的仓库，不为空目录或假想未来项目预建记录。
 
 ## 2. 总索引解决什么问题
 
-项目多以后，常见风险是把旧路径当现状、混淆同名仓库、误判 public/private、忽略其他 worktree，或把“Git 可以 push”误解为“内容可以公开”。本仓库提供三类能力：
+项目多以后，容易出现这些错误：
 
-- 公开索引和同步快照，便于人快速发现值得关注的仓库；
-- 结构化 provider，便于模型在需要时取得单仓库新鲜事实；
-- 公开发布规则，明确哪些结果可以进入公开目标。
+- 把旧路径或旧 remote 当成现状；
+- 混淆同名仓库或不同 worktree；
+- 把 PRIVATE 误判成 PUBLIC，或反过来；
+- 只看当前分支，漏掉其它 worktree 和独有提交；
+- 把“Git 可以 push”误解为“内容可以公开”。
 
-它不拥有项目代码，不替代项目测试，也不要求每次普通 commit 都生成控制面记录。
+总索引提供三类帮助：
 
-## 3. Admission provider 是可选证据能力
+1. 公开索引和同步看板，方便人发现值得关注的仓库；
+2. 结构化 admission provider，在需要时取得单仓库新鲜事实；
+3. 公开发布规则，检查候选内容能否进入公开目标。
 
-`tools\Get-ProjectAdmission.ps1` 输出 `github-local-index.project-admission.v1`，可解析：
+它不拥有项目代码，不替代项目测试，也不要求普通 commit 生成控制面记录。
 
-- 本地仓库路径、Git 根、remote 和 GitHub identity；
-- visibility、当前分支、默认分支与 upstream；
-- 全部 worktree 的 staged、unstaged、untracked、conflicted 状态；
-- 本地及 `origin/*` branch inventory，以及各分支相对实际远端默认分支的 `default`、`merged_ancestry`、`patch_equivalent`、`unmerged` 或 `unknown`；
-- `config\git-artifact-governance.json` 中 exact-match 的跨 owner ref；它们保留为证据，但不会被误报成 Codex 应整合或删除的分支；
-- 同一 registry 中同时精确匹配 repo、绝对路径和 HEAD 的必要保留 worktree；它必须写明 owner、用途和退出条件，路径、提交或 clean 健康一旦漂移就重新进入处理队列；
-- ahead、behind、diverged、no-upstream 等 transport 条件；
-- cached 或 live 的证据新鲜度。
+## 3. 什么时候使用 Admission
 
-它在以下情况通常有高信息价值：
+以下情况通常值得查询：
 
-- 同名目录、remote 或仓库身份可能混淆；
-- 要依赖当前 worktree/sync 状态选择安全操作；
-- visibility 或推送目标不明确；
-- 多仓库批处理需要统一结构化字段；
-- 旧索引与当前 Git 证据可能冲突。
-
-如果当前 `.git`、remote、visibility 和候选差异已经通过新鲜可靠证据明确，模型可以直接使用这些证据，不为流程完整性重复调用 provider。
-
-provider 的结论需要按边界解释：
-
-- `decision` 表示 provider 是否取得足够的项目进入证据；`block` 应停止基于该证据的写入和直接 transport，但只读诊断可以继续。
-- `push_decision` / `push_strategy` 只描述 Git transport readiness。
-- V1 不提供 `publication_decision`，也不授予外部写入。
-- cached、unknown 或冲突结果要继续补取 owner、独有内容、默认分支可达性与 PR/release/交接证据；对个人仓库，`unknown` 只能是删除前的瞬时保护，不能成为长期“先留着”状态。
-
-需要时可运行：
+- 本地目录、remote 或 GitHub identity 可能混淆；
+- 要根据当前 branch、worktree、ahead/behind 选择安全操作；
+- visibility 或 push 目标不明确；
+- 旧索引与当前 `.git` 证据冲突；
+- 删除 branch/worktree 前需要确认是否有独有内容。
 
 ```powershell
 pwsh -NoProfile -File E:\GitHub总索引\tools\Get-ProjectAdmission.ps1 `
-  -Repo wlyaaaaa/github-local-index -Fetch -Json
+  -Repo wlyaaaaa/github-local-index -LiveMetadata -Json
 ```
 
-## 4. Transport 与 publication 必须分开
+已有新鲜、可靠的 `.git`、remote、visibility 和候选差异证据时，可以直接使用，不为流程完整重复调用 provider。
 
-Git remote 可达、分支 ahead、工作区干净，只能说明 transport 条件。对 `PUBLIC` 目标，真正的发布判断还依赖：
+结果要这样理解：
 
-- 当前新鲜 visibility，而不是旧记忆；
-- 实际候选 commits 与 paths；
-- 候选内容是否含凭据、隐私、原始日志、截图、机器快照或可滥用运维细节；
-- 目标项目规则与用户当前授权。
+- `decision=block`：当前证据不足以支持依赖这些事实的写入或 transport；只读调查仍可继续。
+- `push_decision` / `push_strategy`：只描述 Git transport readiness。
+- admission 不提供 publication 授权，也不判断实际候选内容是否适合公开。
+- `unknown` 是删除前的临时保护，不应长期保留为“以后再看”。
 
-对确认仍为 `PRIVATE` 的备份、恢复、个人知识库或配置快照，应保留任务需要的精确内容，不因看到 token 或私钥就自动破坏备份。目标可信与外部写入授权是两个不同问题。
+## 4. Push 与公开发布是两件事
 
-`wlyaaaaa/Key` 是明确例外：允许 clone 到受管私有路径维护密文，但不得把解密明文、口令或密钥文件写入 checkout，也不建议建立计划任务。
+remote 可达、工作区干净、分支 ahead，只能证明 Git transport 条件。向 `PUBLIC` 目标发布前还要确认：
 
-完整矩阵只维护在 [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)，避免四份文档复制后漂移。
+- visibility 是当前现场值，不是旧记忆；
+- 实际候选 commits、paths 和 content 已审查；
+- 没有凭据、隐私、原始日志、数据库、聊天、健康资料、私密截图、机器快照、完整任务 XML 或可直接滥用的运维细节；
+- 项目规则和本次用户授权允许发布。
 
-## 5. 目录与能力地图
+确认仍为 `PRIVATE` 的备份、恢复或配置仓库可以保留任务需要的精确内容。PRIVATE 目标可信，不代表自动获得外部写入授权，也不代表可以把秘密复制到公开索引或聊天。
 
-| 路径 | 内容 | 使用方式 |
-|---|---|---|
-| `00_总览/` | 全局看板 | 人类导航和趋势观察 |
-| `01_仓库索引/` | GitHub 仓库与本地 clone | 快速定位，不替代当前 Git 事实 |
-| `02_同步诊断/` | 分支、远端、脏状态与同步问题 | 发现候选问题 |
-| `03_推送决策/` | 公开安全的里程碑记录 | 只在有长期价值时更新 |
-| `04_计划任务/` | 计划任务 owner 路由 | 不保存任务名、状态、Action、trigger 或 XML |
-| `05_规则与模板/` | 发布和脱敏规则 | 准备公开结果时参考 |
-| `docs/contracts/` | owner-local 稳定机制卡 | 机制、兼容或故障任务按需读取 |
-| `99_private/` | 本机原始材料 | Git ignored，禁止进入公开仓库 |
+`wlyaaaaa/Key` 是受管私有密文仓库：checkout 只保留密文和公开安全说明；解密明文、口令和 keyfile 不得写入仓库。
 
-结构化 provider 与当前 Git 命令适合做机器判断；生成 Markdown 适合人类总览，只展开 PUBLIC 仓库并隐藏本机绝对路径。PRIVATE identity 和精确 clone 路径保存在 ignored 私有导航 cache，使用时仍校验真实 `.git` origin。历史快照有观察时间，不能取代当前证据。
+完整矩阵只维护在 [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)，避免多份文档复制后漂移。
 
-## 6. 维护和刷新
+## 5. 目录和入口
 
-需要更新总索引的典型事实变化包括：
+| 路径 | 作用 |
+|---|---|
+| `00_总览/` | 人类总览和同步看板 |
+| `01_仓库索引/` | PUBLIC 仓库摘要；不替代当前 Git 事实 |
+| `02_同步诊断/` | branch、remote、worktree 和同步候选问题 |
+| `03_推送决策/` | 有长期价值的公开里程碑，不是每次 push 的日志 |
+| `04_计划任务/` | 只提供 PCConfig owner 路由，不复制任务运行态 |
+| `05_规则与模板/` | 发布和脱敏规则 |
+| `docs/contracts/` | owner-local 稳定机制卡，按需读取 |
+| `99_private/` | ignored 本机导航 cache，禁止进入公开 Git |
 
-- 仓库新增、删除、改名、remote 或 visibility 改变；
+生成 Markdown 适合人类浏览；结构化 provider 和当前 Git 命令适合机器判断。完整 refresh 使用原子 generation，只保留 current+previous；具体实现由合同和测试负责，不需要用户日常维护。
+
+## 6. 什么时候刷新或维护
+
+需要更新总索引的典型变化：
+
+- 仓库新增、删除、改名，remote 或 visibility 改变；
 - clone 路径迁移、默认分支或长期同步策略改变；
 - worktree/admission 的稳定语义改变；
-- 公开门禁升级或用户要求记录重要里程碑；
-- 生成快照确有需要重建。
+- 公开门禁升级或需要记录重要里程碑；
+- 用户明确要求重建公开快照。
 
-通常不需要更新：
+主要工具：
 
-- 普通功能、bugfix 或文档 commit；
-- 只有项目业务内容改变；
-- 为了让三个控制面在同一天各产生 commit；
-- 已有新鲜证据，却只想重复跑一遍工具确认仪式完成。
+```powershell
+# 预览，不写入
+pwsh -NoProfile -File E:\GitHub总索引\tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite
 
-主要维护工具：
+# 确有需要时重建公开快照
+pwsh -NoProfile -File E:\GitHub总索引\tools\Update-GitHubIndex.ps1
 
-- `Get-ProjectAdmission.ps1`：按需单仓库结构化取证。
-- `Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：预览生成结果。
-- `Update-GitHubIndex.ps1`：确需时重建公开快照。
-- `Test-GitHubLocalIndexConsistency.ps1`：诊断索引漂移。
-- `Add-PushRecord.ps1`：幂等写入明确里程碑，不执行 Git 操作。
-- `Install-GitHook.ps1`：首次 bootstrap 或修复防泄漏 Hook。
+# 检查投影漂移
+pwsh -NoProfile -File E:\GitHub总索引\tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch
+```
 
-Fast refresh 仍为旧调用方保留兼容，但不是日常收尾推荐入口。Hook 也是 defense in depth：它能拦截部分显著模式，不能证明未命中的内容适合公开，且无需每任务重装。
+通常不需要更新：普通功能、bugfix、文档 commit、只有项目业务内容改变，或已有新鲜证据却只想重复跑工具。Hook 和 Fast refresh 是防护或兼容入口，不是每次任务的固定收尾步骤。
 
-## 7. 公开安全模型
+## 7. 常见问题
 
-本仓库是 `PUBLIC`。禁止进入 Git 历史的内容包括真实 API key/token/私钥、完整 `.env` 或 OAuth JSON、原始日志/数据库/聊天/健康资料、私密截图、未缩减机器快照、完整任务 XML，以及能直接造成滥用的运维细节。
+### 有 provider 就要每次调用吗？
 
-可以公开的内容包括公开仓库 identity、remote、分支与同步摘要，不复制值的风险结论，以及经过缩减和脱敏的问题分类、发布决定与治理规则。
+不需要。只有当前不确定性会改变决策时，它才有价值。
 
-公开扫描发现疑似暴露时，先缩小候选差异、确认目标可见性和内容语义。安全来自对实际候选结果的判断，不来自是否运行过某个固定脚本。
+### Admission block 后什么都不能做吗？
 
-## 8. 常见误区
+不是。它阻止依赖不充分 Git 证据的写入和 transport；只读调查正是定位 block 原因的方法。
 
-### “有 provider 就应该每次调用”
+### Transport proceed 就能公开吗？
 
-不需要。provider 是高质量结构化证据源；它的价值取决于当前不确定性。已经有等价的新鲜证据时重复调用只增加延迟和上下文。
+不能。公开发布还要审查当前 visibility、实际候选内容和授权。
 
-### “admission block 后什么都不能做”
+### PRIVATE 仓库出现秘密就必须脱敏吗？
 
-不对。它应阻止依赖不充分身份/同步证据的写入和直接 transport，但只读检查正是定位 block 原因的方式。
+不一定。确认目标仍为 PRIVATE 且任务确实是备份或恢复时，精确保真可能是产品要求；但不得把内容复制到公开索引或聊天。
 
-### “transport proceed 就能公开”
+### 每次 push 都要写总索引记录吗？
 
-不对。公开发布必须审查当前 visibility 和实际候选 commits、paths、content。
+不需要。只有 owner 事实变化或明确里程碑才值得记录。
 
-### “私有仓库出现秘密就必须脱敏”
+## 8. 保持简单
 
-不一定。确认目标仍为 `PRIVATE` 且任务是备份或恢复时，精确保真比形式脱敏更重要；但不得把内容复制到公开索引或聊天中。
+总索引最有价值的不是更长的流程，而是少量可靠能力：需要时迅速取得 Git 事实，公开前守住真实内容边界，其余判断由项目和当前证据完成。
 
-### “出现本机路径就要加载 PCConfig”
-
-不对。只有当前决定依赖路径、任务、端口、运行时、迁移或恢复事实时，PCConfig 才是相关 owner。
-
-### “每次 push 都要写总索引记录”
-
-不需要。只有 owner 事实变化或明确里程碑才值得形成公开记录。
-
-## 9. 设计原则
-
-总索引的最优形态不是更长的流水线，而是少量可靠能力：需要时能迅速获得高价值 Git 证据，准备公开时能守住真实暴露边界，其余判断交给顶级模型结合项目上下文完成。新规则应减少重复事实和固定仪式，只在真实故障、泄漏复盘、接口变化或新的治理需求出现时扩展。
+新规则、文档、快照或兼容层必须有当前 consumer 和可验证收益。完成的计划、复盘和旧流水由 Git 留史，不在活动树重复归档。

@@ -1,40 +1,25 @@
 # GitHub 总索引
 
-这是本机 GitHub 仓库的公开索引、同步诊断和发布边界仓库，远端为 `wlyaaaaa/github-local-index`。它提供可查询事实和维护工具，但不要求每个 Git 任务执行固定命令链。
+> 面向用户｜非执行规则、非动态事实权威、非 AI 默认上下文｜更新：2026-08-22（中国时间 UTC+8）
+>
+> AI 仅在用户明确要求解释、入门、维护本文档，或具名验收确实需要时按需读取。执行时以 `AGENTS.md`、owner-local 合同、当前 Git/GitHub 证据和实际候选差异为准。
+
+这是本机 GitHub 仓库的公开安全索引、同步诊断和发布边界仓库，远端为 `wlyaaaaa/github-local-index`。它帮助人查清仓库在哪里、远端和可见性是什么、分支/worktree 是否同步，以及公开发布前要注意什么，但不要求每个 Git 任务执行固定命令链。
 
 完整的人类说明见 [我的 GitHub 项目管理指南](./我的%20GitHub%20项目管理指南.md)。
 
-## Owner 定位
+## 谁负责什么
 
-| Owner | 负责内容 | 何时关注 |
-|---|---|---|
-| `E:\.agents` | Agent 行为、skills/plugins、能力路由 | 工作方式或能力选择相关 |
-| `E:\GitHub总索引` | 仓库身份、远端、可见性、同步诊断、公开发布边界 | Git 事实或发布风险相关 |
-| `E:\PCConfig` | 路径迁移、任务、端口、运行时、本机数据、恢复 | 当前决策依赖机器事实 |
-| 具体项目 | 业务语义、源码、项目规则、测试和部署 | 项目实现相关 |
+| 负责方 | 负责内容 |
+|---|---|
+| `E:\.agents` | Agent 行为、skills/plugins 和能力路由 |
+| `E:\GitHub总索引` | 仓库身份、远端、可见性、同步诊断和公开发布边界 |
+| `E:\PCConfig` | 路径迁移、计划任务、端口、运行时、本机数据和恢复 |
+| 具体项目 | 业务语义、源码、项目规则、测试和部署 |
 
-模型根据目标、不确定性、风险与信息成本选择相关 owner。一个 Windows 路径只是上下文时，不需要因此加载 PCConfig；普通项目改动也不需要为了形式同步三个控制面。
+三个控制面按当前问题组合，不是每个 Git 任务都要走完的审批链。普通项目提交也不需要为了形式同步三个控制面。
 
-## 核心能力
-
-- `01_仓库索引/`：PUBLIC 仓库的公开安全摘要；PRIVATE identity 和本机绝对路径不展开。
-- `02_同步诊断/`：分支、远端、ahead/behind、worktree 和脏状态快照。
-- `03_推送决策/`：真正有长期价值的公开里程碑记录，不是每次 push 的流水账。
-- `04_计划任务/`：只提供 owner 路由；计划任务运行态与恢复事实由 PCConfig 和 Task Scheduler 提供。
-- `05_规则与模板/`：公开发布与脱敏规则。
-- `tools/Get-ProjectAdmission.ps1 -Repo <owner/name> -Json`：按需取得当前仓库身份、worktree、同步与 transport 的结构化证据，schema 保持 `github-local-index.project-admission.v1`。
-
-admission provider 在身份、同步、worktree、visibility 或推送条件不清楚时很有价值；已有新鲜可靠证据时可以跳过。`-LiveMetadata` 是无 fetch 的只读查询，`-RefreshRefs` 才刷新 refs，旧 `-Fetch` 兼容两者；多 worktree 仓库可用 target worktree/ref 精确限定 transport 判断。其结论不是写入或 publication 授权。
-
-## 公开与私有边界
-
-本仓库自身是 `PUBLIC`，只能保存公开安全的索引、规则、摘要和脱敏结论。真实密钥、私钥、token、完整配置、原始日志/数据库/聊天/健康资料、私密截图和机器快照不得进入本仓库。
-
-确认仍为 `PRIVATE` 的备份、恢复或个人知识库目标可按任务需要保留精确凭据内容；`wlyaaaaa/Key` 可在受管私有路径 clone，但 checkout 只保留密文和公开安全说明，解密明文、口令与密钥文件不得进入仓库。
-
-Git transport readiness 与内容 publication 是两个不同判断。完整且唯一的发布矩阵见 [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)。
-
-## 目录入口
+## 主要入口
 
 - [GitHub 总览](00_总览/GitHub总览.md)
 - [当前同步看板](00_总览/当前同步看板.md)
@@ -44,20 +29,35 @@ Git transport readiness 与内容 publication 是两个不同判断。完整且�
 - [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)
 - [owner-local Git 合同](docs/contracts/)
 
-## 维护工具
+公开 Markdown 只展开公开安全信息；PRIVATE identity 和本机绝对路径保存在 ignored 私有导航 cache，使用时仍要核对真实 `.git` origin。
 
-- `tools/Get-ProjectAdmission.ps1`：单仓库结构化事实；`-LiveMetadata` / `-RefreshRefs` 分离取证，`-Fetch` 保持兼容。
-- `tools/Update-GitHubIndex.ps1 -SkipFetch -NoWrite`：只读预览索引生成结果。
-- `tools/Update-GitHubIndex.ps1`：在确需更新公开快照时重建相关 Markdown。
-- `tools/Test-GitHubLocalIndexConsistency.ps1 -SkipFetch`：诊断生成快照漂移；计划任务把 success/drift/error 原子写入 `99_private` receipt。
-- `tools/Install-GitHook.ps1`：首次安装或修复本仓库的防泄漏 Hook，不是每任务步骤。
-- `tools/Add-PushRecord.ps1`：幂等写入明确里程碑；不执行 Git transaction。
-- `tests/Run-UnitTests.ps1`、`tests/Test-ProjectAdmission.ps1`、`tests/Test-ControlPlaneContracts.ps1`：验证工具行为与稳定合同。
+## 常用工具
 
-兼容工具可以继续被已有自动化调用，但兼容存在不等于推荐日常调用。只有仓库身份、路径、可见性、生成口径、公开门禁或明确里程碑等 owner 事实变化时才更新本索引；普通业务提交留在目标项目。
+```powershell
+# 单仓库结构化事实；只有身份、同步或发布条件不清楚时才需要
+pwsh -NoProfile -File tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -LiveMetadata -Json
 
-完整 refresh 会原子更新 ignored `99_private/registries/repository-paths.json` 导航 cache。Admission 和 Fast refresh 只把它当作待验证路径提示，随后仍核对真实 `.git` origin；cache 缺失时传 `-RepoPath` 完成 bootstrap，或先运行完整 refresh。公开 Markdown 不再充当机器路径数据库。
+# 预览索引刷新，不写入
+pwsh -NoProfile -File tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite
 
-## 持久化与代际边界
+# 诊断当前公开投影是否漂移
+pwsh -NoProfile -File tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch
+```
 
-完整 refresh 先在临时 generation 生成并校验全部 Markdown，再将其以同卷 `.incoming` 目录原子改名为 immutable generation，最后以 `00_总览/current-generation.json` 原子切换当前指针；指针未切换前，旧 generation 仍是当前代际。顶层 Markdown 只是带 generation id 的兼容投影，generation 与指针不匹配时必须视为 stale。默认只保留 current+previous generation，清理只作用于已验证的生成目录。Git/GitHub、受管 JSON registry 和该 manifest 是可审计事实源；checkpoint refs 与 unreachable objects 未经 owner 证明不得 `gc`/`prune`。当前不引入数据库，未来查询加速只能使用可删除、可重建的 cache。
+`-LiveMetadata` 是无 fetch 的只读查询；`-RefreshRefs` 才刷新 refs，旧 `-Fetch` 保持兼容。Admission 只提供 Git 事实，不授予写入或公开发布权限。
+
+完整 refresh 使用原子 generation 并只保留 current+previous；实现细节和故障边界由 owner-local 合同与工具测试负责，不在 README 复制。
+
+## 公开与私有边界
+
+本仓库是 `PUBLIC`。不得提交真实 API key/token/private key、完整 `.env` 或 OAuth JSON、原始日志/数据库/聊天/健康资料、私密截图、机器快照、完整任务 XML 或可直接滥用的运维细节。
+
+Git transport readiness 与内容 publication 是两件事：能 push 不等于适合公开。准备发布时必须重新确认当前 visibility、实际候选 commits/paths/content、项目规则和用户授权。
+
+确认仍为 `PRIVATE` 的备份或恢复目标可以按任务需要保持精确内容，但不得把它复制到本公开索引。`wlyaaaaa/Key` 的 checkout 只保留密文和公开安全说明，解密明文、口令与 keyfile 不得进入仓库。
+
+## 什么时候更新总索引
+
+只有 owner 事实变化时更新，例如仓库新增/删除/改名、remote 或 visibility 改变、clone 路径迁移、默认分支或长期同步策略变化、公开门禁升级，或用户要求记录重要里程碑。
+
+普通功能、bugfix、文档 commit 和项目业务内容变化留在目标项目；不为每次 push 写流水账，也不为收尾仪式重复刷新索引。

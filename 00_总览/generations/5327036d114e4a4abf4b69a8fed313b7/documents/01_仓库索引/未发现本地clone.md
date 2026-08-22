@@ -4,8 +4,8 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-08-22T06:44:47.8991237+00:00 -->
-<!-- generation_id=bd040122ea40473d8e64b60687eaad72 -->
+<!-- observed_at=2026-08-22T10:14:58.8599438+00:00 -->
+<!-- generation_id=5327036d114e4a4abf4b69a8fed313b7 -->
 
 # 未发现本地 Clone
 

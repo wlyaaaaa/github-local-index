@@ -367,6 +367,141 @@ Assert-OwnerTrue (
     $validProbeCounts.local_path -eq 1
 ) 'valid identity invokes each downstream owner source exactly once'
 
+Assert-OwnerEqual $null `
+    (ConvertTo-GitOwnerCanonicalRoot -Path '本机已发现 clone（路径不公开）') `
+    'public-safe clone-presence sentinel never becomes a filesystem root'
+
+$baselineV3Root = Join-Path ([IO.Path]::GetTempPath()) (
+    'git-owner-baseline-v3-' + [guid]::NewGuid().ToString('N')
+)
+$baselineV3Clone = Join-Path $baselineV3Root 'clones/public-index'
+try {
+    [void][IO.Directory]::CreateDirectory((Join-Path $baselineV3Clone '.git'))
+    [IO.File]::WriteAllText(
+        (Join-Path $baselineV3Clone '.git/HEAD'),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`n",
+        [Text.Encoding]::ASCII)
+    [IO.File]::WriteAllText(
+        (Join-Path $baselineV3Clone '.git/config'),
+        "[remote `"origin`"]`n  url = https://github.com/fixture-owner/index.git`n",
+        [Text.UTF8Encoding]::new($false))
+    Write-GitHubIndexPrivateNavigationCache -RepoRoot $baselineV3Root -Rows @(
+        [pscustomobject]@{
+            NameWithOwner = 'fixture-owner/index'
+            NavigationPath = $baselineV3Clone
+            Visibility = 'PUBLIC'
+            DefaultBranch = 'main'
+        }
+    ) | Out-Null
+    $publicProjectionPath = Join-Path $baselineV3Root '01_仓库索引/GitHub仓库索引.md'
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $publicProjectionPath))
+    [IO.File]::WriteAllText(
+        $publicProjectionPath,
+        "| GitHub 仓库 | 可见性 | 默认分支 | 本地路径 |`n| --- | --- | --- | --- |`n| fixture-owner/index | PUBLIC | main | 本机已发现 clone（路径不公开） |`n",
+        [Text.UTF8Encoding]::new($false))
+
+    $missingV3 = Read-GitOwnerBaselineState -RepoRoot $baselineV3Root
+    Assert-OwnerEqual 'unavailable' $missingV3.status 'legacy v2 navigation never impersonates a complete v3 identity baseline'
+    Assert-OwnerEqual 'owner_baseline_v3_missing' $missingV3.reason 'missing v3 baseline fails with a stable unknown reason'
+
+    $fixtureIndexIdentity = [pscustomobject]@{
+        repository = 'fixture-owner/index'
+        default_branch = 'main'
+        head = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    }
+    $fixtureRemoteRows = @(
+        [pscustomobject]@{ NameWithOwner='fixture-owner/index'; Visibility='PUBLIC'; DefaultBranch='main'; LocalPath='未发现本地 clone'; ExternalGovernance=$false },
+        [pscustomobject]@{ NameWithOwner='fixture-owner/private-data'; Visibility='PRIVATE'; DefaultBranch='main'; LocalPath='未发现本地 clone'; ExternalGovernance=$false }
+    )
+    $fixtureRemoteReader = {
+        param($OwnerName)
+        [pscustomobject]@{ available=$true; reason=$null; rows=$fixtureRemoteRows }
+    }
+    $bootstrapMigration = Invoke-GitOwnerBaselineMigration `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RemoteReader $fixtureRemoteReader
+    Assert-OwnerEqual 'completed' $bootstrapMigration.execution_status 'v2 navigation migrates through the bounded v3 owner path'
+    Assert-OwnerEqual 'attention' $bootstrapMigration.domain_status 'first v3 bootstrap preserves its history gap'
+    Assert-OwnerTrue ([bool]$bootstrapMigration.history_gap) 'bootstrap receipt never invents a prior full-owner baseline'
+    Assert-OwnerEqual 2 $bootstrapMigration.repository_count 'v3 identity baseline includes PUBLIC and PRIVATE repositories'
+    Assert-OwnerEqual 1 $bootstrapMigration.verified_local_roots 'v2 local root is verified through exact .git origin identity'
+    Assert-OwnerEqual 1 $bootstrapMigration.nullable_local_roots 'repository without a clone keeps a nullable local root'
+
+    $bootstrapStore = Get-GitHubOwnerBaselineStore -RepoRoot $baselineV3Root
+    Assert-OwnerEqual 'current' $bootstrapStore.status 'v3 store passes schema, hash and final readback validation'
+    Assert-OwnerTrue ($null -eq $bootstrapStore.store.previous) 'bootstrap store has an explicit absent previous snapshot'
+    Assert-OwnerTrue (@($bootstrapStore.store.current_local_roots.entries | Where-Object {
+        $_.repo -eq 'fixture-owner/private-data' -and $null -eq $_.local_root
+    }).Count -eq 1) 'identity inventory and nullable local-root metadata remain separate'
+
+    $bootstrapStatus = Invoke-GitOwnerProvider `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RegistryReader { param($Root) $registryA } `
+        -RemoteReader $fixtureRemoteReader
+    Assert-OwnerEqual 'unknown' $bootstrapStatus.domain_status 'current identities plus missing prior history remain explicit unknown'
+    Assert-OwnerEqual 0 $bootstrapStatus.summary.delta_count 'PUBLIC-only projection creates no false full-owner delta'
+    Assert-OwnerEqual 0 $bootstrapStatus.summary.issue_count 'hidden path sentinel creates no invalid-local-root issue'
+    Assert-OwnerTrue (@($bootstrapStatus.attentions | Where-Object code -EQ 'owner_history_gap').Count -eq 1) 'bootstrap history gap is not swallowed'
+    $bootstrapJson = $bootstrapStatus | ConvertTo-Json -Depth 14 -Compress
+    Assert-OwnerTrue (-not $bootstrapJson.Contains($baselineV3Clone)) 'compact status never emits a private local root'
+    Assert-OwnerTrue (-not ($bootstrapJson -match '(?i)[A-Z]:\\')) 'compact status remains free of drive-qualified paths'
+
+    $fixtureRemoteRows = @(
+        $fixtureRemoteRows +
+        [pscustomobject]@{ NameWithOwner='fixture-owner/new-private'; Visibility='PRIVATE'; DefaultBranch='main'; LocalPath='未发现本地 clone'; ExternalGovernance=$false }
+    )
+    $liveChange = Invoke-GitOwnerProvider `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RegistryReader { param($Root) $registryA } `
+        -RemoteReader $fixtureRemoteReader
+    Assert-OwnerEqual 'review_needed' $liveChange.domain_status 'new PRIVATE repository remains a real owner delta'
+    Assert-OwnerTrue (@($liveChange.deltas | Where-Object {
+        $_.kind -eq 'repo_added' -and $_.repo -eq 'fixture-owner/new-private'
+    }).Count -eq 1) 'new PRIVATE identity is not filtered out of owner comparison'
+
+    $changeMigration = Invoke-GitOwnerBaselineMigration `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RemoteReader $fixtureRemoteReader
+    Assert-OwnerTrue (-not [bool]$changeMigration.history_gap) 'second v3 snapshot establishes continuous current+previous history'
+    $transitionStatus = Invoke-GitOwnerProvider `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RegistryReader { param($Root) $registryA } `
+        -RemoteReader $fixtureRemoteReader
+    Assert-OwnerEqual 'review_needed' $transitionStatus.domain_status 'baseline advance retains its previous-to-current review delta'
+    Assert-OwnerEqual 1 $transitionStatus.history.transition_delta_count 'transition history retains the added repository exactly once'
+
+    [void](Invoke-GitOwnerBaselineMigration `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RemoteReader $fixtureRemoteReader)
+    $stableStatus = Invoke-GitOwnerProvider `
+        -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `
+        -RepoRoot $baselineV3Root `
+        -IdentityResolver { param($Root) $fixtureIndexIdentity } `
+        -RegistryReader { param($Root) $registryA } `
+        -RemoteReader $fixtureRemoteReader
+    Assert-OwnerEqual 'current' $stableStatus.domain_status 'next stable comparison clears a reviewed baseline transition'
+    Assert-OwnerEqual 0 $stableStatus.history.transition_delta_count 'stable current+previous snapshots have no history delta'
+}
+finally {
+    $baselineV3Full = [IO.Path]::GetFullPath($baselineV3Root)
+    $tempFull = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    if ($baselineV3Full.StartsWith($tempFull, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item -LiteralPath $baselineV3Full -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $entryGateRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'git-owner-entry-gate-' + [guid]::NewGuid().ToString('N')
 )
@@ -567,6 +702,11 @@ $domainUnknown = New-GitOwnerUnavailableStatus `
 Assert-OwnerEqual 'completed' $domainUnknown.execution_status 'valid evidence uncertainty remains a completed provider observation'
 Assert-OwnerEqual 'unknown' $domainUnknown.domain_status 'valid evidence uncertainty remains domain unknown'
 Assert-OwnerEqual 0 (Get-GitOwnerStatusProcessExitCode -Status $domainUnknown) 'valid domain unknown does not request provider retry'
+$unknownWithHistory = Add-GitOwnerBaselineHistory -Status $domainUnknown -History ([pscustomobject]@{
+    state = 'continuous'
+    transition_delta_count = 1
+})
+Assert-OwnerEqual 'unknown' $unknownWithHistory.domain_status 'baseline transition review never upgrades incomplete evidence out of unknown'
 
 $executionFailure = New-GitOwnerExecutionFailure -Reason 'provider_execution_failed' -ObservedAt ([datetimeoffset]'2026-08-01T00:00:00Z')
 Assert-OwnerEqual 'error' $executionFailure.execution_status 'unexpected provider failure is an execution error'

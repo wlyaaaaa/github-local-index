@@ -5,12 +5,15 @@ param(
     [string] $Owner = 'wlyaaaaa',
     [string] $ExpectedRepository = 'wlyaaaaa/github-local-index',
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
+    [switch] $MigrateBaseline,
     [switch] $Json
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot 'GitHubIndex.PrivateNavigation.psm1') -Force
 
 function ConvertTo-GitOwnerSafeReason {
     param(
@@ -34,7 +37,12 @@ function ConvertTo-GitOwnerCanonicalRoot {
         return $null
     }
 
-    if ($value -in @('未发现本地 clone', '外部治理（不读取本地路径）', '专门 owner 治理（不公开本地路径）')) {
+    if ($value -in @(
+        '未发现本地 clone',
+        '本机已发现 clone（路径不公开）',
+        '外部治理（不读取本地路径）',
+        '专门 owner 治理（不公开本地路径）'
+    )) {
         return $null
     }
 
@@ -198,8 +206,8 @@ function Compare-GitOwnerFactSets {
                 kind = 'local_roots_changed'
                 repo = $repo
                 field = 'local_roots'
-                expected = $baselineRoots
-                actual = $observedRoots
+                expected = [pscustomobject][ordered]@{ count = $baselineRoots.Count }
+                actual = [pscustomobject][ordered]@{ count = $observedRoots.Count }
             })
         }
     }
@@ -665,37 +673,146 @@ function Get-GitOwnerStatusProcessExitCode {
     return 2
 }
 
-function Read-GitOwnerIndexRows {
+function ConvertTo-GitOwnerRowsFromBaselineSnapshot {
+    param(
+        [Parameter(Mandatory = $true)] [object] $IdentitySnapshot,
+        [Parameter(Mandatory = $true)] [object] $LocalRootSnapshot
+    )
+
+    $rootByRepo = @{}
+    foreach ($entry in @($LocalRootSnapshot.entries)) {
+        $rootByRepo[([string]$entry.repo).ToLowerInvariant()] = $entry.local_root
+    }
+    return @($IdentitySnapshot.identities | ForEach-Object {
+        $repo = ([string]$_.repo).ToLowerInvariant()
+        $root = if ($rootByRepo.ContainsKey($repo)) { $rootByRepo[$repo] } else { $null }
+        [pscustomobject][ordered]@{
+            NameWithOwner = $repo
+            Visibility = [string]$_.visibility
+            DefaultBranch = [string]$_.default_branch
+            LocalPath = if ($null -eq $root) { '未发现本地 clone' } else { [string]$root }
+            ExternalGovernance = $false
+        }
+    })
+}
+
+function ConvertTo-GitOwnerUtcTimestamp {
+    param([AllowNull()] [object] $Value)
+
+    if ($null -eq $Value) { return $null }
+    try {
+        $timestamp = if ($Value -is [datetimeoffset]) {
+            [datetimeoffset]$Value
+        }
+        elseif ($Value -is [datetime]) {
+            [datetimeoffset]([datetime]$Value).ToUniversalTime()
+        }
+        else {
+            [datetimeoffset]::Parse(
+                [string]$Value,
+                [Globalization.CultureInfo]::InvariantCulture,
+                [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+            )
+        }
+        return $timestamp.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    catch {
+        throw 'owner_baseline_v3_timestamp_invalid'
+    }
+}
+
+function ConvertTo-GitOwnerBaselineState {
+    param([Parameter(Mandatory = $true)] [object] $StoreResult)
+
+    if ([string]$StoreResult.status -ne 'current') {
+        $reason = switch ([string]$StoreResult.status) {
+            'missing' { 'owner_baseline_v3_missing' }
+            default { 'owner_baseline_v3_invalid' }
+        }
+        return [pscustomobject][ordered]@{
+            status = 'unavailable'
+            reason = $reason
+            rows = @()
+            history = $null
+        }
+    }
+
+    $store = $StoreResult.store
+    $rows = @(ConvertTo-GitOwnerRowsFromBaselineSnapshot `
+        -IdentitySnapshot $store.current `
+        -LocalRootSnapshot $store.current_local_roots)
+    $transitionDeltas = @()
+    if ($null -ne $store.previous) {
+        $previousRows = @(ConvertTo-GitOwnerRowsFromBaselineSnapshot `
+            -IdentitySnapshot $store.previous `
+            -LocalRootSnapshot $store.previous_local_roots)
+        $previousFacts = ConvertTo-GitOwnerFactSet -Rows $previousRows
+        $currentFacts = ConvertTo-GitOwnerFactSet -Rows $rows
+        $transitionDeltas = @(Compare-GitOwnerFactSets `
+            -BaselineFacts $previousFacts.facts -ObservedFacts $currentFacts.facts)
+    }
+    return [pscustomobject][ordered]@{
+        status = 'current'
+        reason = $null
+        rows = $rows
+        history = [pscustomobject][ordered]@{
+            schema = 'github-local-index.owner-history.v1'
+            state = if ([bool]$store.receipt.history_gap) { 'bootstrap_gap' } else { 'continuous' }
+            current_observed_at = ConvertTo-GitOwnerUtcTimestamp -Value $store.current.observed_at
+            previous_observed_at = if ($null -eq $store.previous) {
+                $null
+            }
+            else {
+                ConvertTo-GitOwnerUtcTimestamp -Value $store.previous.observed_at
+            }
+            current_identity_sha256 = [string]$store.current.identities_sha256
+            previous_identity_sha256 = if ($null -eq $store.previous) { $null } else { [string]$store.previous.identities_sha256 }
+            transition_delta_count = $transitionDeltas.Count
+            transition_deltas = $transitionDeltas
+        }
+    }
+}
+
+function Read-GitOwnerBaselineState {
     param([Parameter(Mandatory = $true)] [string] $RepoRoot)
 
-    $indexPath = Join-Path $RepoRoot '01_仓库索引/GitHub仓库索引.md'
-    if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
-        throw 'Git owner index is unavailable.'
+    return ConvertTo-GitOwnerBaselineState `
+        -StoreResult (Get-GitHubOwnerBaselineStore -RepoRoot $RepoRoot)
+}
+
+function Add-GitOwnerBaselineHistory {
+    param(
+        [Parameter(Mandatory = $true)] [object] $Status,
+        [AllowNull()] [object] $History
+    )
+
+    if ($null -eq $History) { return $Status }
+    $attentions = @()
+    if ([string]$History.state -eq 'bootstrap_gap') {
+        $attentions += [pscustomobject][ordered]@{
+            code = 'owner_history_gap'
+            scope = 'prior_full_owner_baseline'
+        }
+        if ([string]$Status.domain_status -eq 'current') {
+            $Status.domain_status = 'unknown'
+        }
     }
-
-    $rows = [System.Collections.Generic.List[object]]::new()
-    foreach ($line in Get-Content -LiteralPath $indexPath -Encoding utf8) {
-        if ($line -notmatch '^\|') { continue }
-        $cells = @($line.Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
-        if ($cells.Count -lt 4) { continue }
-        if ($cells[0] -in @('GitHub 仓库', '---')) { continue }
-        if ($cells[0] -notmatch '^[^/\s]+/[^/\s]+$') { continue }
-
-        $externalGovernance = $cells[3] -in @('外部治理（不读取本地路径）', '专门 owner 治理（不公开本地路径）')
-        $rows.Add([pscustomobject][ordered]@{
-            NameWithOwner = $cells[0]
-            Visibility = $cells[1]
-            DefaultBranch = $cells[2]
-            LocalPath = $cells[3]
-            ExternalGovernance = $externalGovernance
-        })
+    if ([int]$History.transition_delta_count -gt 0) {
+        $attentions += [pscustomobject][ordered]@{
+            code = 'owner_baseline_transition_review'
+            scope = 'previous_to_current'
+        }
+        if ([string]$Status.domain_status -eq 'current') {
+            $Status.domain_status = 'review_needed'
+        }
     }
-
-    if ($rows.Count -eq 0) {
-        throw 'Git owner index contains no repository facts.'
+    $Status | Add-Member -NotePropertyName history -NotePropertyValue $History -Force
+    $Status | Add-Member -NotePropertyName attentions -NotePropertyValue @($attentions) -Force
+    $Status.summary | Add-Member -NotePropertyName attention_count -NotePropertyValue $attentions.Count -Force
+    if ($attentions.Count -gt 0) {
+        $Status.blocking_scopes = @($Status.blocking_scopes + 'git_owner_history' | Sort-Object -Unique)
     }
-
-    return @($rows)
+    return $Status
 }
 
 function ConvertTo-GitOwnerRepoSlug {
@@ -977,6 +1094,152 @@ function Add-GitOwnerIndexBaselineContext {
     }
 }
 
+function New-GitOwnerBaselineMigrationResult {
+    param(
+        [string] $ExecutionStatus = 'completed',
+        [string] $DomainStatus = 'unknown',
+        [bool] $MutationsPerformed = $false,
+        [string] $Reason = '',
+        [datetimeoffset] $ObservedAt = [datetimeoffset]::UtcNow,
+        [AllowNull()] [object] $Store,
+        [int] $LegacyNavigationEntries = 0,
+        [int] $VerifiedLocalRoots = 0,
+        [int] $NullableLocalRoots = 0
+    )
+
+    return [pscustomobject][ordered]@{
+        schema = 'github-local-index.owner-baseline-migration.v1'
+        execution_status = $ExecutionStatus
+        domain_status = $DomainStatus
+        observed_at = $ObservedAt.UtcDateTime.ToString('o')
+        zero_fetch = $true
+        mutations_performed = $MutationsPerformed
+        reason = if ([string]::IsNullOrWhiteSpace($Reason)) { $null } else { ConvertTo-GitOwnerSafeReason -Reason $Reason }
+        history_gap = if ($null -eq $Store) { $null } else { [bool]$Store.receipt.history_gap }
+        bootstrap_reason = if ($null -eq $Store) { $null } else { $Store.receipt.bootstrap_reason }
+        repository_count = if ($null -eq $Store) { 0 } else { [int]$Store.current.repository_count }
+        legacy_navigation_entries = $LegacyNavigationEntries
+        verified_local_roots = $VerifiedLocalRoots
+        nullable_local_roots = $NullableLocalRoots
+        current_identity_sha256 = if ($null -eq $Store) { $null } else { [string]$Store.current.identities_sha256 }
+        previous_identity_sha256 = if ($null -eq $Store -or $null -eq $Store.previous) { $null } else { [string]$Store.previous.identities_sha256 }
+        payload_sha256 = if ($null -eq $Store) { $null } else { [string]$Store.payload_sha256 }
+    }
+}
+
+function Invoke-GitOwnerBaselineMigration {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Owner,
+        [Parameter(Mandatory = $true)] [string] $ExpectedRepository,
+        [Parameter(Mandatory = $true)] [string] $RepoRoot,
+        [AllowNull()] [scriptblock] $IdentityResolver,
+        [AllowNull()] [scriptblock] $RemoteReader,
+        [AllowNull()] [scriptblock] $NavigationReader,
+        [AllowNull()] [scriptblock] $BaselineWriter
+    )
+
+    $observedAt = [datetimeoffset]::UtcNow
+    $identity = if ($null -ne $IdentityResolver) {
+        & $IdentityResolver $RepoRoot
+    }
+    else {
+        Get-GitOwnerIndexIdentity -RepoRoot $RepoRoot
+    }
+    $identityIssue = Get-GitOwnerIndexIdentityIssueCode `
+        -IndexIdentity $identity -ExpectedRepository $ExpectedRepository
+    if (-not [string]::IsNullOrWhiteSpace($identityIssue)) {
+        return New-GitOwnerBaselineMigrationResult `
+            -DomainStatus 'blocked' -Reason $identityIssue -ObservedAt $observedAt
+    }
+
+    $remote = if ($null -ne $RemoteReader) {
+        & $RemoteReader $Owner
+    }
+    else {
+        Get-GitOwnerRemoteRows -Owner $Owner
+    }
+    if (-not [bool]$remote.available) {
+        return New-GitOwnerBaselineMigrationResult `
+            -ExecutionStatus 'error' -DomainStatus 'unknown' `
+            -Reason $remote.reason -ObservedAt $observedAt
+    }
+    $navigation = if ($null -ne $NavigationReader) {
+        & $NavigationReader $RepoRoot
+    }
+    else {
+        Get-GitHubIndexPrivateNavigationEntries -RepoRoot $RepoRoot
+    }
+    $navigationEntries = if ([string]$navigation.status -eq 'current') {
+        @($navigation.entries)
+    }
+    else {
+        @()
+    }
+    $navigationByRepo = @{}
+    foreach ($entry in $navigationEntries) {
+        $repo = ([string]$entry.repo).Trim().ToLowerInvariant()
+        $navigationByRepo[$repo] = $entry
+    }
+
+    $identityRows = [System.Collections.Generic.List[object]]::new()
+    $localRootRows = [System.Collections.Generic.List[object]]::new()
+    $verifiedLocalRoots = 0
+    $remoteRepos = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($row in @($remote.rows)) {
+        $repo = ([string]$row.NameWithOwner).Trim().ToLowerInvariant()
+        [void]$remoteRepos.Add($repo)
+        $identityRows.Add([pscustomobject][ordered]@{
+            repo = $repo
+            visibility = ([string]$row.Visibility).Trim().ToUpperInvariant()
+            default_branch = ([string]$row.DefaultBranch).Trim()
+        })
+        $localRoot = $null
+        if ($navigationByRepo.ContainsKey($repo)) {
+            $candidateRoot = [string]$navigationByRepo[$repo].path
+            if (Test-Path -LiteralPath $candidateRoot -PathType Container) {
+                $candidateRepo = Get-GitOwnerRootRemoteSlug -RepositoryRoot $candidateRoot
+                if ($candidateRepo -ne $repo) {
+                    throw 'legacy_navigation_identity_mismatch'
+                }
+                $localRoot = $candidateRoot
+                $verifiedLocalRoots++
+            }
+        }
+        $localRootRows.Add([pscustomobject][ordered]@{
+            repo = $repo
+            local_root = $localRoot
+        })
+    }
+    if (@($navigationEntries | Where-Object {
+        -not $remoteRepos.Contains(([string]$_.repo).Trim().ToLowerInvariant())
+    }).Count -gt 0) {
+        throw 'legacy_navigation_repository_missing_remote'
+    }
+
+    $priorSource = if ([string]$navigation.status -eq 'current') {
+        'private_navigation_v2_without_identity_history'
+    }
+    else {
+        'no_prior_owner_identity_baseline'
+    }
+    $writeResult = if ($null -ne $BaselineWriter) {
+        & $BaselineWriter $RepoRoot $Owner @($identityRows) @($localRootRows) $observedAt $priorSource
+    }
+    else {
+        Write-GitHubOwnerBaselineStore `
+            -RepoRoot $RepoRoot -Owner $Owner `
+            -IdentityRows @($identityRows) -LocalRootRows @($localRootRows) `
+            -ObservedAt $observedAt -PriorSource $priorSource
+    }
+    $store = $writeResult.store
+    return New-GitOwnerBaselineMigrationResult `
+        -DomainStatus $(if ([bool]$store.receipt.history_gap) { 'attention' } else { 'current' }) `
+        -MutationsPerformed $true -ObservedAt $observedAt -Store $store `
+        -LegacyNavigationEntries $navigationEntries.Count `
+        -VerifiedLocalRoots $verifiedLocalRoots `
+        -NullableLocalRoots (@($localRootRows | Where-Object { $null -eq $_.local_root }).Count)
+}
+
 function Invoke-GitOwnerProvider {
     param(
         [Parameter(Mandatory = $true)] [string] $Owner,
@@ -1004,20 +1267,39 @@ function Invoke-GitOwnerProvider {
             -ExpectedRepository $ExpectedRepository
     }
 
-    $baselineRows = if ($null -ne $IndexReader) {
-        @(& $IndexReader $RepoRoot)
+    $baselineState = if ($null -ne $IndexReader) {
+        [pscustomobject][ordered]@{
+            status = 'current'
+            reason = $null
+            rows = @(& $IndexReader $RepoRoot)
+            history = [pscustomobject][ordered]@{
+                schema = 'github-local-index.owner-history.v1'
+                state = 'continuous'
+                current_observed_at = $null
+                previous_observed_at = $null
+                current_identity_sha256 = $null
+                previous_identity_sha256 = $null
+                transition_delta_count = 0
+                transition_deltas = @()
+            }
+        }
     }
     else {
-        @(Read-GitOwnerIndexRows -RepoRoot $RepoRoot)
+        Read-GitOwnerBaselineState -RepoRoot $RepoRoot
     }
-    $identity = Add-GitOwnerIndexBaselineContext `
-        -IndexIdentity $identity -BaselineRows $baselineRows
     $registryIdentity = if ($null -ne $RegistryReader) {
         & $RegistryReader $RepoRoot
     }
     else {
         Read-GitOwnerGovernanceRegistryIdentity -RepoRoot $RepoRoot
     }
+    if ([string]$baselineState.status -ne 'current') {
+        return New-GitOwnerUnavailableStatus -Reason $baselineState.reason `
+            -IndexIdentity $identity -RegistryIdentity $registryIdentity
+    }
+    $baselineRows = @($baselineState.rows)
+    $identity = Add-GitOwnerIndexBaselineContext `
+        -IndexIdentity $identity -BaselineRows $baselineRows
     $remote = if ($null -ne $RemoteReader) {
         & $RemoteReader $Owner
     }
@@ -1035,17 +1317,25 @@ function Invoke-GitOwnerProvider {
         @(Merge-GitOwnerRemoteAndLocalFacts `
             -BaselineRows $baselineRows -RemoteRows @($remote.rows))
     }
-    return Invoke-GitOwnerStatus -BaselineRows $baselineRows `
+    $status = Invoke-GitOwnerStatus -BaselineRows $baselineRows `
         -ObservedRows $observedRows -IndexIdentity $identity `
         -RegistryIdentity $registryIdentity `
         -ExpectedRepository $ExpectedRepository
+    return Add-GitOwnerBaselineHistory `
+        -Status $status -History $baselineState.history
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
     $status = $null
     try {
-        $status = Invoke-GitOwnerProvider -Owner $Owner `
-            -ExpectedRepository $ExpectedRepository -RepoRoot $RepoRoot
+        $status = if ($MigrateBaseline) {
+            Invoke-GitOwnerBaselineMigration -Owner $Owner `
+                -ExpectedRepository $ExpectedRepository -RepoRoot $RepoRoot
+        }
+        else {
+            Invoke-GitOwnerProvider -Owner $Owner `
+                -ExpectedRepository $ExpectedRepository -RepoRoot $RepoRoot
+        }
     }
     catch {
         $status = New-GitOwnerExecutionFailure `

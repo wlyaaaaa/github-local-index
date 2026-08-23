@@ -37,6 +37,9 @@
 # 单仓库结构化事实；只有身份、同步或发布条件不清楚时才需要
 pwsh -NoProfile -File tools\Get-ProjectAdmission.ps1 -Repo <owner/name> -LiveMetadata -Json
 
+# GitHub owner 的机器可读项目来源；分页闭合，按需可比较一个仓库的远端 OID
+pwsh -NoProfile -File tools\Get-ProjectCognitionSource.ps1 -Json
+
 # 预览索引刷新，不写入
 pwsh -NoProfile -File tools\Update-GitHubIndex.ps1 -SkipFetch -NoWrite
 

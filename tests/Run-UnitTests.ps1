@@ -45,6 +45,7 @@ function Assert-True {
 }
 
 & (Join-Path $PSScriptRoot 'Test-GitOwnerStatus.ps1')
+& (Join-Path $PSScriptRoot 'Test-ProjectCognitionSource.ps1')
 
 Assert-Equal 'wlyaaaaa/TURZX-SideScreen' (Normalize-GitHubRepoSlug 'https://github.com/wlyaaaaa/TURZX-SideScreen.git') 'normalizes HTTPS remotes'
 Assert-Equal 'wlyaaaaa/Key' (Normalize-GitHubRepoSlug 'git@github.com:wlyaaaaa/Key.git') 'normalizes SSH remotes'

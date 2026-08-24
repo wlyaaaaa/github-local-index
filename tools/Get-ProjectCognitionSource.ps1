@@ -10,6 +10,7 @@ param(
     [ValidateRange(0, 256)] [int] $MaxCompareFiles = 64,
     [string] $CompareRepositoryId = '',
     [string] $CompareBaseOid = '',
+    [string] $CompareHeadOid = '',
     [switch] $Json
 )
 
@@ -210,11 +211,29 @@ function Get-ProjectCognitionRemoteCompare {
     $response = Invoke-ProjectCognitionGhJson -Arguments @(
         'api', '--method', 'GET', "repos/$NameWithOwner/compare/$BaseOid...$HeadOid"
     )
+    $commitTimes = @(
+        @(
+            foreach ($item in @($response.commits)) {
+                $value = if ($null -ne $item.commit -and $null -ne $item.commit.committer) {
+                    $item.commit.committer.date
+                }
+                elseif ($null -ne $item.commit -and $null -ne $item.commit.author) {
+                    $item.commit.author.date
+                }
+                else { $null }
+                if ($null -ne $value) { ConvertTo-ProjectCognitionUtc $value }
+            }
+        ) | Sort-Object
+    )
+    $totalCommits = [int64]$response.total_commits
+    $commitTimeRangeComplete = $totalCommits -gt 0 -and $commitTimes.Count -eq $totalCommits
     return [pscustomobject][ordered]@{
         status = [string]$response.status
         ahead_by = [int64]$response.ahead_by
         behind_by = [int64]$response.behind_by
-        total_commits = [int64]$response.total_commits
+        total_commits = $totalCommits
+        first_committed_at = if (-not $commitTimeRangeComplete) { $null } else { $commitTimes[0] }
+        last_committed_at = if (-not $commitTimeRangeComplete) { $null } else { $commitTimes[-1] }
         files = @($response.files)
     }
 }
@@ -308,6 +327,7 @@ function Invoke-ProjectCognitionSource {
         [ValidateRange(0, 256)] [int] $MaxCompareFiles = 64,
         [string] $CompareRepositoryId = '',
         [string] $CompareBaseOid = '',
+        [string] $CompareHeadOid = '',
         [scriptblock] $PageReader = ${function:Get-ProjectCognitionRemotePage},
         [scriptblock] $NavigationReader = { param($Root) Get-GitHubIndexPrivateNavigationEntries -RepoRoot $Root },
         [scriptblock] $OriginReader = ${function:Get-ProjectCognitionCanonicalOrigin},
@@ -454,17 +474,23 @@ function Invoke-ProjectCognitionSource {
         ahead_by = $null
         behind_by = $null
         total_commits = $null
+        first_committed_at = $null
+        last_committed_at = $null
         changed_files = @()
         files_truncated = $false
         gaps = @()
     }
     $hasCompareId = -not [string]::IsNullOrWhiteSpace($CompareRepositoryId)
     $hasCompareBase = -not [string]::IsNullOrWhiteSpace($CompareBaseOid)
+    $hasCompareHead = -not [string]::IsNullOrWhiteSpace($CompareHeadOid)
     if ($hasCompareId -xor $hasCompareBase) { throw 'compare_contract_invalid' }
+    if ($hasCompareHead -and -not $hasCompareId) { throw 'compare_contract_invalid' }
     if ($hasCompareId) {
         $compareId = $CompareRepositoryId.Trim()
         $baseOid = $CompareBaseOid.Trim().ToLowerInvariant()
-        if ($compareId -notmatch $script:ProjectCognitionNodeIdPattern -or $baseOid -notmatch $script:ProjectCognitionOidPattern) {
+        $requestedHeadOid = if ($hasCompareHead) { $CompareHeadOid.Trim().ToLowerInvariant() } else { '' }
+        if ($compareId -notmatch $script:ProjectCognitionNodeIdPattern -or $baseOid -notmatch $script:ProjectCognitionOidPattern -or
+            ($hasCompareHead -and $requestedHeadOid -notmatch $script:ProjectCognitionOidPattern)) {
             throw 'compare_contract_invalid'
         }
         $compare.repository_node_id = $compareId
@@ -480,7 +506,7 @@ function Invoke-ProjectCognitionSource {
                 $compare.gaps = @((New-ProjectCognitionGap -Code 'compare_default_branch_absent' -RepositoryNodeId $compareId -Repository $repository.name_with_owner))
             }
             else {
-                $headOid = $repository.default_branch.oid
+                $headOid = if ($hasCompareHead) { $requestedHeadOid } else { $repository.default_branch.oid }
                 $compare.head_oid = $headOid
                 if ($baseOid -ceq $headOid) {
                     $compare.status = 'identical'
@@ -497,6 +523,8 @@ function Invoke-ProjectCognitionSource {
                         $compare.ahead_by = [int64]$remoteCompare.ahead_by
                         $compare.behind_by = [int64]$remoteCompare.behind_by
                         $compare.total_commits = [int64]$remoteCompare.total_commits
+                        $compare.first_committed_at = $remoteCompare.first_committed_at
+                        $compare.last_committed_at = $remoteCompare.last_committed_at
                         $files = @($remoteCompare.files)
                         $boundedFiles = @(
                             foreach ($file in @($files | Select-Object -First $MaxCompareFiles)) {
@@ -573,7 +601,8 @@ if ($MyInvocation.InvocationName -ne '.') {
         $result = Invoke-ProjectCognitionSource -Owner $Owner -RepoRoot $RepoRoot `
             -MaxPages $MaxPages -MaxRepositories $MaxRepositories `
             -MaxCompareFiles $MaxCompareFiles `
-            -CompareRepositoryId $CompareRepositoryId -CompareBaseOid $CompareBaseOid
+            -CompareRepositoryId $CompareRepositoryId -CompareBaseOid $CompareBaseOid `
+            -CompareHeadOid $CompareHeadOid
     }
     catch {
         $exitCode = 2

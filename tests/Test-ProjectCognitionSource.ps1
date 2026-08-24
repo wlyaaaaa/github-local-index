@@ -122,11 +122,14 @@ $originReader = {
 }
 $compareReader = {
     param($NameWithOwner, $BaseOid, $HeadOid, $MaxFiles)
+    $script:lastCompareHeadOid = $HeadOid
     [pscustomobject]@{
         status = 'ahead'
         ahead_by = 3
         behind_by = 0
         total_commits = 3
+        first_committed_at = '2026-08-20T01:02:03.0000000+00:00'
+        last_committed_at = '2026-08-22T04:05:06.0000000+00:00'
         files = @(
             [pscustomobject]@{ filename = 'docs/one.md'; status = 'modified'; additions = 2; deletions = 1; changes = 3 },
             [pscustomobject]@{ filename = 'src/two.ps1'; status = 'added'; additions = 9; deletions = 0; changes = 9 }
@@ -137,7 +140,7 @@ $compareReader = {
 $result = Invoke-ProjectCognitionSource -Owner 'WLYAAAAA' -RepoRoot $repoRoot `
     -PageReader $pageReader -NavigationReader $navigationReader -OriginReader $originReader `
     -CompareReader $compareReader -CompareRepositoryId 'R_repoStable1' `
-    -CompareBaseOid ('b' * 40) -MaxCompareFiles 1 `
+    -CompareBaseOid ('b' * 40) -CompareHeadOid ('c' * 40) -MaxCompareFiles 1 `
     -ObservedAt ([datetimeoffset]'2026-08-23T00:00:00Z')
 
 Assert-CognitionEqual 'github-local-index.project-cognition-source.v1' $result.schema 'provider schema is versioned'
@@ -157,9 +160,45 @@ Assert-CognitionEqual 'R_repoStable1' $result.clone_occurrences[0].repository_no
 Assert-CognitionEqual 'X:\private\alpha' $result.clone_occurrences[0].path 'runtime provider preserves canonical private navigation path'
 Assert-CognitionTrue (@($result.clone_coverage.gaps.code) -contains 'navigation_repo_not_in_live_inventory') 'stale private navigation entry becomes an exact gap'
 Assert-CognitionEqual 'ahead' $result.compare.status 'remote compare status is preserved'
+Assert-CognitionEqual ('c' * 40) $result.compare.head_oid 'an exact historical head can be compared during bounded backfill'
+Assert-CognitionEqual ('c' * 40) $script:lastCompareHeadOid 'compare reader receives the requested historical head'
+Assert-CognitionEqual '2026-08-20T01:02:03.0000000+00:00' $result.compare.first_committed_at 'remote compare preserves first commit time'
+Assert-CognitionEqual '2026-08-22T04:05:06.0000000+00:00' $result.compare.last_committed_at 'remote compare preserves last commit time'
 Assert-CognitionEqual 1 $result.compare.changed_files.Count 'remote compare file output is bounded'
 Assert-CognitionEqual $true $result.compare.files_truncated 'bounded remote compare reports truncation'
 Assert-CognitionTrue (@($result.compare.gaps.code) -contains 'compare_files_truncated') 'remote compare truncation is an exact gap'
+
+$originalGhJson = ${function:Invoke-ProjectCognitionGhJson}
+try {
+    function Invoke-ProjectCognitionGhJson {
+        param([string[]] $Arguments, [int] $MaxAttempts = 2, [int] $TimeoutMilliseconds = 90000)
+        [pscustomobject]@{
+            status = 'ahead'
+            ahead_by = 1
+            behind_by = 0
+            total_commits = 1
+            commits = @([pscustomobject]@{
+                commit = [pscustomobject]@{
+                    committer = [pscustomobject]@{ date = '2026-08-22T04:05:06Z' }
+                    author = [pscustomobject]@{ date = '2026-08-22T04:05:05Z' }
+                }
+            })
+            files = @()
+        }
+    }
+    $singleCommitCompare = Get-ProjectCognitionRemoteCompare `
+        -NameWithOwner 'wlyaaaaa/alpha' -BaseOid ('b' * 40) `
+        -HeadOid ('c' * 40) -MaxFiles 0
+    Assert-CognitionEqual '2026-08-22T04:05:06.0000000+00:00' `
+        $singleCommitCompare.first_committed_at `
+        'single-commit remote compare preserves an exact timestamp'
+    Assert-CognitionEqual $singleCommitCompare.first_committed_at `
+        $singleCommitCompare.last_committed_at `
+        'single-commit remote compare has identical time bounds'
+}
+finally {
+    Set-Item -Path function:Invoke-ProjectCognitionGhJson -Value $originalGhJson
+}
 
 $singlePageReader = {
     param($Owner, $Cursor, $PageSize)

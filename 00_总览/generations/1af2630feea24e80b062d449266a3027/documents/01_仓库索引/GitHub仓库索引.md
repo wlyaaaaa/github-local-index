@@ -4,14 +4,14 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-08-22T06:59:06.3894436+00:00 -->
-<!-- generation_id=d31c41be1542452dbe65dcfc8b70dd01 -->
+<!-- observed_at=2026-08-25T07:07:01.1322652+00:00 -->
+<!-- generation_id=1af2630feea24e80b062d449266a3027 -->
 
 # GitHub 仓库索引
 
-更新时间：2026-08-22
+更新时间：2026-08-25
 
-当前 `wlyaaaaa` 账号共有 41 个仓库；仅展开 26 个 PUBLIC 仓库，15 个 PRIVATE 仓库只计数。本文件由 `tools/Update-GitHubIndex.ps1` 刷新。
+当前 `wlyaaaaa` 账号共有 44 个仓库；仅展开 26 个 PUBLIC 仓库，18 个 PRIVATE 仓库只计数。本文件由 `tools/Update-GitHubIndex.ps1` 刷新。
 
 | GitHub 仓库 | 可见性 | 默认分支 | 本地路径 | 本地状态 | 下次动作 |
 | --- | --- | --- | --- | --- | --- |
@@ -21,7 +21,7 @@
 | wlyaaaaa/codex-local-remote | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`（cached）<br>必要保留：当前 V1 计划任务使用的干净运行回滚根；owner：PCConfig；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success（cached） | 保持必要保留；退出条件：canonical V2 已并入并推送实际默认分支，shared-owner 实机验收与重启回读通过，计划任务不再引用本路径，且迁移结果为 success<br>正常维护 |
 | wlyaaaaa/devconfig-backup | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/emerald-veil | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`（cached） | 正常维护 |
-| wlyaaaaa/github-local-index | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`，脏工作区 81 项（cached） | 公开仓库先做暴露面审查，再按显式路径提交 |
+| wlyaaaaa/github-local-index | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`，脏工作区 5 项（cached） | 公开仓库先做暴露面审查，再按显式路径提交 |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | main | 未发现本地 clone | 无法评估本地变化 | 需要时统一 clone，或标记远端存档 |
 | wlyaaaaa/llm-backend-toolkit | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`（cached） | 正常维护 |
 | wlyaaaaa/LocalOCR | PUBLIC | main | 本机已发现 clone（路径不公开） | `main` 已同步，`0/0`（cached） | 正常维护 |

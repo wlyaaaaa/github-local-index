@@ -10,25 +10,27 @@ adapter: `github.protected-major-actions.v1`
 
 ## 产品语义
 
-系统项目、四基座相关仓库和其他高价值仓库的重大动作，同时经过硬边界与顶级
-模型语义判断。受认证的 `codex-root` 是最高自动化主体，可完成
-`runtime_allowed` 动作；Passkey/TOTP/Recovery/Google/Microsoft 中任一已登记因子
-代表最终人类根，可满足 `human_required` 动作。五因子全部丢失或不可验证时没有
-Runtime、管理员或其他自动化 fallback，关键动作保持失败关闭。普通 commit、
-normal push、受信代码或文档修改不能只因位于受保护仓库就被判为恶意篡改。
+系统项目、三控制面相关仓库和其他高价值仓库的重大动作，同时经过硬边界与最高权限
+智能体语义判断。已登记的最高权限智能体 `codex-root` 按真实用户意图、精确目标、
+范围、可恢复性和异常证据给出
+`allow|step_up|deny|needs_evidence|suspected_tamper`。只有 `allow` 与 `step_up`
+会形成可执行 proposal：`allow` 冻结为 `runtime_allowed`，`step_up` 冻结为
+`human_required`；其余判断在读取 broker 或执行 effect 前失败关闭。
 
-adapter 从冻结请求的 typed effect 与 preimage 机械派生
-`authorization_requirement`，调用方和模型不能提供或降低该字段：
+adapter 可以机械验证 typed effect、preimage、身份、参数与漂移，但不能按 effect
+family、operation、仓库可见性、critical surface、executor 或 epoch 自行派生、提高
+或降低 `human_required`。删除、转移、公开性与默认分支等动作都没有独立的机械人类
+因子矩阵；是否需要人类因子只来自上述最高权限智能体的真实语义判断。普通 commit、
+normal push、受信代码或文档修改也不能只因位于受保护仓库就被判为恶意篡改。
 
-- `delete-repository`、`transfer-repository`、`set-visibility` 的
-  `PRIVATE` → `PUBLIC` 为 `human_required`；
-- `create-repository`（仅 PRIVATE）、`rename-repository`、`set-default-branch`、全部 `git-local`、
-  `PUBLIC` → `PRIVATE` 及其他非上述关键 typed 变化为 `runtime_allowed`。
-
-`AuthorityFactor=Auto` 是默认值，并且只在 proposal 完成类型校验、请求冻结后解析：
-`human_required` → `Passkey`，`runtime_allowed` → `Runtime`。显式人类因子可提高
-普通请求的验证强度；显式 `Runtime` 不能降低 `human_required`，adapter 必须在
-broker 和 effect 之前返回 `highest_authority_verification_required`。
+最高权限人类因子固定四类：Passkey、TOTP、Recovery、Account。Google 与
+Microsoft 只是 `Account provider`，不是第五、第六类因子；选择 Account 时必须同时
+指定一个已登记 provider。`AuthorityFactor=Auto` 在 proposal 冻结后解析：
+`step_up`/`human_required` → `Passkey`，`allow`/`runtime_allowed` → `Runtime`。
+显式人类因子可提高 `allow` 请求的验证强度；显式 `Runtime` 不能降低 `step_up`，
+adapter 必须在 broker 和 effect 之前返回
+`highest_authority_verification_required`。四类全部丢失或不可验证时没有 Runtime、
+管理员或其他自动化 fallback。
 
 ## 两阶段接口
 
@@ -41,7 +43,8 @@ broker 和 effect 之前返回 `highest_authority_verification_required`。
 - canonical worktree、git common-dir、visibility、default branch 和资源；
 - 类型化 effect family、operation、完整 argv 与参数；
 - `execution_mode=execute|dry_run`，演练能力不能升级为现实执行；
-- adapter 机械派生的 `authorization_requirement=runtime_allowed|human_required`；
+- 最高权限智能体的语义判断，以及只由 `allow|step_up` 映射并冻结的
+  `authorization_requirement=runtime_allowed|human_required`；
 - 实时 admission、provider metadata、ref/remote 等 precondition；
 - adapter 脚本与 native git/gh 的 SHA-256、模型 decision/reason/user intent、
   30 秒能力 TTL。
@@ -54,7 +57,8 @@ broker 和 effect 之前返回 `highest_authority_verification_required`。
 2. 调用固定入口
    `C:\ProgramData\PCConfig\AuthorityHost\tools\Invoke-SecretBroker.ps1`
    的 `AuthorizeMajorAction`；adapter 把冻结后解析出的单一因子传给 broker，
-   Runtime 使用 `codex-root`，人类下限使用已登记的五因子之一；
+   Runtime 使用 `codex-root`，人类下限使用已登记的四类因子之一；Account 另传
+   已登记的 Google 或 Microsoft provider；
 3. 再次取证后，以 `pcconfig.major-action-consume-request.v1` 调用
    `ConsumeMajorActionCapability`，且 consume 模式必须与已签
    `execution_mode` 精确一致；
@@ -147,7 +151,7 @@ adapter schema 规定可授权的 typed effect、preimage 和 read-back；内部
 受信 commit/push、正常代码或文档修改、合法 PR/merge、候选 branch 和明确授权
 的仓库设置调整都是正常变化。stable repository ID、visibility、default branch、
 保护/恢复 ref 或 adapter 在没有有效事务时被替换、回滚、伪造或重放，可以形成
-integrity incident；是否失陷仍由顶级模型结合 provider 与本地证据确认。adapter
+integrity incident；是否失陷仍由最高权限智能体结合 provider 与本地证据确认。adapter
 本身不改变设备信任，也不直接触发 BitLocker containment。
 
 本实现保护受管 Codex 路径，不承诺拦截已经取得系统管理员、其他高权限 token
@@ -156,7 +160,8 @@ integrity incident；是否失陷仍由顶级模型结合 provider 与本地证�
 ## 无破坏验收
 
 - synthetic 状态覆盖 Prepare、DryRun、Execute/read-back；
-- 缺失 runtime factor 返回 `highest_authority_verification_required` 且零 effect；
+- `step_up` 所需人类因子缺失时返回
+  `highest_authority_verification_required` 且零 effect；
 - target drift 在 broker 调用或 effect 前失败关闭；
 - 多余字段与 shell string 被类型化 schema 拒绝；
 - 测试不删除、公开、转移或重写任何真实生产仓库。

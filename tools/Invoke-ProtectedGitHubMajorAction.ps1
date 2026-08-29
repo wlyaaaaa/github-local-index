@@ -8,8 +8,10 @@ param(
     [string] $EffectFamily,
     [ValidateSet('execute', 'dry_run')]
     [string] $ExecutionMode = 'execute',
-    [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
+    [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Account')]
     [string] $AuthorityFactor = 'Auto',
+    [ValidateSet('', 'Google', 'Microsoft')]
+    [string] $AccountProvider = '',
     [ValidateSet(
         'delete-local-ref',
         'force-update-local-ref',
@@ -25,7 +27,9 @@ param(
     [string] $Repository,
     [string] $RepoPath,
     [string] $ArgumentsPath,
-    [ValidateSet('allow', 'deny')]
+    [ValidateSet(
+        'allow', 'step_up', 'deny', 'needs_evidence', 'suspected_tamper'
+    )]
     [string] $Decision,
     [string] $Reason,
     [string] $UserIntent,
@@ -53,6 +57,7 @@ $script:AuthorizationSchema = `
     'pcconfig.major-action-authorization-request.v1'
 $script:ConsumeSchema = 'pcconfig.major-action-consume-request.v1'
 $script:AuthorityFactor = $AuthorityFactor
+$script:AccountProvider = $AccountProvider
 $script:Utf8NoBom = [Text.UTF8Encoding]::new($false)
 
 function Throw-ProtectedActionError {
@@ -586,7 +591,8 @@ function Get-DefaultBrokerInvoker {
             [string] $Action,
             [string] $InputPath,
             [string] $OperationId,
-            [string] $SelectedAuthorityFactor
+            [string] $SelectedAuthorityFactor,
+            [string] $SelectedAccountProvider
         )
         if (-not (Test-Path -LiteralPath $script:BrokerEntry -PathType Leaf)) {
             Throw-ProtectedActionError 'authority_broker_unavailable'
@@ -603,6 +609,11 @@ function Get-DefaultBrokerInvoker {
         )
         if ($SelectedAuthorityFactor -ceq 'Runtime') {
             $brokerArguments += @('-RuntimePrincipal', 'codex-root')
+        }
+        elseif ($SelectedAuthorityFactor -ceq 'Account') {
+            $brokerArguments += @(
+                '-AccountProvider', $SelectedAccountProvider
+            )
         }
         $result = Invoke-HardenedNative `
             -Kind pwsh `
@@ -794,53 +805,58 @@ function Assert-TypedArguments {
 
 function Get-GitHubAuthorizationRequirement {
     param(
-        [Parameter(Mandatory)][string] $EffectFamily,
-        [Parameter(Mandatory)][string] $Operation,
-        [Parameter(Mandatory)][object] $Arguments
+        [Parameter(Mandatory)]
+        [ValidateSet('allow', 'step_up')]
+        [string] $SemanticDecision
     )
-    Assert-TypedArguments `
-        -EffectFamily $EffectFamily -Operation $Operation -Arguments $Arguments
-    if ($EffectFamily -eq 'github-api') {
-        if ($Operation -in @('delete-repository', 'transfer-repository')) {
-            return 'human_required'
-        }
-        if ($Operation -eq 'set-visibility') {
-            $old = ([string](Get-MapValue `
-                    -Value $Arguments -Name 'expected_visibility')).ToUpperInvariant()
-            $new = ([string](Get-MapValue `
-                    -Value $Arguments -Name 'new_visibility')).ToUpperInvariant()
-            if ($old -ceq 'PRIVATE' -and $new -ceq 'PUBLIC') {
-                return 'human_required'
-            }
-        }
-    }
-    'runtime_allowed'
+    if ($SemanticDecision -ceq 'step_up') { return 'human_required' }
+    return 'runtime_allowed'
 }
 
-function Resolve-GitHubAuthorityFactor {
+function Resolve-GitHubAuthorityRoute {
     param(
         [Parameter(Mandatory)]
         [ValidateSet('runtime_allowed', 'human_required')]
         [string] $AuthorizationRequirement,
         [Parameter(Mandatory)]
-        [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
-        [string] $RequestedFactor
+        [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Account')]
+        [string] $RequestedFactor,
+        [ValidateSet('', 'Google', 'Microsoft')]
+        [string] $AccountProvider = ''
     )
-    if ($RequestedFactor -eq 'Auto') {
-        if ($AuthorizationRequirement -eq 'human_required') { return 'Passkey' }
-        return 'Runtime'
+    $factor = if ($RequestedFactor -eq 'Auto') {
+        if ($AuthorizationRequirement -eq 'human_required') { 'Passkey' }
+        else { 'Runtime' }
+    }
+    else {
+        switch ($RequestedFactor.ToLowerInvariant()) {
+            'runtime' { 'Runtime' }
+            'passkey' { 'Passkey' }
+            'totp' { 'Totp' }
+            'recovery' { 'Recovery' }
+            'account' { 'Account' }
+        }
     }
     if ($AuthorizationRequirement -eq 'human_required' -and
-        $RequestedFactor -eq 'Runtime') {
+        $factor -ceq 'Runtime') {
         Throw-ProtectedActionError 'highest_authority_verification_required'
     }
-    switch ($RequestedFactor.ToLowerInvariant()) {
-        'runtime' { 'Runtime' }
-        'passkey' { 'Passkey' }
-        'totp' { 'Totp' }
-        'recovery' { 'Recovery' }
-        'google' { 'Google' }
-        'microsoft' { 'Microsoft' }
+    $provider = ''
+    if ($factor -ceq 'Account') {
+        if ([string]::IsNullOrWhiteSpace($AccountProvider)) {
+            Throw-ProtectedActionError 'account_provider_required'
+        }
+        $provider = switch ($AccountProvider.ToLowerInvariant()) {
+            'google' { 'Google' }
+            'microsoft' { 'Microsoft' }
+        }
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($AccountProvider)) {
+        Throw-ProtectedActionError 'account_provider_not_applicable'
+    }
+    [pscustomobject][ordered]@{
+        factor = $factor
+        account_provider = $provider
     }
 }
 
@@ -1409,7 +1425,9 @@ function New-ProtectedGitHubMajorActionProposal {
         [Parameter(Mandatory)][string] $Repository,
         [Parameter(Mandatory)][string] $RepoPath,
         [Parameter(Mandatory)][object] $Arguments,
-        [Parameter(Mandatory)][ValidateSet('allow', 'deny')]
+        [Parameter(Mandatory)][ValidateSet(
+            'allow', 'step_up', 'deny', 'needs_evidence', 'suspected_tamper'
+        )]
         [string] $Decision,
         [Parameter(Mandatory)][string] $Reason,
         [Parameter(Mandatory)][string] $UserIntent,
@@ -1423,6 +1441,16 @@ function New-ProtectedGitHubMajorActionProposal {
         $UserIntent.Length -gt 4096) {
         Throw-ProtectedActionError 'assessment_invalid'
     }
+    if ($Decision -notin @('allow', 'step_up')) {
+        $assessmentError = switch ($Decision) {
+            'deny' { 'model_assessment_denied' }
+            'needs_evidence' { 'model_assessment_needs_evidence' }
+            'suspected_tamper' { 'model_assessment_suspected_tamper' }
+        }
+        Throw-ProtectedActionError $assessmentError
+    }
+    $authorizationRequirement = Get-GitHubAuthorizationRequirement `
+        -SemanticDecision $Decision
     $repoRoot = [IO.Path]::GetFullPath($RepoPath)
     $binding = Get-LiveBinding `
         -EffectFamily $EffectFamily -Operation $Operation `
@@ -1430,8 +1458,6 @@ function New-ProtectedGitHubMajorActionProposal {
         -AdmissionInvoker $AdmissionInvoker `
         -MetadataInvoker $MetadataInvoker -AccountInvoker $AccountInvoker `
         -NativeInvoker $NativeInvoker
-    $authorizationRequirement = Get-GitHubAuthorizationRequirement `
-        -EffectFamily $EffectFamily -Operation $Operation -Arguments $Arguments
     [pscustomobject][ordered]@{
         schema = $script:ProposalSchema
         prepared_utc = [DateTimeOffset]::UtcNow.ToString('o')
@@ -1484,7 +1510,9 @@ function Assert-Proposal {
         [int]$request.ttl_seconds -ne 30 -or
         -not (Test-ExactKeys $request.assessment @(
                 'decision', 'reason', 'user_intent'
-            )) -or $request.assessment.decision -notin @('allow', 'deny')) {
+            )) -or $request.assessment.decision -notin @(
+                'allow', 'step_up'
+            )) {
         Throw-ProtectedActionError 'proposal_invalid'
     }
     if (-not (Test-ExactKeys $request.parameters @(
@@ -1498,9 +1526,7 @@ function Assert-Proposal {
         -Operation $request.parameters.operation `
         -Arguments $request.parameters.arguments
     $derivedRequirement = Get-GitHubAuthorizationRequirement `
-        -EffectFamily $request.effect_family `
-        -Operation $request.parameters.operation `
-        -Arguments $request.parameters.arguments
+        -SemanticDecision $request.assessment.decision
     if ($request.authorization_requirement -cne $derivedRequirement) {
         Throw-ProtectedActionError 'proposal_invalid'
     }
@@ -1965,8 +1991,10 @@ function Invoke-ProtectedGitHubMajorActionProposal {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][object] $Proposal,
-        [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]
+        [ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Account')]
         [string] $AuthorityFactor = $script:AuthorityFactor,
+        [ValidateSet('', 'Google', 'Microsoft')]
+        [string] $AccountProvider = $script:AccountProvider,
         [switch] $DryRun,
         [scriptblock] $AdmissionInvoker = (Get-DefaultAdmissionInvoker),
         [scriptblock] $MetadataInvoker = (Get-DefaultMetadataInvoker),
@@ -1977,9 +2005,10 @@ function Invoke-ProtectedGitHubMajorActionProposal {
     Assert-Proposal $Proposal
     $request = $Proposal.authorization_request
     try {
-        $selectedAuthorityFactor = Resolve-GitHubAuthorityFactor `
+        $authorityRoute = Resolve-GitHubAuthorityRoute `
             -AuthorizationRequirement $request.authorization_requirement `
-            -RequestedFactor $AuthorityFactor
+            -RequestedFactor $AuthorityFactor `
+            -AccountProvider $AccountProvider
     }
     catch {
         if ($_.Exception.Message -eq 'highest_authority_verification_required') {
@@ -1987,8 +2016,16 @@ function Invoke-ProtectedGitHubMajorActionProposal {
                 -Error 'highest_authority_verification_required' `
                 -AuthorizationStatus 'verification_required'
         }
+        if ($_.Exception.Message -in @(
+                'account_provider_required',
+                'account_provider_not_applicable'
+            )) {
+            return New-BlockedResult -Error $_.Exception.Message
+        }
         throw
     }
+    $selectedAuthorityFactor = $authorityRoute.factor
+    $selectedAccountProvider = $authorityRoute.account_provider
     $expectedDryRun = $request.execution_mode -ceq 'dry_run'
     if ([bool]$DryRun -ne $expectedDryRun) {
         return New-BlockedResult 'execution_mode_mismatch'
@@ -2030,9 +2067,6 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         }
         throw
     }
-    if ($request.assessment.decision -ne 'allow') {
-        return New-BlockedResult 'model_assessment_denied'
-    }
     $operationId = [guid]::NewGuid().ToString()
     $tempRoot = $null
     try {
@@ -2041,7 +2075,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         Write-JsonFile $authorizationPath $request
         $authorization = & $BrokerInvoker `
             'AuthorizeMajorAction' $authorizationPath $operationId `
-            $selectedAuthorityFactor
+            $selectedAuthorityFactor $selectedAccountProvider
         if ((Get-OptionalMapValue $authorization.value 'error') -eq
             'highest_authority_verification_required' -or
             (Get-OptionalMapValue $authorization.value 'authorization_status') -eq
@@ -2091,7 +2125,7 @@ function Invoke-ProtectedGitHubMajorActionProposal {
         Write-JsonFile $consumePath $consumeEnvelope
         $consume = & $BrokerInvoker `
             'ConsumeMajorActionCapability' $consumePath $operationId `
-            $selectedAuthorityFactor
+            $selectedAuthorityFactor $selectedAccountProvider
         if ((Get-OptionalMapValue $consume.value 'error') -eq
             'highest_authority_verification_required' -or
             (Get-OptionalMapValue $consume.value 'authorization_status') -eq
@@ -2255,7 +2289,8 @@ function Invoke-ProtectedGitHubMajorActionCli {
     }
     $proposal = Read-BoundedJsonObject $ProposalPath
     Invoke-ProtectedGitHubMajorActionProposal `
-        -Proposal $proposal -AuthorityFactor $AuthorityFactor -DryRun:$DryRun
+        -Proposal $proposal -AuthorityFactor $AuthorityFactor `
+        -AccountProvider $AccountProvider -DryRun:$DryRun
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

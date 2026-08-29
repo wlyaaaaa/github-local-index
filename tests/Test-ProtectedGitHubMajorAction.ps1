@@ -131,7 +131,8 @@ $brokerInvoker = {
         [string] $Action,
         [string] $InputPath,
         [string] $OperationId,
-        [string] $SelectedAuthorityFactor
+        [string] $SelectedAuthorityFactor,
+        [string] $SelectedAccountProvider
     )
     $input = Get-Content -LiteralPath $InputPath -Raw -Encoding utf8 |
         ConvertFrom-Json -Depth 40
@@ -141,6 +142,7 @@ $brokerInvoker = {
         input = $input
         operation_id = $OperationId
         authority_factor = $SelectedAuthorityFactor
+        account_provider = $SelectedAccountProvider
     })
     if ($Action -eq 'AuthorizeMajorAction') {
         return [pscustomobject]@{
@@ -369,7 +371,7 @@ Assert-Equal $arguments.ref `
     'Prepare binds typed arguments'
 Assert-Equal 'runtime_allowed' `
     $proposal.authorization_request.authorization_requirement `
-    'local Git effects remain runtime-allowed'
+    'the highest-authority allow decision maps to runtime authority'
 
 $deleteRepositoryArguments = [ordered]@{
     expected_visibility = 'PRIVATE'
@@ -382,15 +384,61 @@ $deleteRepositoryProposal = New-ProtectedGitHubMajorActionProposal `
     -Repository 'synthetic-owner/protected-repo' `
     -RepoPath 'C:\synthetic\protected-repo' `
     -Arguments $deleteRepositoryArguments `
-    -Decision 'allow' `
-    -Reason 'synthetic delete classification test' `
-    -UserIntent 'verify repository deletion requires human presence' `
+    -Decision 'step_up' `
+    -Reason 'synthetic semantic step-up test' `
+    -UserIntent 'verify the highest-authority decision requests human presence' `
     -AdmissionInvoker $admissionInvoker `
     -MetadataInvoker $metadataInvoker `
     -NativeInvoker $nativeInvoker
 Assert-Equal 'human_required' `
     $deleteRepositoryProposal.authorization_request.authorization_requirement `
-    'repository deletion mechanically requires a human factor'
+    'repository deletion follows the highest-authority step-up decision'
+
+$deleteRepositoryAllowedProposal = New-ProtectedGitHubMajorActionProposal `
+    -EffectFamily 'github-api' `
+    -ExecutionMode 'dry_run' `
+    -Operation 'delete-repository' `
+    -Repository 'synthetic-owner/protected-repo' `
+    -RepoPath 'C:\synthetic\protected-repo' `
+    -Arguments $deleteRepositoryArguments `
+    -Decision 'allow' `
+    -Reason 'synthetic semantic allow test' `
+    -UserIntent 'prove the adapter does not derive human presence from effect type' `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker
+Assert-Equal 'runtime_allowed' `
+    $deleteRepositoryAllowedProposal.authorization_request.authorization_requirement `
+    'the same delete effect remains runtime-allowed when the authority says allow'
+
+foreach ($blockedAssessment in @(
+        @{ decision = 'deny'; error = 'model_assessment_denied' },
+        @{
+            decision = 'needs_evidence'
+            error = 'model_assessment_needs_evidence'
+        },
+        @{
+            decision = 'suspected_tamper'
+            error = 'model_assessment_suspected_tamper'
+        }
+    )) {
+    $blockedAssessmentObserved = ''
+    try {
+        New-ProtectedGitHubMajorActionProposal `
+            -EffectFamily 'github-api' `
+            -ExecutionMode 'dry_run' `
+            -Operation 'delete-repository' `
+            -Repository 'synthetic-owner/protected-repo' `
+            -RepoPath 'C:\synthetic\protected-repo' `
+            -Arguments $deleteRepositoryArguments `
+            -Decision $blockedAssessment.decision `
+            -Reason 'synthetic non-executable semantic decision test' `
+            -UserIntent 'prove non-executable decisions never reach the broker' | Out-Null
+    }
+    catch { $blockedAssessmentObserved = $_.Exception.Message }
+    Assert-Equal $blockedAssessment.error $blockedAssessmentObserved `
+        "semantic $($blockedAssessment.decision) blocks proposal creation"
+}
 
 $privateToPublicArguments = [ordered]@{
     expected_visibility = 'PRIVATE'
@@ -402,15 +450,15 @@ $privateToPublicProposal = New-ProtectedGitHubMajorActionProposal `
     -Repository 'synthetic-owner/protected-repo' `
     -RepoPath 'C:\synthetic\protected-repo' `
     -Arguments $privateToPublicArguments `
-    -Decision 'allow' `
-    -Reason 'synthetic public exposure classification test' `
-    -UserIntent 'verify private to public requires human presence' `
+    -Decision 'step_up' `
+    -Reason 'synthetic public exposure semantic step-up test' `
+    -UserIntent 'verify semantic step-up requests human presence' `
     -AdmissionInvoker $admissionInvoker `
     -MetadataInvoker $metadataInvoker `
     -NativeInvoker $nativeInvoker
 Assert-Equal 'human_required' `
     $privateToPublicProposal.authorization_request.authorization_requirement `
-    'PRIVATE-to-PUBLIC visibility mechanically requires a human factor'
+    'PRIVATE-to-PUBLIC follows the highest-authority step-up decision'
 
 $setDefaultBranchArguments = [ordered]@{
     expected_default_branch = 'main'
@@ -430,7 +478,7 @@ $setDefaultBranchProposal = New-ProtectedGitHubMajorActionProposal `
     -NativeInvoker $nativeInvoker
 Assert-Equal 'runtime_allowed' `
     $setDefaultBranchProposal.authorization_request.authorization_requirement `
-    'set-default-branch remains runtime-allowed'
+    'set-default-branch follows the highest-authority allow decision'
 
 $renameArguments = [ordered]@{
     expected_name = 'protected-repo'
@@ -579,7 +627,7 @@ Assert-True (-not (Test-RenameAdmissionRecord `
     'rename rejects unrelated admission warnings'
 Assert-Equal 'runtime_allowed' `
     $renameProposal.authorization_request.authorization_requirement `
-    'same-owner repository rename remains runtime-allowed'
+    'same-owner repository rename follows the semantic allow decision'
 Assert-Equal 'synthetic-owner/renamed-repo' `
     $renameProposal.authorization_request.preconditions.rename_target.repository `
     'rename proposal binds the absent destination slug'
@@ -622,7 +670,7 @@ try {
         -NativeInvoker $nativeInvoker
     Assert-Equal 'runtime_allowed' `
         $publicToPrivateProposal.authorization_request.authorization_requirement `
-        'PUBLIC-to-PRIVATE visibility remains runtime-allowed'
+        'PUBLIC-to-PRIVATE follows the highest-authority allow decision'
 }
 finally { $script:Fixture.visibility = 'PRIVATE' }
 
@@ -636,15 +684,15 @@ $transferProposal = New-ProtectedGitHubMajorActionProposal `
     -Repository 'synthetic-owner/protected-repo' `
     -RepoPath 'C:\synthetic\protected-repo' `
     -Arguments $transferArguments `
-    -Decision 'allow' `
-    -Reason 'synthetic transfer classification test' `
-    -UserIntent 'verify repository transfer requires human presence' `
+    -Decision 'step_up' `
+    -Reason 'synthetic transfer semantic step-up test' `
+    -UserIntent 'verify semantic step-up requests human presence' `
     -AdmissionInvoker $admissionInvoker `
     -MetadataInvoker $metadataInvoker `
     -NativeInvoker $nativeInvoker
 Assert-Equal 'human_required' `
     $transferProposal.authorization_request.authorization_requirement `
-    'repository transfer mechanically requires a human factor'
+    'repository transfer follows the highest-authority step-up decision'
 $transferPlan = Get-EffectPlan `
     -EffectFamily 'github-api' `
     -Operation 'transfer-repository' `
@@ -730,7 +778,7 @@ Assert-True ([bool]$createProposal.authorization_request.preconditions.target.ab
     'create Prepare verifies the target repository is absent'
 Assert-Equal 'runtime_allowed' `
     $createProposal.authorization_request.authorization_requirement `
-    'PRIVATE repository creation remains runtime-allowed'
+    'PRIVATE repository creation follows the semantic allow decision'
 $createPlan = Get-EffectPlan `
     -EffectFamily 'github-api' `
     -Operation 'create-repository' `
@@ -1038,6 +1086,41 @@ Assert-Equal 0 $script:Fixture.native_effects `
     'human-required DryRun performs no GitHub effect'
 
 $script:Fixture.broker_calls.Clear()
+$accountDryRun = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $deleteRepositoryProposal `
+    -AuthorityFactor 'Account' `
+    -AccountProvider 'Google' `
+    -DryRun:$true `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'pass' $accountDryRun.status `
+    'Account can satisfy a human-required synthetic DryRun'
+Assert-Equal 'Account' $script:Fixture.broker_calls[0].authority_factor `
+    'Account remains the human-factor class sent to the broker'
+Assert-Equal 'Google' $script:Fixture.broker_calls[0].account_provider `
+    'Google is sent separately as the Account provider'
+Assert-Equal 'Account' $script:Fixture.broker_calls[1].authority_factor `
+    'capability consumption preserves the Account factor class'
+Assert-Equal 'Google' $script:Fixture.broker_calls[1].account_provider `
+    'capability consumption preserves the Account provider'
+
+$script:Fixture.broker_calls.Clear()
+$missingAccountProvider = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $deleteRepositoryProposal `
+    -AuthorityFactor 'Account' `
+    -DryRun:$true `
+    -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker `
+    -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $brokerInvoker
+Assert-Equal 'account_provider_required' $missingAccountProvider.error `
+    'Account requires one separately selected registered provider'
+Assert-Equal 0 $script:Fixture.broker_calls.Count `
+    'missing Account provider fails before broker or effect'
+
+$script:Fixture.broker_calls.Clear()
 $runtimeCannotLowerHuman = Invoke-ProtectedGitHubMajorActionProposal `
     -Proposal $deleteRepositoryProposal `
     -AuthorityFactor 'runtime' `
@@ -1048,7 +1131,7 @@ $runtimeCannotLowerHuman = Invoke-ProtectedGitHubMajorActionProposal `
     -BrokerInvoker $brokerInvoker
 Assert-Equal 'highest_authority_verification_required' `
     $runtimeCannotLowerHuman.error `
-    'explicit Runtime cannot lower a mechanically human-required request, regardless of case'
+    'explicit Runtime cannot lower a semantic step-up request, regardless of case'
 Assert-Equal 0 $script:Fixture.broker_calls.Count `
     'human-required Runtime mismatch fails before broker or effect'
 
@@ -1063,7 +1146,7 @@ catch {
         $_.Exception.Message -eq 'proposal_invalid'
 }
 Assert-True $tamperedRequirementRejected `
-    'a caller cannot downgrade the adapter-derived requirement in a frozen proposal'
+    'a caller cannot detach the frozen requirement from the semantic decision'
 
 $script:Fixture.broker_calls.Clear()
 $modeMismatch = Invoke-ProtectedGitHubMajorActionProposal `
@@ -1150,7 +1233,13 @@ $script:Fixture.broker_calls.Clear()
 $script:Fixture.native_effects = 0
 $script:Fixture.ref_present = $true
 $verificationBroker = {
-    param([string] $Action, [string] $InputPath, [string] $OperationId)
+    param(
+        [string] $Action,
+        [string] $InputPath,
+        [string] $OperationId,
+        [string] $SelectedAuthorityFactor,
+        [string] $SelectedAccountProvider
+    )
     [pscustomobject]@{
         exit_code = 2
         value = [pscustomobject]@{
@@ -1230,22 +1319,29 @@ Assert-True ($toolText.Contains(
     'adapter uses only the fixed Program Files PowerShell runtime'
 Assert-True ($toolText.Contains("'-AuthorityFactor', `$SelectedAuthorityFactor")) `
     'adapter routes only the post-freeze selected factor to the broker'
+Assert-True ($toolText.Contains("'-AccountProvider', `$SelectedAccountProvider")) `
+    'adapter routes Account provider separately from the factor class'
 Assert-True ($toolText.Contains("[string] `$AuthorityFactor = 'Auto'")) `
     'adapter defaults to post-freeze automatic factor selection'
+Assert-True ($toolText.Contains(
+        "[ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Account')]"
+    ) -and -not $toolText.Contains(
+        "[ValidateSet('Auto', 'Runtime', 'Passkey', 'Totp', 'Recovery', 'Google', 'Microsoft')]"
+    )) 'Google and Microsoft are not independent authority-factor classes'
 Assert-True ($toolText.Contains("-RuntimePrincipal', 'codex-root'")) `
     'adapter uses the unified codex-root principal'
 Assert-True ($contractText -match
-    '(?s)authorization_requirement.{0,500}(delete-repository|delete).{0,180}(transfer-repository|transfer).{0,220}PRIVATE.{0,80}PUBLIC.{0,300}human_required') `
-    'owner contract records the closed human-required GitHub matrix'
+    '(?s)最高权限智能体.{0,500}allow.{0,160}step_up.{0,300}human_required') `
+    'owner contract makes the semantic decision authoritative for human presence'
 Assert-True ($contractText -match
-    '(?s)create-repository.{0,260}rename-repository.{0,260}set-default-branch.{0,260}git-local.{0,260}runtime_allowed') `
-    'owner contract preserves unattended ordinary GitHub and local Git work'
+    '(?s)不能.{0,160}(effect|操作类型).{0,260}(自行|机械).{0,160}(human_required|人类因子)') `
+    'owner contract forbids effect-type-derived human requirements'
 Assert-True ($contractText -match
-    '(?s)Auto.{0,260}human_required.{0,100}Passkey.{0,220}runtime_allowed.{0,100}Runtime') `
-    'owner contract resolves Auto only after the frozen request is classified'
+    '(?s)Passkey.{0,120}TOTP.{0,120}Recovery.{0,120}Account.{0,260}Google.{0,100}Microsoft.{0,180}provider') `
+    'owner contract records four human-factor classes and Account providers'
 Assert-True ($agentsText -match
-    '最高自动化主体.{0,260}最终人类根.{0,320}git\.protected-major-actions') `
-    'project entry distinguishes runtime authority from the human floor'
+    '最高权限智能体.{0,320}人类因子.{0,220}Account provider.{0,320}git\.protected-major-actions') `
+    'project entry summarizes semantic human-presence and Account-provider rules'
 Assert-True ($toolText.Contains("'-c', 'core.hooksPath=NUL'")) `
     'git-local effects suppress repository hooks'
 Assert-True ($toolText.Contains("'GIT_CONFIG_NOSYSTEM'")) `

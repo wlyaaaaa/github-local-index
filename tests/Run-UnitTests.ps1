@@ -398,8 +398,16 @@ try {
         DefaultBranch = 'main'
     }) | Out-Null
     $indexedRoots = @(Get-IndexedCloneScanRoots -RepoRoot $privateSeedRoot)
-    Assert-True ($indexedRoots -contains [System.IO.Path]::GetFullPath($cachedRepositoryPath)) `
-        'full discovery preserves known paths through the ignored private cache'
+    Assert-True ($indexedRoots -contains [System.IO.Path]::GetFullPath($privateSeedRoot).TrimEnd('\', '/')) `
+        'full discovery keeps the shortest ancestor that covers a cached repository path'
+    Assert-True ($indexedRoots -notcontains [System.IO.Path]::GetFullPath($cachedRepositoryPath)) `
+        'full discovery removes cached roots already covered by an admitted ancestor'
+
+    $siblingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-sibling-' + [guid]::NewGuid().ToString('N'))
+    $minimalRoots = @(Select-MinimalGitScanRoots -Roots @($privateSeedRoot, $cachedRepositoryPath, $siblingRoot))
+    Assert-Equal 2 $minimalRoots.Count 'scan-root minimization removes descendants but preserves boundary-safe siblings'
+    Assert-True ($minimalRoots -contains [System.IO.Path]::GetFullPath($siblingRoot).TrimEnd('\', '/')) `
+        'scan-root minimization does not collapse a path-prefix sibling'
 }
 finally {
     if (Test-Path -LiteralPath $privateSeedRoot) {
@@ -839,7 +847,9 @@ $refreshErrors = $null
 $refreshAst = [System.Management.Automation.Language.Parser]::ParseFile($refreshPath, [ref] $refreshTokens, [ref] $refreshErrors)
 $refreshParameters = @($refreshAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
 Assert-True ($refreshParameters -contains 'Json') 'fast refresh exposes JSON output'
-Assert-True ((Get-Content -LiteralPath $refreshPath -Raw -Encoding utf8) -match 'Get-ProjectAdmissionRecord') 'fast refresh consumes one admission record'
+$refreshSource = Get-Content -LiteralPath $refreshPath -Raw -Encoding utf8
+Assert-True ($refreshSource -match 'Get-ProjectAdmissionRecord') 'fast refresh consumes one admission record'
+Assert-True ($refreshSource -notmatch '(?s)Update-GitHubIndex\.ps1.{0,400}-GenerationId\s+\$generationId.{0,200}-SkipFetch') 'full atomic refresh must use live remote refs instead of silently publishing a cached generation'
 
 $generationAtomicRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-generation-atomic-' + [guid]::NewGuid().ToString('N'))
 try {

@@ -725,7 +725,27 @@ function Get-IndexedCloneScanRoots {
         }
     }
 
-    return @($roots | Sort-Object -Unique)
+    return @(Select-MinimalGitScanRoots -Roots @($roots))
+}
+
+function Select-MinimalGitScanRoots {
+    param([string[]] $Roots)
+
+    $normalized = @($Roots | ForEach-Object {
+            if (-not [string]::IsNullOrWhiteSpace([string] $_)) {
+                [System.IO.Path]::GetFullPath([string] $_).TrimEnd('\', '/')
+            }
+        } | Where-Object { $_ } | Sort-Object -Unique)
+    $selected = [System.Collections.Generic.List[string]]::new()
+    foreach ($candidate in @($normalized | Sort-Object @{ Expression = { $_.Length } }, @{ Expression = { $_ } })) {
+        $covered = @($selected | Where-Object {
+                $candidate.Equals([string] $_, [System.StringComparison]::OrdinalIgnoreCase) -or $candidate.StartsWith(($_.TrimEnd('\', '/') + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+            }).Count -gt 0
+        if (-not $covered) {
+            $selected.Add($candidate)
+        }
+    }
+    return @($selected | Sort-Object -Unique)
 }
 
 function Test-IsTransientClonePath {

@@ -134,7 +134,11 @@ $requiredContent = @{
     )
     'git.push-publication' = @('push|publication|visibility|public_repo', 'transport readiness', 'candidate commits', '不输出 publication_decision', 'PUBLIC review', '唯一维护', 'PublicExposurePolicy.psd1')
     'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '最多尝试三次', 'commit-pinned snapshot', 'fetch_failed', '日常项目任务不需要', 'github_local_index_consistency', 'outcome=error')
-    'git.milestone-record' = @('milestone|push_record', 'pure-file', 'idempotent', 'not zero-write', 'no Git transaction', 'no runtime provider/schema')
+    'git.milestone-record' = @(
+        'milestone|push_record', 'pure-file', 'idempotent', 'not zero-write',
+        'no Git transaction', 'milestone_records', 'github-local-index.milestone-records.v1',
+        'bootstrap_gap=true', 'retained_window_only=true', '不遍历 Git 历史'
+    )
 }
 
 $unsafeFixtures = @(

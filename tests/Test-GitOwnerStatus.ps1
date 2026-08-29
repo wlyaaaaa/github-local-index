@@ -48,6 +48,87 @@ function Assert-OwnerTrue {
     Write-Host "PASS: $Name"
 }
 
+$milestoneFixtureRoot = Join-Path ([IO.Path]::GetTempPath()) (
+    'git-owner-milestones-' + [guid]::NewGuid().ToString('N')
+)
+try {
+    [void][IO.Directory]::CreateDirectory($milestoneFixtureRoot)
+    $milestonePath = Join-Path $milestoneFixtureRoot 'milestones.md'
+    $milestoneLines = @(
+        '# fixture',
+        '',
+        '更新时间：2026-08-23 01:00:00 +08:00',
+        '',
+        '| 时间 | 仓库 | 分支 | Commit | 决策理由 |',
+        '|---|---|---|---|---|',
+        '| 2026-08-22 08:00:00 +08:00 | WLYAAAAA/Example | feature\|one | ABCDEFA | public \| reason<br>second line |',
+        '| 2026-08-21 09:30:00 +08:00 | wlyaaaaa/second | main | 0123456789ABCDEF | stable milestone |'
+    )
+    [IO.File]::WriteAllLines($milestonePath, $milestoneLines, [Text.UTF8Encoding]::new($false))
+
+    $milestoneRecords = Get-GitOwnerMilestoneRecords -Path $milestonePath
+    Assert-OwnerEqual 'github-local-index.milestone-records.v1' $milestoneRecords.schema 'milestone reader exposes a versioned nested schema'
+    Assert-OwnerEqual 'current' $milestoneRecords.status 'valid milestone table is current'
+    Assert-OwnerEqual 2 $milestoneRecords.record_count 'milestone reader exposes every retained row'
+    Assert-OwnerEqual 'wlyaaaaa/example' $milestoneRecords.entries[0].repository 'milestone repository slug is normalized'
+    Assert-OwnerEqual 'feature|one' $milestoneRecords.entries[0].branch 'escaped branch cell is restored'
+    Assert-OwnerEqual "public | reason`nsecond line" $milestoneRecords.entries[0].reason 'escaped reason cell is restored'
+    Assert-OwnerEqual '2026-08-22T00:00:00.0000000+00:00' $milestoneRecords.entries[0].occurred_at 'milestone timestamp is normalized to UTC'
+    Assert-OwnerTrue ($milestoneRecords.semantic_sha256 -match '^sha256:[0-9a-f]{64}$') 'milestone semantic identity is bounded and stable'
+    Assert-OwnerTrue ([bool]$milestoneRecords.bootstrap_gap -and [bool]$milestoneRecords.retained_window_only) 'milestone history limits remain explicit'
+
+    $milestoneLines[2] = '更新时间：2026-08-23 02:00:00 +08:00'
+    [IO.File]::WriteAllLines($milestonePath, $milestoneLines, [Text.UTF8Encoding]::new($false))
+    $timestampOnlyChange = Get-GitOwnerMilestoneRecords -Path $milestonePath
+    Assert-OwnerEqual $milestoneRecords.semantic_sha256 $timestampOnlyChange.semantic_sha256 'Markdown update time does not perturb milestone semantic identity'
+
+    [IO.File]::WriteAllLines($milestonePath, @(
+        '# fixture',
+        '',
+        '更新时间：无记录',
+        '',
+        '| 时间 | 仓库 | 分支 | Commit | 决策理由 |',
+        '|---|---|---|---|---|'
+    ), [Text.UTF8Encoding]::new($false))
+    $emptyMilestones = Get-GitOwnerMilestoneRecords -Path $milestonePath
+    Assert-OwnerEqual 'current' $emptyMilestones.status 'empty canonical milestone table is valid'
+    Assert-OwnerEqual 0 $emptyMilestones.record_count 'empty canonical milestone table has no invented event'
+
+    $boundedLines = [Collections.Generic.List[string]]::new()
+    foreach ($line in @(
+        '# fixture',
+        '',
+        '更新时间：2026-08-23 01:00:00 +08:00',
+        '',
+        '| 时间 | 仓库 | 分支 | Commit | 决策理由 |',
+        '|---|---|---|---|---|'
+    )) { $boundedLines.Add($line) }
+    foreach ($index in 1..51) {
+        $boundedLines.Add(('| 2026-08-22 08:00:00 +08:00 | fixture/repo{0} | main | {1} | retained fixture |' -f $index, ('{0:x7}' -f $index)))
+    }
+    [IO.File]::WriteAllLines($milestonePath, $boundedLines, [Text.UTF8Encoding]::new($false))
+    $tooManyMilestones = Get-GitOwnerMilestoneRecords -Path $milestonePath
+    Assert-OwnerEqual 'unavailable' $tooManyMilestones.status 'reader fails closed when the retained table exceeds fifty rows'
+    Assert-OwnerTrue (@($tooManyMilestones.gaps | Where-Object code -EQ 'milestone_retention_limit_exceeded').Count -eq 1) 'retention overflow is a precise public-safe gap'
+
+    $unsafeReason = 'pass' + 'word=fixture-value'
+    [IO.File]::WriteAllLines($milestonePath, @(
+        '# fixture',
+        '',
+        '更新时间：2026-08-23 01:00:00 +08:00',
+        '',
+        '| 时间 | 仓库 | 分支 | Commit | 决策理由 |',
+        '|---|---|---|---|---|',
+        ('| 2026-08-22 08:00:00 +08:00 | fixture/repo | main | abcdef0 | {0} |' -f $unsafeReason)
+    ), [Text.UTF8Encoding]::new($false))
+    $unsafeMilestones = Get-GitOwnerMilestoneRecords -Path $milestonePath
+    Assert-OwnerEqual 'unavailable' $unsafeMilestones.status 'reader fails closed on a hand-edited unsafe reason'
+    Assert-OwnerTrue (@($unsafeMilestones.gaps | Where-Object code -EQ 'milestone_record_reason_unsafe').Count -eq 1) 'unsafe milestone reason is reduced to a bounded gap code'
+}
+finally {
+    Remove-Item -LiteralPath $milestoneFixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $baselineRows = @(
     [pscustomobject]@{
         NameWithOwner = 'wlyaaaaa/github-local-index'
@@ -273,6 +354,7 @@ foreach ($gateCase in @(
         read_registry = 0
         gh = 0
         local_path = 0
+        milestone = 0
     }
     $gateIdentity = $gateCase.identity
     $gateStatus = Invoke-GitOwnerProvider `
@@ -303,6 +385,11 @@ foreach ($gateCase in @(
             param($Baseline,$Remote)
             $probeCounts.local_path++
             throw 'local_path_probe_must_not_run'
+        } `
+        -MilestoneReader {
+            param($Root)
+            $probeCounts.milestone++
+            throw 'milestone_reader_must_not_run'
         }
     Assert-OwnerEqual 'completed' $gateStatus.execution_status "$($gateCase.name) identity gate remains a completed observation"
     Assert-OwnerEqual 'blocked' $gateStatus.domain_status "$($gateCase.name) identity gate blocks before owner sources"
@@ -314,7 +401,8 @@ foreach ($gateCase in @(
         $probeCounts.read_index -eq 0 -and
         $probeCounts.read_registry -eq 0 -and
         $probeCounts.gh -eq 0 -and
-        $probeCounts.local_path -eq 0
+        $probeCounts.local_path -eq 0 -and
+        $probeCounts.milestone -eq 0
     ) "$($gateCase.name) identity gate performs zero untrusted-source or local-path calls"
 }
 
@@ -324,6 +412,7 @@ $validProbeCounts = [ordered]@{
     read_registry = 0
     gh = 0
     local_path = 0
+    milestone = 0
 }
 $validGateStatus = Invoke-GitOwnerProvider `
     -Owner 'wlyaaaaa' `
@@ -357,14 +446,26 @@ $validGateStatus = Invoke-GitOwnerProvider `
         param($Baseline,$Remote)
         $validProbeCounts.local_path++
         return $observedRows
+    } `
+    -MilestoneReader {
+        param($Root)
+        $validProbeCounts.milestone++
+        return [pscustomobject][ordered]@{
+            schema = 'github-local-index.milestone-records.v1'
+            status = 'current'
+            record_count = 0
+            entries = @()
+        }
     }
 Assert-OwnerEqual 'current' $validGateStatus.domain_status 'valid identity preserves the owner-current path'
+Assert-OwnerEqual 'github-local-index.milestone-records.v1' $validGateStatus.milestone_records.schema 'valid provider result carries the bounded milestone source'
 Assert-OwnerTrue (
     $validProbeCounts.identity -eq 1 -and
     $validProbeCounts.read_index -eq 1 -and
     $validProbeCounts.read_registry -eq 1 -and
     $validProbeCounts.gh -eq 1 -and
-    $validProbeCounts.local_path -eq 1
+    $validProbeCounts.local_path -eq 1 -and
+    $validProbeCounts.milestone -eq 1
 ) 'valid identity invokes each downstream owner source exactly once'
 
 Assert-OwnerEqual $null `

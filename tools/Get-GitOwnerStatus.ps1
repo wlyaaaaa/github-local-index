@@ -291,6 +291,173 @@ function Get-GitOwnerSha256 {
     return 'sha256:' + [System.Convert]::ToHexString($hash).ToLowerInvariant()
 }
 
+function ConvertFrom-GitOwnerMilestoneMarkdownCell {
+    param([Parameter(Mandatory = $true)] [string] $Value)
+
+    return $Value.Replace('\|', '|').Replace('\`', '`').Replace('<br>', "`n")
+}
+
+function Get-GitOwnerMilestoneCells {
+    param([Parameter(Mandatory = $true)] [AllowEmptyString()] [string] $Line)
+
+    if (-not $Line.StartsWith('|') -or -not $Line.EndsWith('|')) {
+        return @()
+    }
+    $inner = $Line.Substring(1, $Line.Length - 2)
+    return @([regex]::Split($inner, '(?<!\\)\|') | ForEach-Object {
+        ConvertFrom-GitOwnerMilestoneMarkdownCell $_.Trim()
+    })
+}
+
+function Assert-GitOwnerMilestoneReasonSafe {
+    param([Parameter(Mandatory = $true)] [string] $Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value) -or $Value.Length -gt 1000 -or
+        @($Value -split "`r?`n").Count -gt 20) {
+        throw 'milestone_record_reason_invalid'
+    }
+    foreach ($pattern in @(
+        '-----BEGIN[ A-Z]+PRIVATE KEY-----',
+        'ghp_[A-Za-z0-9]{36,}',
+        'github_pat_[A-Za-z0-9_]{20,}',
+        'xox[baprs]-[A-Za-z0-9-]{20,}',
+        'sk-[A-Za-z0-9]{20,}',
+        '\b(?:client[_-]?secret|password|passwd|pwd)\s*[:=]\s*\S+',
+        '\bauthorization\s*:\s*bearer\s+\S+'
+    )) {
+        if ($Value -match $pattern) {
+            throw 'milestone_record_reason_unsafe'
+        }
+    }
+}
+
+function ConvertTo-GitOwnerMilestoneUtcTimestamp {
+    param([Parameter(Mandatory = $true)] [string] $Value)
+
+    try {
+        $timestamp = [datetimeoffset]::ParseExact(
+            $Value,
+            'yyyy-MM-dd HH:mm:ss zzz',
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AllowWhiteSpaces
+        )
+        return $timestamp.ToUniversalTime().ToString(
+            'o', [Globalization.CultureInfo]::InvariantCulture
+        )
+    }
+    catch {
+        throw 'milestone_record_timestamp_invalid'
+    }
+}
+
+function New-GitOwnerMilestoneUnavailable {
+    param([Parameter(Mandatory = $true)] [string] $Reason)
+
+    return [pscustomobject][ordered]@{
+        schema = 'github-local-index.milestone-records.v1'
+        status = 'unavailable'
+        coverage_state = 'unknown'
+        bootstrap_gap = $true
+        retained_window_only = $true
+        retention_limit = 50
+        record_count = 0
+        semantic_sha256 = $null
+        entries = @()
+        gaps = @(
+            [pscustomobject][ordered]@{
+                code = ConvertTo-GitOwnerSafeReason `
+                    -Reason $Reason -Fallback 'milestone_source_unavailable'
+                scope = 'milestone_records'
+            },
+            [pscustomobject][ordered]@{ code = 'bootstrap_gap'; scope = 'prior_milestone_history' },
+            [pscustomobject][ordered]@{ code = 'retained_window_only'; scope = 'milestone_records' }
+        )
+    }
+}
+
+function Get-GitOwnerMilestoneRecords {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    try {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw 'milestone_source_missing'
+        }
+        if ((Get-Item -LiteralPath $Path).Length -gt 131072) {
+            throw 'milestone_source_too_large'
+        }
+
+        $lines = @(Get-Content -LiteralPath $Path -Encoding utf8)
+        $header = '| 时间 | 仓库 | 分支 | Commit | 决策理由 |'
+        $separator = '|---|---|---|---|---|'
+        if (@($lines | Where-Object { $_ -ceq $header }).Count -ne 1 -or
+            @($lines | Where-Object { $_ -ceq $separator }).Count -ne 1 -or
+            @($lines | Where-Object { $_ -like '更新时间：*' }).Count -ne 1) {
+            throw 'milestone_source_schema_invalid'
+        }
+
+        $entries = [System.Collections.Generic.List[object]]::new()
+        $seen = [System.Collections.Generic.HashSet[string]]::new(
+            [System.StringComparer]::Ordinal
+        )
+        foreach ($line in $lines) {
+            if (-not $line.StartsWith('|') -or $line -ceq $header -or $line -ceq $separator) {
+                continue
+            }
+            $cells = @(Get-GitOwnerMilestoneCells -Line $line)
+            if ($cells.Count -ne 5) {
+                throw 'milestone_source_schema_invalid'
+            }
+
+            $repo = ([string]$cells[1]).Trim().ToLowerInvariant()
+            $branch = ([string]$cells[2]).Trim()
+            $commit = ([string]$cells[3]).Trim().ToLowerInvariant()
+            $reason = ([string]$cells[4]).Trim()
+            if ($repo -notmatch '^[a-z0-9_.-]+/[a-z0-9_.-]+$' -or
+                [string]::IsNullOrWhiteSpace($branch) -or $branch.Length -gt 255 -or
+                $branch -match '[\x00-\x1f]' -or $commit -notmatch '^[0-9a-f]{7,64}$') {
+                throw 'milestone_record_identity_invalid'
+            }
+            Assert-GitOwnerMilestoneReasonSafe -Value $reason
+            $occurredAt = ConvertTo-GitOwnerMilestoneUtcTimestamp -Value ([string]$cells[0]).Trim()
+            $key = "$repo`u{001f}$branch`u{001f}$commit"
+            if (-not $seen.Add($key)) {
+                throw 'milestone_record_duplicate'
+            }
+            $entries.Add([pscustomobject][ordered]@{
+                record_id = 'push:' + (Get-GitOwnerSha256 -Text $key).Substring(7)
+                occurred_at = $occurredAt
+                repository = $repo
+                branch = $branch
+                commit = $commit
+                reason = $reason
+            })
+            if ($entries.Count -gt 50) {
+                throw 'milestone_retention_limit_exceeded'
+            }
+        }
+
+        $canonicalJson = ConvertTo-Json -InputObject @($entries) -Depth 5 -Compress
+        return [pscustomobject][ordered]@{
+            schema = 'github-local-index.milestone-records.v1'
+            status = 'current'
+            coverage_state = 'partial'
+            bootstrap_gap = $true
+            retained_window_only = $true
+            retention_limit = 50
+            record_count = $entries.Count
+            semantic_sha256 = Get-GitOwnerSha256 -Text $canonicalJson
+            entries = @($entries)
+            gaps = @(
+                [pscustomobject][ordered]@{ code = 'bootstrap_gap'; scope = 'prior_milestone_history' },
+                [pscustomobject][ordered]@{ code = 'retained_window_only'; scope = 'milestone_records' }
+            )
+        }
+    }
+    catch {
+        return New-GitOwnerMilestoneUnavailable -Reason $_.Exception.Message
+    }
+}
+
 function ConvertTo-GitOwnerGovernanceRegistryIdentity {
     param([AllowNull()] [object] $Registry)
 
@@ -1249,7 +1416,8 @@ function Invoke-GitOwnerProvider {
         [AllowNull()] [scriptblock] $IndexReader,
         [AllowNull()] [scriptblock] $RegistryReader,
         [AllowNull()] [scriptblock] $RemoteReader,
-        [AllowNull()] [scriptblock] $RemoteMerger
+        [AllowNull()] [scriptblock] $RemoteMerger,
+        [AllowNull()] [scriptblock] $MilestoneReader
     )
 
     $identity = if ($null -ne $IdentityResolver) {
@@ -1321,8 +1489,18 @@ function Invoke-GitOwnerProvider {
         -ObservedRows $observedRows -IndexIdentity $identity `
         -RegistryIdentity $registryIdentity `
         -ExpectedRepository $ExpectedRepository
-    return Add-GitOwnerBaselineHistory `
+    $status = Add-GitOwnerBaselineHistory `
         -Status $status -History $baselineState.history
+    $milestoneRecords = if ($null -ne $MilestoneReader) {
+        & $MilestoneReader $RepoRoot
+    }
+    else {
+        Get-GitOwnerMilestoneRecords `
+            -Path (Join-Path $RepoRoot '03_推送决策\已推送记录.md')
+    }
+    $status | Add-Member -NotePropertyName milestone_records `
+        -NotePropertyValue $milestoneRecords -Force
+    return $status
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

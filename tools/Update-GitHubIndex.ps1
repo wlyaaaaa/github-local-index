@@ -736,16 +736,23 @@ function Select-MinimalGitScanRoots {
                 [System.IO.Path]::GetFullPath([string] $_).TrimEnd('\', '/')
             }
         } | Where-Object { $_ } | Sort-Object -Unique)
-    $selected = [System.Collections.Generic.List[string]]::new()
+    $selected = [System.Collections.Generic.List[object]]::new()
     foreach ($candidate in @($normalized | Sort-Object @{ Expression = { $_.Length } }, @{ Expression = { $_ } })) {
         $covered = @($selected | Where-Object {
-                $candidate.Equals([string] $_, [System.StringComparison]::OrdinalIgnoreCase) -or $candidate.StartsWith(($_.TrimEnd('\', '/') + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+                $_.covers_descendants -and (
+                    $candidate.Equals([string] $_.path, [System.StringComparison]::OrdinalIgnoreCase) -or
+                    $candidate.StartsWith(($_.path.TrimEnd('\', '/') + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+                )
             }).Count -gt 0
         if (-not $covered) {
-            $selected.Add($candidate)
+            $inside = Invoke-GitCommandResult -Path $candidate -Arguments @('rev-parse', '--is-inside-work-tree')
+            $selected.Add([pscustomobject]@{
+                path = $candidate
+                covers_descendants = -not ($inside.exit_code -eq 0 -and $inside.stdout -eq 'true')
+            })
         }
     }
-    return @($selected | Sort-Object -Unique)
+    return @($selected.path | Sort-Object -Unique)
 }
 
 function Test-IsTransientClonePath {

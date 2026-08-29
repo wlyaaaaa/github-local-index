@@ -408,6 +408,14 @@ try {
     Assert-Equal 2 $minimalRoots.Count 'scan-root minimization removes descendants but preserves boundary-safe siblings'
     Assert-True ($minimalRoots -contains [System.IO.Path]::GetFullPath($siblingRoot).TrimEnd('\', '/')) `
         'scan-root minimization does not collapse a path-prefix sibling'
+
+    $gitAncestor = Join-Path $privateSeedRoot 'git-ancestor'
+    $nestedWorktreeRoot = Join-Path $gitAncestor 'nested-linked-worktree'
+    New-Item -ItemType Directory -Force -Path $nestedWorktreeRoot | Out-Null
+    & git -C $gitAncestor init --quiet --initial-branch=main
+    Assert-Equal 0 $LASTEXITCODE 'linked-worktree scan-root fixture initializes its Git ancestor'
+    $gitNestedRoots = @(Select-MinimalGitScanRoots -Roots @($gitAncestor, $nestedWorktreeRoot))
+    Assert-Equal 2 $gitNestedRoots.Count 'a Git worktree root must not hide an explicitly admitted nested linked-worktree root'
 }
 finally {
     if (Test-Path -LiteralPath $privateSeedRoot) {

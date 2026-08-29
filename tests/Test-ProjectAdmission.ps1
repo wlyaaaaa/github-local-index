@@ -467,6 +467,19 @@ try {
         Assert-True (-not ($targetedByWorktree.reasons -contains 'prunable_worktree')) 'unrelated prunable worktrees do not pollute a targeted decision'
         Assert-True (-not ($targetedByWorktree.reasons -contains 'detached_worktree')) 'unrelated detached worktrees do not pollute a targeted decision'
         Assert-Equal 4 @($targetedByWorktree.worktrees).Count 'targeted decisions retain all worktrees as evidence'
+
+        $targetedWithoutRepoPath = Get-ProjectAdmissionRecord `
+            -Repo 'example/project' `
+            -Visibility 'PUBLIC' `
+            -DefaultBranch 'main' `
+            -TargetWorktree $primaryPath
+        Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) `
+            $targetedWithoutRepoPath.local_root `
+            'exact target worktree resolves local Git without a separate RepoPath'
+        Assert-True (-not ($targetedWithoutRepoPath.reasons -contains 'missing_repo_path')) `
+            'exact target worktree does not depend on a navigation cache entry'
+        Assert-True (-not ($targetedWithoutRepoPath.reasons -contains 'target_worktree_not_found')) `
+            'resolved target worktree participates in exact scope selection'
     }
     if ($admissionParameters -contains 'TargetRef') {
         $targetedByRef = Get-ProjectAdmissionRecord `
@@ -570,6 +583,17 @@ try {
         -GitHubInvoker $ghSuccess
     Assert-True $publicationLive.live_checked 'publication profile requires both live metadata and refs'
     Assert-Equal 'live' $publicationLive.freshness 'publication profile emits live freshness after success'
+    $targetedPublicationLive = Get-ProjectAdmissionRecord `
+        -Repo 'example/project' `
+        -TargetWorktree $primaryPath `
+        -ForPublication `
+        -FetchInvoker $fetchSuccess `
+        -GitHubInvoker $ghSuccess
+    Assert-True $targetedPublicationLive.live_checked `
+        'publication profile resolves an exact target worktree without cached navigation'
+    Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) `
+        $targetedPublicationLive.local_root `
+        'target-only publication profile retains the verified local root'
     Invoke-TestGit -Path $linkedPath -Arguments @('branch', '--set-upstream-to=origin/main', 'feature') | Out-Null
     $divergedWorktrees = @(Get-GitRepositoryWorktrees -Path $primaryPath)
     Assert-Equal 'diverged' ($divergedWorktrees | Where-Object branch -eq 'feature').sync_state 'real worktree fixture produces diverged'
@@ -658,6 +682,18 @@ try {
     Assert-Equal 'PUBLIC' $cachedWrapper.visibility 'private navigation cache preserves cached visibility'
     Assert-Equal 'main' $cachedWrapper.default_branch 'private navigation cache preserves cached default branch'
 
+    $cachedTargetWrapperJson = & pwsh -NoProfile -ExecutionPolicy Bypass -File $cliPath `
+        -Repo 'example/project' -IndexRoot $privateNavigationIndexRoot `
+        -TargetWorktree $primaryPath -Json
+    $cachedTargetWrapperExit = $LASTEXITCODE
+    $cachedTargetWrapper = $cachedTargetWrapperJson | ConvertFrom-Json
+    Assert-Equal 0 $cachedTargetWrapperExit `
+        'exact target worktree keeps cached identity metadata when it is available'
+    Assert-Equal 'PUBLIC' $cachedTargetWrapper.visibility `
+        'target-only cached admission preserves the verified visibility hint'
+    Assert-Equal 'main' $cachedTargetWrapper.default_branch `
+        'target-only cached admission preserves the verified default-branch hint'
+
     $privateCacheDocument = Get-Content -LiteralPath $privateCachePath -Raw -Encoding utf8 | ConvertFrom-Json
     $privateCacheDocument.source = 'unverified_source'
     Set-Content -LiteralPath $privateCachePath -Encoding utf8 -Value ($privateCacheDocument | ConvertTo-Json -Depth 6)
@@ -690,6 +726,19 @@ try {
         'missing cache reports the recoverable full-refresh or explicit-RepoPath bootstrap'
     Assert-True ($null -eq $noCacheWrapper.local_root) `
         'admission wrapper never falls back to an absolute path in public Markdown'
+
+    $targetOnlyWrapperJson = & pwsh -NoProfile -ExecutionPolicy Bypass -File $cliPath `
+        -Repo 'example/project' -IndexRoot $noCacheIndexRoot `
+        -TargetWorktree $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Json
+    $targetOnlyWrapperExit = $LASTEXITCODE
+    $targetOnlyWrapper = $targetOnlyWrapperJson | ConvertFrom-Json
+    Assert-Equal 0 $targetOnlyWrapperExit `
+        'exact target worktree bypasses stale navigation lookup after Git identity verification'
+    Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) `
+        $targetOnlyWrapper.local_root `
+        'target-only wrapper exposes the verified local root'
+    Assert-True (-not ($targetOnlyWrapper.reasons -contains 'private_navigation_cache_missing_bootstrap_required')) `
+        'target-only wrapper does not report an unrelated navigation bootstrap requirement'
 
     $singleBranchPath = Join-Path $tempRoot 'single-snapshot-branch'
     Invoke-TestGit -Path $tempRoot -Arguments @(
@@ -822,6 +871,13 @@ try {
     Assert-True ($publicConflict.reasons -contains 'public_exposure_conflict') 'reports public exposure conflict reason'
     Assert-Equal 'block' $publicConflict.push_decision 'public exposure conflict blocks push'
     Assert-Equal 'resolve_public_exposure' $publicConflict.push_strategy 'public exposure conflict has a dedicated remediation strategy'
+    $targetOnlyPublicConflict = Get-ProjectAdmissionRecord `
+        -Repo 'example/project' -TargetWorktree $primaryPath `
+        -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-Equal 'block' $targetOnlyPublicConflict.decision `
+        'target-only resolution preserves the PUBLIC exposure gate'
+    Assert-True ($targetOnlyPublicConflict.reasons -contains 'public_exposure_conflict') `
+        'target-only resolution still scans the exact public worktree content'
     Remove-Item -LiteralPath (Split-Path -Parent $sensitiveDirectory) -Recurse -Force
 
     $trackedSensitivePath = Join-Path $primaryPath '.env'

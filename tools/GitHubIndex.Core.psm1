@@ -1365,6 +1365,12 @@ function Get-ProjectAdmissionRecord {
     elseif (-not [string]::IsNullOrWhiteSpace($RepoPath)) {
         $candidates = @($RepoPath)
     }
+    elseif (-not [string]::IsNullOrWhiteSpace($TargetWorktree)) {
+        # An exact target worktree is already a stronger local path hint than
+        # a generated or cached navigation entry. Its .git identity is still
+        # verified below before any local facts are admitted.
+        $candidates = @($TargetWorktree)
+    }
     elseif ($facts) {
         $candidates = @($facts.paths)
         $navigationHintUsed = $candidates.Count -gt 0

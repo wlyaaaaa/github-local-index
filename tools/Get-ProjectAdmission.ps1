@@ -35,7 +35,9 @@ function Invoke-ProjectAdmissionCli {
         }
         $navigation = Get-GitHubIndexPrivateRepositoryNavigation -RepoRoot $IndexRoot -Repo $navigationRepo
         if ($navigation.status -eq 'current') {
-            $effectiveRepoPath = [string] $navigation.path
+            if ([string]::IsNullOrWhiteSpace($TargetWorktree)) {
+                $effectiveRepoPath = [string] $navigation.path
+            }
             if ([string]::IsNullOrWhiteSpace($effectiveVisibility)) {
                 $effectiveVisibility = [string] $navigation.visibility
             }
@@ -57,7 +59,8 @@ function Invoke-ProjectAdmissionCli {
         -ForPublication:$ForPublication `
         -TargetWorktree $TargetWorktree `
         -TargetRef $TargetRef
-    if ($navigation.status -notin @('explicit', 'current') -and
+    if ([string]::IsNullOrWhiteSpace($TargetWorktree) -and
+        $navigation.status -notin @('explicit', 'current') -and
         @($record.reasons) -contains 'missing_repo_path') {
         $record.reasons = @($record.reasons + ('private_navigation_cache_' + $navigation.status + '_bootstrap_required') | Sort-Object -Unique)
     }

@@ -1,5 +1,4 @@
 99_private/
-raw/
 secret/
 secrets/
 .env
@@ -24,10 +23,5 @@ secrets/
 *client-secret*
 *auth-profiles*.json
 *auth_profiles*.json
-*.log
-*.sqlite
-*.db
-*.wal
-*.shm
 Thumbs.db
 desktop.ini

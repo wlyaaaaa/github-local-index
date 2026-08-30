@@ -54,16 +54,27 @@ Import-Module $privateNavigationModulePath -Force
 $admissionModule = Get-Module GitHubIndex.Core
 
 $publicExposurePolicy = Import-PowerShellDataFile -LiteralPath $publicExposurePolicyPath
+Assert-Equal 'github-local-index.public-exposure-path-policy.v2' $publicExposurePolicy.Schema 'public-exposure policy uses the review-candidate schema version'
 $publicExposureCases = @($publicExposurePolicy.Cases)
 $publicExposurePathCommand = & $admissionModule { Get-Command Test-PublicExposurePath -ErrorAction SilentlyContinue }
 Assert-True ($null -ne $publicExposurePathCommand) 'admission core exposes the central public-exposure path classifier'
+$publicExposureAssessmentCommand = & $admissionModule { Get-Command Get-PublicExposurePathAssessment -ErrorAction SilentlyContinue }
+Assert-True ($null -ne $publicExposureAssessmentCommand) 'admission core exposes a hard-block versus review-candidate assessment'
 if ($publicExposurePathCommand) {
     foreach ($case in $publicExposureCases) {
         $actual = & $admissionModule {
             param($Path)
             Test-PublicExposurePath -Path $Path
         } $case.Path
-        Assert-Equal $case.Blocked $actual "public-exposure policy classifies $($case.Path)"
+        Assert-Equal $case.AlwaysBlocked $actual "public-exposure policy hard-blocks only explicit secret or credential paths: $($case.Path)"
+        if ($publicExposureAssessmentCommand) {
+            $assessment = & $admissionModule {
+                param($Path)
+                Get-PublicExposurePathAssessment -Path $Path
+            } $case.Path
+            Assert-Equal $case.AlwaysBlocked $assessment.always_blocked "path assessment hard-block result for $($case.Path)"
+            Assert-Equal $case.ReviewCandidate $assessment.review_candidate "path assessment review-candidate result for $($case.Path)"
+        }
     }
 }
 
@@ -879,6 +890,15 @@ try {
     Assert-True ($targetOnlyPublicConflict.reasons -contains 'public_exposure_conflict') `
         'target-only resolution still scans the exact public worktree content'
     Remove-Item -LiteralPath (Split-Path -Parent $sensitiveDirectory) -Recurse -Force
+
+    $reviewCandidateFile = Join-Path $primaryPath 'raw\l1.md'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $reviewCandidateFile) -Force | Out-Null
+    Set-Content -LiteralPath $reviewCandidateFile -Value 'L1 review candidate fixture' -Encoding utf8
+    $reviewCandidateAdmission = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-True (-not ($reviewCandidateAdmission.reasons -contains 'public_exposure_conflict')) 'review-candidate path does not become a PUBLIC hard conflict'
+    $reviewCandidateWorktree = @($reviewCandidateAdmission.worktrees | Where-Object path -eq $primaryPath)[0]
+    Assert-True ('raw/l1.md' -cin @($reviewCandidateWorktree.public_exposure_review_candidates)) 'admission JSON exposes the review-candidate path without blocking it'
+    Remove-Item -LiteralPath (Split-Path -Parent $reviewCandidateFile) -Recurse -Force
 
     $trackedSensitivePath = Join-Path $primaryPath '.env'
     $renameSourceDirectory = Join-Path $primaryPath 'secrets'

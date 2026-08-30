@@ -1,12 +1,13 @@
 # GitHub 总索引规则
 
-本仓库是公开的 `wlyaaaaa/github-local-index`，拥有 Git/GitHub 仓库身份、远端、可见性、同步诊断和公开发布边界。默认用简体中文；动态事实以任务当下证据为准。
+本仓库是公开的 `wlyaaaaa/github-local-index`，只拥有 Git/GitHub 的 repo identity、远端、visibility、transport、candidate、secret-path 与同步诊断事实；全局公开个人数据分级由 `E:\.agents` 提供，本仓库只消费分级结果，不拥有或改写分级。默认用简体中文；动态事实以任务当下证据为准。
 
 ## 硬边界
 
-- 本仓库只能提交公开安全的索引、规则、摘要和脱敏结论；不得提交密钥值、token、私钥、完整 `.env`、OAuth JSON、原始日志/数据库/聊天/健康资料、私密截图、完整任务 XML 或未缩减机器快照。
+- 本仓库只能提交公开安全内容；可用密钥、token、私钥、真实 `.env`/OAuth 私密载荷等秘密明文不得提交。raw、日志、数据库、task XML、机器快照等仅为 review candidate，实际 L1/L2 不得只因形态或路径阻断；原始私人聊天、完整健康资料和私密截图按全局 L4 下限处理。
 - `99_private/` 是被 `.gitignore` 排除的本机原始材料区；其中内容不得进入本公开仓库。
 - 公开目标在提交或推送前必须结合新鲜 visibility、候选 commits、paths 与 content 判断暴露面；Git transport 可用不等于内容可公开。
+- 全局公开个人数据分级只按 `E:\.agents` 的 `public_personal_data_classification` 源结果消费：`below_l3_publication_default` 使 `L1/L2` 不得由本仓库、项目自写规则或路径命名自行上调；`project_publication_restriction_authority` 未获用户明确授权时，项目自写公开限制不是 Git 事实，不能阻断 `L1/L2` 内容资格。`secrets`、`raw chats`、完整 `health` 资料等至少为 `L4` 或上位边界，不得形成隐藏的低级例外；这不替代独立的外部写入授权。
 - 仓库身份、remote、目标分支、visibility 或候选内容存在实质冲突时，停止写入或发布并取得更可靠证据；只读调查仍可继续。
 - 对已确认 `PRIVATE` 的备份、恢复、个人知识库或配置快照目标，按任务需要保留精确内容，不因包含凭据就自动遮盖或破坏可恢复性；外部写入仍服从活动授权。
 - `wlyaaaaa/Key` 允许 clone 到受管私有路径，仅维护密文和公开安全说明；禁止把解密明文、口令或密钥文件写入 clone，仍不创建计划任务。
@@ -16,6 +17,7 @@
 ## Owner 分工与按需取证
 
 - `E:\.agents` 拥有 Agent 行为、skills/plugins 与能力路由；本仓库不复制第二套行为规则。
+- Git publication consumer 只处理 repo identity、visibility、transport、candidate、secret-path 事实；公开个人数据分级的 owner 仍是 `E:\.agents`，本仓库不得从项目限制、路径或仓库可见性反推更高敏感级别。
 - `E:\PCConfig` 只在当前决策确实依赖路径迁移、计划任务、端口、运行时、本机数据、备份或恢复事实时参与；出现一个绝对路径字面量本身不构成触发。
 - 具体项目拥有业务语义、源码、项目规则、测试和部署方式；本仓库不替代项目内证据。
 - `wlyaaaaa/PersonalOS-Retired` 是普通 PRIVATE 冻结文档仓库，不是第四基座、默认个人上下文 Owner 或外部治理例外；按当前 Git/GitHub 证据维护仓库身份与同步事实，不读取其中业务正文。`PersonalKnowledge` 名称保留给独立的现行个人知识库项目。

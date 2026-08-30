@@ -1088,8 +1088,17 @@ Assert-True ($hookSource -match 'rev-parse.+--git-path.+hooks') 'hook installer 
 $publicExposurePolicyPath = Join-Path $repoRoot 'tools/PublicExposurePolicy.psd1'
 Assert-True (Test-Path -LiteralPath $publicExposurePolicyPath -PathType Leaf) 'hook and ignore gate have one central path policy'
 $publicExposurePolicy = Import-PowerShellDataFile -LiteralPath $publicExposurePolicyPath
+Assert-Equal 'github-local-index.public-exposure-path-policy.v2' $publicExposurePolicy.Schema 'public-exposure policy schema is versioned for review candidates'
+Assert-True (@($publicExposurePolicy.ClassificationTokens) -contains 'public_personal_data_classification') 'policy aligns the global public-personal-data classification token'
+Assert-True (@($publicExposurePolicy.ClassificationTokens) -contains 'below_l3_publication_default') 'policy aligns the below-L3 publication default token'
+Assert-True (@($publicExposurePolicy.ClassificationTokens) -contains 'project_publication_restriction_authority') 'policy aligns the project publication restriction authority token'
+Assert-True (-not ([string] $publicExposurePolicy.AlwaysBlockedPathRegex -match '(?i)raw|\\?logs?|\\?\.(?:log|sqlite|db|wal|shm)')) 'always-blocked path policy excludes raw and log/database review candidates'
 $ignoreCases = @($publicExposurePolicy.Cases)
 $ignoreLines = @(Get-Content -LiteralPath (Join-Path $repoRoot '.gitignore') -Encoding utf8)
+foreach ($reviewIgnorePattern in @('raw/', '*.log', '*.sqlite', '*.db', '*.wal', '*.shm')) {
+    Assert-True (-not (@($publicExposurePolicy.GitIgnorePatterns) -contains $reviewIgnorePattern)) "central policy does not ignore review candidate pattern $reviewIgnorePattern"
+    Assert-True (-not ($ignoreLines -ccontains $reviewIgnorePattern)) ".gitignore does not hide review candidate pattern $reviewIgnorePattern"
+}
 foreach ($pattern in @($publicExposurePolicy.GitIgnorePatterns)) {
     Assert-True ($ignoreLines -ccontains [string] $pattern) ".gitignore contains canonical policy pattern $pattern"
 }
@@ -1127,6 +1136,7 @@ if ($hookParameters -contains 'RepoPath') {
         Assert-True ($installedText -match 'diff-filter=ACMRT') 'installed hook excludes pure deletions while retaining staged type changes'
         Assert-True ($installedText -match 'read -r -d') 'installed hook reads staged paths with a NUL delimiter'
         Assert-True ($installedText.Contains([string] $publicExposurePolicy.AlwaysBlockedPathRegex)) 'installed hook embeds the canonical always-blocked path expression'
+        Assert-True ($installedText.Contains([string] $publicExposurePolicy.ReviewCandidatePathRegex)) 'installed hook embeds the canonical review-candidate path expression'
         Assert-True ($installedText.Contains([string] $publicExposurePolicy.EnvPathRegex)) 'installed hook embeds the canonical env-family expression'
         Assert-True ($installedText.Contains([string] $publicExposurePolicy.AllowedTemplateRegex)) 'installed hook embeds the canonical template exception expression'
         $firstHookHash = (Get-FileHash -LiteralPath $installedHook -Algorithm SHA256).Hash
@@ -1248,6 +1258,21 @@ if ($hookParameters -contains 'RepoPath') {
         $sensitiveRenameOutput = @(& git -C $hookRepo commit -m 'must block sensitive rename destination' 2>&1)
         Assert-True ($LASTEXITCODE -ne 0) 'hook blocks renaming a safe path into .env.production'
         Assert-True (($sensitiveRenameOutput -join "`n") -match 'Blocked staged path') 'hook evaluates the rename destination with the central path policy'
+        & git -C $hookRepo reset -- . 2>&1 | Out-Null
+        & git -C $hookRepo restore --source=HEAD --worktree -- 'rename-into-sensitive.txt' 2>&1 | Out-Null
+        if (Test-Path -LiteralPath (Join-Path $hookRepo '.env.production')) {
+            Remove-Item -LiteralPath (Join-Path $hookRepo '.env.production') -Force
+        }
+
+        foreach ($reviewCandidatePath in @('raw/l1.md', 'nested/history.log', 'nested/history.sqlite')) {
+            $reviewCandidateFile = Join-Path $hookRepo $reviewCandidatePath
+            New-Item -ItemType Directory -Path (Split-Path -Parent $reviewCandidateFile) -Force | Out-Null
+            Set-Content -LiteralPath $reviewCandidateFile -Value 'L1 review candidate fixture' -Encoding utf8
+            & git -C $hookRepo add -- $reviewCandidatePath 2>&1 | Out-Null
+            $reviewCandidateOutput = @(& git -C $hookRepo commit -m "allow review candidate $reviewCandidatePath" 2>&1)
+            Assert-Equal 0 $LASTEXITCODE "hook does not path-block L1/L2 review candidate $reviewCandidatePath"
+            Assert-True (($reviewCandidateOutput -join "`n") -match 'Review candidate path') "hook marks $reviewCandidatePath for review without blocking it"
+        }
     }
     finally {
         if (Test-Path -LiteralPath $hookRepo) { Remove-Item -LiteralPath $hookRepo -Recurse -Force }

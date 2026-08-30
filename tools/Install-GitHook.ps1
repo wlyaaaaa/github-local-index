@@ -21,10 +21,14 @@ $hookPath = Join-Path $hooksDirectory 'pre-commit'
 
 $policyPath = Join-Path $PSScriptRoot 'PublicExposurePolicy.psd1'
 $policy = Import-PowerShellDataFile -LiteralPath $policyPath
+if ([string] $policy.Schema -cne 'github-local-index.public-exposure-path-policy.v2') {
+    throw 'Public exposure path policy schema is unsupported.'
+}
 $alwaysBlockedPaths = [string] $policy.AlwaysBlockedPathRegex
+$reviewCandidatePaths = [string] $policy.ReviewCandidatePathRegex
 $envPaths = [string] $policy.EnvPathRegex
 $allowedTemplatePaths = [string] $policy.AllowedTemplateRegex
-foreach ($expression in @($alwaysBlockedPaths, $envPaths, $allowedTemplatePaths)) {
+foreach ($expression in @($alwaysBlockedPaths, $reviewCandidatePaths, $envPaths, $allowedTemplatePaths)) {
     if ([string]::IsNullOrWhiteSpace($expression) -or $expression.Contains("'") -or $expression -match '[^\x20-\x7e]') {
         throw 'Public exposure path policy is not safe to embed in the portable hook.'
     }
@@ -35,6 +39,7 @@ $hookTemplate = @'
 
 # Public repository secret gate. Keep this file ASCII and deterministic.
 always_blocked_paths='__ALWAYS_BLOCKED_PATH_REGEX__'
+review_candidate_paths='__REVIEW_CANDIDATE_PATH_REGEX__'
 env_paths='__ENV_PATH_REGEX__'
 allowed_template_paths='__ALLOWED_TEMPLATE_PATH_REGEX__'
 secret_patterns='-----BEGIN[ A-Z]+PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|sk-(proj-|svcacct-)?[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{35}|L[S]0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t|L[S]0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ|L[S]0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0t|L[S]0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0'
@@ -47,6 +52,9 @@ git diff --cached --name-only --diff-filter=ACMRT -z | while IFS= read -r -d '' 
         printf '%s\n' "Blocked staged path: $file" >&2
         exit 1
     fi
+    if printf '%s\n' "$file" | grep -Eiq "$review_candidate_paths"; then
+        printf '%s\n' "Review candidate path: $file" >&2
+    fi
     if git diff --cached --no-ext-diff --unified=0 --diff-filter=ACMRT -- "$file" |
         awk '/^@@ / { in_hunk = 1; next } in_hunk && /^\+/ { print }' |
         grep -Eiq -- "$secret_patterns"; then
@@ -56,6 +64,7 @@ git diff --cached --name-only --diff-filter=ACMRT -z | while IFS= read -r -d '' 
 done
 '@
 $hookContent = $hookTemplate.Replace('__ALWAYS_BLOCKED_PATH_REGEX__', $alwaysBlockedPaths)
+$hookContent = $hookContent.Replace('__REVIEW_CANDIDATE_PATH_REGEX__', $reviewCandidatePaths)
 $hookContent = $hookContent.Replace('__ENV_PATH_REGEX__', $envPaths)
 $hookContent = $hookContent.Replace('__ALLOWED_TEMPLATE_PATH_REGEX__', $allowedTemplatePaths)
 

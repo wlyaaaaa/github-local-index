@@ -82,10 +82,12 @@ $script:PublicExposurePolicyPath = Join-Path $PSScriptRoot 'PublicExposurePolicy
 $script:PublicExposurePolicy = Import-PowerShellDataFile -LiteralPath $script:PublicExposurePolicyPath
 $script:GitArtifactGovernancePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'config/git-artifact-governance.json'
 $script:GitArtifactGovernance = Read-GitArtifactGovernanceRegistry -Path $script:GitArtifactGovernancePath
-if ([string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex) -or
+if ([string] $script:PublicExposurePolicy.Schema -cne 'github-local-index.public-exposure-path-policy.v2' -or
+    [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex) -or
+    [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.ReviewCandidatePathRegex) -or
     [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.EnvPathRegex) -or
     [string]::IsNullOrWhiteSpace([string] $script:PublicExposurePolicy.AllowedTemplateRegex)) {
-    throw 'Public exposure policy is missing a required path expression.'
+    throw 'Public exposure policy has an unsupported schema or is missing a required path expression.'
 }
 
 function Invoke-ExternalCommandResult {
@@ -422,21 +424,52 @@ function ConvertFrom-GitWorktreePorcelain {
     return @($records)
 }
 
-function Test-PublicExposurePath {
+function Get-PublicExposurePathAssessment {
     [CmdletBinding()]
     param([AllowNull()] [string] $Path)
 
     if ([string]::IsNullOrWhiteSpace($Path)) {
-        return $false
+        return [pscustomobject][ordered]@{
+            path = $null
+            always_blocked = $false
+            review_candidate = $false
+            reason = $null
+        }
     }
+
     $normalized = $Path.Trim(' ', '"') -replace '\\', '/'
-    if ($normalized -match ('(?i)' + [string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex)) {
-        return $true
+    $alwaysBlocked = $normalized -match ('(?i)' + [string] $script:PublicExposurePolicy.AlwaysBlockedPathRegex)
+    $envPath = $normalized -match ('(?i)' + [string] $script:PublicExposurePolicy.EnvPathRegex)
+    $allowedTemplate = $normalized -match ('(?i)' + [string] $script:PublicExposurePolicy.AllowedTemplateRegex)
+    if ($envPath -and -not $allowedTemplate) {
+        $alwaysBlocked = $true
     }
-    if ($normalized -notmatch ('(?i)' + [string] $script:PublicExposurePolicy.EnvPathRegex)) {
-        return $false
+
+    $reviewCandidate = (-not $alwaysBlocked) -and
+        ($normalized -match ('(?i)' + [string] $script:PublicExposurePolicy.ReviewCandidatePathRegex))
+    $reason = if ($alwaysBlocked) {
+        'secret_or_credential_path'
     }
-    return $normalized -notmatch ('(?i)' + [string] $script:PublicExposurePolicy.AllowedTemplateRegex)
+    elseif ($reviewCandidate) {
+        'review_candidate_path'
+    }
+    else {
+        $null
+    }
+
+    [pscustomobject][ordered]@{
+        path = $normalized
+        always_blocked = [bool] $alwaysBlocked
+        review_candidate = [bool] $reviewCandidate
+        reason = $reason
+    }
+}
+
+function Test-PublicExposurePath {
+    [CmdletBinding()]
+    param([AllowNull()] [string] $Path)
+
+    return [bool] (Get-PublicExposurePathAssessment -Path $Path).always_blocked
 }
 
 function ConvertFrom-GitStatusPorcelainV1Z {
@@ -544,6 +577,7 @@ function Get-GitStatusObservation {
             dirty_count = $null
             dirty_summary = New-UnknownGitDirtySummary
             public_exposure_conflict = $false
+            public_exposure_review_candidates = @()
             error = $true
         }
     }
@@ -556,11 +590,13 @@ function Get-GitStatusObservation {
             dirty_count = $null
             dirty_summary = New-UnknownGitDirtySummary
             public_exposure_conflict = $false
+            public_exposure_review_candidates = @()
             error = $true
         }
     }
     $dirtySummary = Get-GitDirtySummary -Entries $entries
     $exposureConflict = $false
+    $reviewCandidates = [System.Collections.Generic.List[string]]::new()
     foreach ($entry in $entries) {
         $status = [string] $entry.status
         if ($status -in @('D ', ' D')) {
@@ -572,9 +608,13 @@ function Get-GitStatusObservation {
             $candidatePaths = @($candidatePaths[0])
         }
         foreach ($candidate in $candidatePaths) {
-            if (Test-PublicExposurePath -Path $candidate) {
+            $assessment = Get-PublicExposurePathAssessment -Path $candidate
+            if ($assessment.always_blocked) {
                 $exposureConflict = $true
                 break
+            }
+            if ($assessment.review_candidate -and -not $reviewCandidates.Contains($assessment.path)) {
+                $reviewCandidates.Add($assessment.path)
             }
         }
         if ($exposureConflict) { break }
@@ -584,6 +624,7 @@ function Get-GitStatusObservation {
         dirty_count = $dirtySummary.total
         dirty_summary = $dirtySummary
         public_exposure_conflict = $exposureConflict
+        public_exposure_review_candidates = @($reviewCandidates | Sort-Object -Unique)
         error = $false
     }
 }
@@ -949,6 +990,7 @@ function Get-GitRepositoryWorktrees {
         $dirtyCount = $null
         $dirtySummary = New-UnknownGitDirtySummary
         $exposureConflict = $false
+        $reviewCandidates = @()
         $inspectionError = $false
 
         if ($exists) {
@@ -983,6 +1025,7 @@ function Get-GitRepositoryWorktrees {
             $dirtyCount = $status.dirty_count
             $dirtySummary = $status.dirty_summary
             $exposureConflict = $status.public_exposure_conflict
+            $reviewCandidates = @($status.public_exposure_review_candidates)
             if ($status.error) {
                 $inspectionError = $true
             }
@@ -1004,6 +1047,7 @@ function Get-GitRepositoryWorktrees {
             prunable = [bool] $record.prunable
             inspection_error = $inspectionError
             public_exposure_conflict = $exposureConflict
+            public_exposure_review_candidates = @($reviewCandidates)
         }
     }
 
@@ -1699,6 +1743,7 @@ Export-ModuleMember -Function @(
     'ConvertTo-PublicGitHubRemoteUrl',
     'ConvertFrom-GitWorktreePorcelain',
     'ConvertFrom-GitStatusPorcelainV1Z',
+    'Get-PublicExposurePathAssessment',
     'Test-PublicExposurePath',
     'Get-GitRepositoryWorktrees',
     'Get-GitDefaultBranchIntegrationEvidence',

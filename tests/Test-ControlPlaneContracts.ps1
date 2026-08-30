@@ -132,7 +132,15 @@ $requiredContent = @{
         '瞬时保护',
         '不是个人仓库的稳定终态'
     )
-    'git.push-publication' = @('push|publication|visibility|public_repo', 'transport readiness', 'candidate commits', '不输出 publication_decision', 'PUBLIC review', '唯一维护', 'PublicExposurePolicy.psd1')
+    'git.push-publication' = @(
+        'push|publication|visibility|public_repo', 'transport readiness', 'candidate commits',
+        '不输出 publication_decision', 'PUBLIC review', '唯一维护', 'PublicExposurePolicy.psd1',
+        'global public personal data grading', 'public_personal_data_classification',
+        'below_l3_publication_default', 'project_publication_restriction_authority',
+        'source-owned', 'L1/L2', 'project-authored public restriction',
+        'explicit user authorization', 'cannot block L1/L2',
+        'secrets', 'raw chats', 'health', '至少', 'L4', '上位边界', 'secret-path'
+    )
     'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '最多尝试三次', 'commit-pinned snapshot', 'fetch_failed', '日常项目任务不需要', 'github_local_index_consistency', 'outcome=error')
     'git.milestone-record' = @(
         'milestone|push_record', 'pure-file', 'idempotent', 'not zero-write',
@@ -339,6 +347,11 @@ Assert-True ($pushRuleText.Contains('read-only diagnosis remains allowed')) 'pus
 Assert-True ($pushRuleText.Contains('preserve exact content')) 'push rule preserves exact content for trusted private backup targets'
 Assert-True ($pushRuleText.Contains('wlyaaaaa/Key') -and $pushRuleText.Contains('密文')) 'push rule preserves the Key encrypted-artifact-only boundary'
 Assert-True ($pushRuleText.Contains('transport ready') -and $pushRuleText.Contains('publication safe') -and $pushRuleText.Contains('authorization present')) 'push rule separates transport, publication, and authorization'
+Assert-True ($pushRuleText.Contains('E:\.agents') -and $pushRuleText.Contains('source owner')) 'push rule consumes global grading from the agents owner'
+Assert-True ($pushRuleText.Contains('L1/L2') -and $pushRuleText.Contains('cannot block L1/L2')) 'push rule does not uplift or block source-owned L1/L2'
+Assert-True ($pushRuleText.Contains('public_personal_data_classification') -and $pushRuleText.Contains('below_l3_publication_default') -and $pushRuleText.Contains('project_publication_restriction_authority')) 'push rule aligns the canonical global classification tokens'
+Assert-True ($pushRuleText.Contains('secrets') -and $pushRuleText.Contains('raw chats') -and $pushRuleText.Contains('health') -and $pushRuleText.Contains('至少') -and $pushRuleText.Contains('L4')) 'push rule maps sensitive personal material to the L4 floor'
+Assert-True (-not ($pushRuleText.Contains('L3/L4+'))) 'push rule does not use an ambiguous L3/L4 floor'
 
 if ($script:Failures -gt 0) {
     throw "$script:Failures test(s) failed"

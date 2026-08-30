@@ -2,6 +2,7 @@
     [string] $RepoRoot = (Split-Path -Parent $PSScriptRoot),
     [switch] $CheckOnly,
     [switch] $Fast,
+    [switch] $ZeroFetchAtomic,
     [int] $FailAfterPublishCount = 0,
     [string] $Repo,
     [string] $RepoPath,
@@ -920,7 +921,8 @@ function Invoke-AtomicGitHubLocalIndexRefresh {
         New-Item -ItemType Directory -Path $generationRoot -Force | Out-Null
         Invoke-RefreshStep 'GitHub repository index (temporary generation)' {
             & (Join-Path $RepoRoot 'tools\Update-GitHubIndex.ps1') `
-                -RepoRoot $RepoRoot -OutputRoot $generationRoot -GenerationId $generationId -ObservedAt $observedAt | Out-Null
+                -RepoRoot $RepoRoot -OutputRoot $generationRoot -GenerationId $generationId -ObservedAt $observedAt `
+                -SkipFetch:$ZeroFetchAtomic | Out-Null
         }
         $publication = Publish-GitHubLocalIndexGeneration `
             -GenerationRoot $generationRoot `
@@ -954,6 +956,9 @@ function Invoke-GitHubLocalIndexRefresh {
 
     if ($Fast -and $CheckOnly) {
         throw 'Use either -Fast or -CheckOnly, not both.'
+    }
+    if ($ZeroFetchAtomic -and ($Fast -or $CheckOnly)) {
+        throw 'ZeroFetchAtomic applies only to the full atomic refresh.'
     }
 
     if ($Fast) {

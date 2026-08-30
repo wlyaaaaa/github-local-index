@@ -855,9 +855,92 @@ $refreshErrors = $null
 $refreshAst = [System.Management.Automation.Language.Parser]::ParseFile($refreshPath, [ref] $refreshTokens, [ref] $refreshErrors)
 $refreshParameters = @($refreshAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
 Assert-True ($refreshParameters -contains 'Json') 'fast refresh exposes JSON output'
+Assert-True ($refreshParameters -contains 'ZeroFetchAtomic') 'full refresh exposes an explicit zero-fetch atomic mode'
 $refreshSource = Get-Content -LiteralPath $refreshPath -Raw -Encoding utf8
 Assert-True ($refreshSource -match 'Get-ProjectAdmissionRecord') 'fast refresh consumes one admission record'
-Assert-True ($refreshSource -notmatch '(?s)Update-GitHubIndex\.ps1.{0,400}-GenerationId\s+\$generationId.{0,200}-SkipFetch') 'full atomic refresh must use live remote refs instead of silently publishing a cached generation'
+Assert-True ($refreshSource.Contains('-SkipFetch:$ZeroFetchAtomic')) 'only the explicit atomic mode forwards SkipFetch to the generator'
+
+$atomicModeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-atomic-mode-' + [guid]::NewGuid().ToString('N'))
+try {
+    $atomicModeTools = Join-Path $atomicModeRoot 'tools'
+    New-Item -ItemType Directory -Path $atomicModeTools -Force | Out-Null
+    $fixtureGenerator = @'
+param(
+    [string] $RepoRoot,
+    [string] $OutputRoot,
+    [string] $GenerationId,
+    [string] $ObservedAt,
+    [switch] $SkipFetch
+)
+$paths = @(
+    '00_总览/GitHub总览.md', '00_总览/当前同步看板.md',
+    '01_仓库索引/GitHub仓库索引.md', '01_仓库索引/本地clone索引.md',
+    '01_仓库索引/未发现本地clone.md', '02_同步诊断/未推送队列.md',
+    '02_同步诊断/工作区脏状态.md', '02_同步诊断/分支与远端诊断.md'
+)
+$mode = if ($SkipFetch) { 'zero-fetch' } else { 'live-fetch' }
+Add-Content -LiteralPath (Join-Path $RepoRoot 'generator-modes.txt') -Value $mode -Encoding utf8
+if (-not $SkipFetch) {
+    Add-Content -LiteralPath (Join-Path $RepoRoot 'fetch-invocations.txt') -Value 'fetch' -Encoding utf8
+}
+foreach ($relativePath in $paths) {
+    $target = Join-Path $OutputRoot $relativePath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+    Set-Content -LiteralPath $target -Value @(
+        "<!-- generation_id=$GenerationId -->",
+        "mode=$mode; path=$relativePath"
+    ) -Encoding utf8
+}
+'@
+    [System.IO.File]::WriteAllText(
+        (Join-Path $atomicModeTools 'Update-GitHubIndex.ps1'),
+        $fixtureGenerator,
+        [System.Text.UTF8Encoding]::new($false))
+
+    $zeroOutput = @(& pwsh -NoProfile -ExecutionPolicy Bypass -File $refreshPath `
+        -RepoRoot $atomicModeRoot -ZeroFetchAtomic -Json 2>&1)
+    $zeroExit = $LASTEXITCODE
+    Assert-Equal 0 $zeroExit 'explicit zero-fetch atomic fixture publishes successfully'
+    $zeroPublication = ($zeroOutput -join "`n") | ConvertFrom-Json
+    $zeroState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $atomicModeRoot
+    Assert-True $zeroState.valid 'zero-fetch atomic fixture publishes a valid immutable generation'
+    Assert-True $zeroState.projection_valid 'zero-fetch atomic fixture publishes matching tracked projections'
+    Assert-Equal 8 $zeroPublication.document_count 'zero-fetch atomic fixture uses the complete projection set'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $atomicModeRoot 'fetch-invocations.txt'))) `
+        'explicit zero-fetch atomic fixture never invokes fetch'
+
+    $defaultOutput = @(& pwsh -NoProfile -ExecutionPolicy Bypass -File $refreshPath `
+        -RepoRoot $atomicModeRoot -Json 2>&1)
+    $defaultExit = $LASTEXITCODE
+    Assert-Equal 0 $defaultExit 'default atomic fixture publishes successfully'
+    $defaultPublication = ($defaultOutput -join "`n") | ConvertFrom-Json
+    $defaultState = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $atomicModeRoot
+    Assert-True $defaultState.valid 'default atomic fixture preserves generation integrity'
+    Assert-True $defaultState.projection_valid 'default atomic fixture preserves projection integrity'
+    Assert-True ($defaultPublication.generation_id -ne $zeroPublication.generation_id) `
+        'default atomic fixture publishes a distinct generation through the same transaction'
+    Assert-Equal 1 @(Get-Content -LiteralPath (Join-Path $atomicModeRoot 'fetch-invocations.txt')).Count `
+        'default full refresh keeps live fetch semantics'
+
+    $pointerBeforeFailure = Get-Content -LiteralPath (Join-Path $atomicModeRoot '00_总览/current-generation.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $refreshPath `
+        -RepoRoot $atomicModeRoot -ZeroFetchAtomic -FailAfterPublishCount 1 -Json 2>&1 | Out-Null
+    Assert-True ($LASTEXITCODE -ne 0) 'zero-fetch atomic failure injection stops before pointer switch'
+    $pointerAfterFailure = Get-Content -LiteralPath (Join-Path $atomicModeRoot '00_总览/current-generation.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    $stateAfterFailure = Get-GitHubLocalIndexCurrentGenerationState -RepoRoot $atomicModeRoot
+    Assert-Equal $pointerBeforeFailure.generation_id $pointerAfterFailure.generation_id `
+        'zero-fetch atomic failure keeps the previous current pointer'
+    Assert-Equal $pointerBeforeFailure.generation_manifest_sha256 $pointerAfterFailure.generation_manifest_sha256 `
+        'zero-fetch atomic failure keeps the previous immutable manifest binding'
+    Assert-True $stateAfterFailure.valid 'zero-fetch atomic failure leaves the previous immutable generation valid'
+    Assert-True (-not $stateAfterFailure.projection_valid) `
+        'zero-fetch atomic failure exposes partial compatibility projections as stale'
+    Assert-Equal 1 @(Get-Content -LiteralPath (Join-Path $atomicModeRoot 'fetch-invocations.txt')).Count `
+        'zero-fetch atomic rollback attempt does not add a fetch invocation'
+}
+finally {
+    if (Test-Path -LiteralPath $atomicModeRoot) { Remove-Item -LiteralPath $atomicModeRoot -Recurse -Force }
+}
 
 $generationAtomicRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-generation-atomic-' + [guid]::NewGuid().ToString('N'))
 try {

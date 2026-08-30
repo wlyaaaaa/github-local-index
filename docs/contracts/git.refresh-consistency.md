@@ -17,7 +17,7 @@ owner: E:\GitHub总索引
 
 ignored 私有 `github-local-index.owner-baseline-store.v3` 分存 identity（repo、visibility、default branch）与可空 local root；原子保存 current/previous、root snapshot、规范 hash、receipt，读取验证 schema/集合/hash/readback。
 
-唯一写入口 `-MigrateBaseline` 只查 live metadata、核验 v2 navigation `.git` origin；不 fetch/扫正文/重建公开索引。无 prior baseline 时写 `history_gap=true` bootstrap receipt 并保持 attention/unknown；禁止 live 自比、PUBLIC 子集、自动化记忆伪造历史，delta review 至下次稳定比较。Fast compatibility mode 可写 private log；CheckOnly 用 system temp；完整 refresh 重建 tracked Markdown，clone fetch 最多尝试三次，commit-pinned snapshot 只刷 metadata；discovery 排除外部治理路径。
+`-MigrateBaseline` 是 baseline 唯一写入口：查 live metadata、验 navigation `.git` origin，不 fetch/读正文/建投影；无 prior 标 `history_gap=true`，禁自比/PUBLIC 子集/伪造历史。Fast compatibility mode 写 private log；CheckOnly 用 system temp。默认 full refresh 重建 Markdown，fetch 最多尝试三次；commit-pinned snapshot 只刷 metadata。仅 `-ZeroFetchAtomic` 传 `SkipFetch`，复用 atomic generation/manifest/projection readback/pointer CAS/rollback；禁与 Fast/CheckOnly 合用，非 refs freshness/publication 证据。
 
 ## 输出合同
 `github-local-index.owner-status.v1`：`execution_status=completed|error`、`domain_status=current|review_needed|blocked|unknown`、`zero_write=true`、`fetch_performed=false`；其余限摘要、issue/attention、scope、registry、provenance、history、fingerprint，root delta 仅计数。fingerprint 排除时间/顺序/index HEAD/dirty/ahead/behind/任务状态/错误正文。`completed` 退出 0；`gh` 不可启动、remote 非零、JSON 无效为 `error/unknown`、退出 2。migration 仅返计数/hash/bootstrap/history，不回显 identity/路径。hidden CheckOnly 原子写 private `github-local-index.consistency-receipt.v1`（`task_key=github_local_index_consistency`）；不自动 stage/commit/push 或授权发布。

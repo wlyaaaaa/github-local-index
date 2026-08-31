@@ -69,6 +69,77 @@ function Resolve-IndexedClonePath {
     return $null
 }
 
+function Invoke-RefreshGitOwnerBaselineAdvance {
+    param([Parameter(Mandatory = $true)] [string] $RepoRoot)
+
+    $baselineState = Get-GitHubOwnerBaselineStore -RepoRoot $RepoRoot
+    if ([string]$baselineState.status -eq 'missing') {
+        return [pscustomobject][ordered]@{
+            status = 'skipped'
+            reason = 'owner_baseline_missing_requires_explicit_bootstrap'
+            repository_count = 0
+            observed_at = $null
+            current_identity_sha256 = $null
+            payload_sha256 = $null
+        }
+    }
+    if ([string]$baselineState.status -ne 'current') {
+        throw 'Existing Git owner baseline is invalid; refusing automatic convergence.'
+    }
+
+    . (Join-Path $RepoRoot 'tools\Get-GitOwnerStatus.ps1')
+    $owner = 'wlyaaaaa'
+    $expectedRepository = 'wlyaaaaa/github-local-index'
+    $remote = Get-GitOwnerRemoteRows -Owner $owner
+    if (-not [bool]$remote.available) {
+        throw ('Git owner remote inventory is unavailable: ' + [string]$remote.reason)
+    }
+    $remoteReader = { param($OwnerName) $remote }.GetNewClosure()
+    $before = Invoke-GitOwnerProvider `
+        -Owner $owner -ExpectedRepository $expectedRepository -RepoRoot $RepoRoot `
+        -RemoteReader $remoteReader
+    if ([string]$before.execution_status -ne 'completed' -or
+        [int]$before.summary.issue_count -ne 0 -or
+        [string]$before.domain_status -in @('blocked', 'unknown')) {
+        throw 'Git owner facts are incomplete or invalid; refusing automatic convergence.'
+    }
+    if ([int]$before.summary.delta_count -eq 0) {
+        return [pscustomobject][ordered]@{
+            status = 'current'
+            reason = $null
+            repository_count = [int]$before.summary.observed_repositories
+            observed_at = [string]$before.observed_at
+            current_identity_sha256 = [string]$baselineState.store.current.identities_sha256
+            payload_sha256 = [string]$baselineState.store.payload_sha256
+        }
+    }
+
+    $advance = Invoke-GitOwnerBaselineMigration `
+        -Owner $owner -ExpectedRepository $expectedRepository -RepoRoot $RepoRoot `
+        -RemoteReader $remoteReader
+    if ([string]$advance.execution_status -ne 'completed' -or
+        [string]$advance.domain_status -ne 'current' -or
+        [bool]$advance.history_gap) {
+        throw 'Git owner baseline advance failed its continuous-history contract.'
+    }
+    $after = Invoke-GitOwnerProvider `
+        -Owner $owner -ExpectedRepository $expectedRepository -RepoRoot $RepoRoot `
+        -RemoteReader $remoteReader
+    if ([string]$after.domain_status -ne 'current' -or
+        [int]$after.summary.delta_count -ne 0 -or
+        [int]$after.summary.issue_count -ne 0) {
+        throw 'Git owner baseline advance readback did not converge.'
+    }
+    return [pscustomobject][ordered]@{
+        status = 'advanced'
+        reason = $null
+        repository_count = [int]$advance.repository_count
+        observed_at = [string]$advance.observed_at
+        current_identity_sha256 = [string]$advance.current_identity_sha256
+        payload_sha256 = [string]$advance.payload_sha256
+    }
+}
+
 function Invoke-GitScalar {
     param(
         [Parameter(Mandatory = $true)] [string] $Path,
@@ -978,7 +1049,14 @@ function Invoke-GitHubLocalIndexRefresh {
         return
     }
 
+    $ownerBaselinePreflight = Get-GitHubOwnerBaselineStore -RepoRoot $RepoRoot
+    if ([string]$ownerBaselinePreflight.status -notin @('missing', 'current')) {
+        throw 'Existing Git owner baseline is invalid; refusing full refresh.'
+    }
     $publication = Invoke-AtomicGitHubLocalIndexRefresh
+    $ownerBaseline = Invoke-RefreshGitOwnerBaselineAdvance -RepoRoot $RepoRoot
+    Write-RefreshLog ("OWNER baseline_status={0} repositories={1}" -f $ownerBaseline.status, $ownerBaseline.repository_count)
+    $publication | Add-Member -NotePropertyName owner_baseline -NotePropertyValue $ownerBaseline -Force
 
     Write-RefreshLog 'GitHub local index refresh finished'
     return $publication

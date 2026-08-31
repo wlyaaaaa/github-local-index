@@ -1,0 +1,7 @@
+# These files are byte-hashed by the generation closure. Canonical UTF-8/LF
+# keeps their bytes stable across checkout and host platforms.
+/00_总览/current-generation.json text eol=lf
+/00_总览/generations/** text eol=lf
+/00_总览/*.md text eol=lf
+/01_仓库索引/*.md text eol=lf
+/02_同步诊断/*.md text eol=lf

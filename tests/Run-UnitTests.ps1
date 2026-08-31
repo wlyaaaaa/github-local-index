@@ -859,6 +859,19 @@ Assert-True ($refreshParameters -contains 'ZeroFetchAtomic') 'full refresh expos
 $refreshSource = Get-Content -LiteralPath $refreshPath -Raw -Encoding utf8
 Assert-True ($refreshSource -match 'Get-ProjectAdmissionRecord') 'fast refresh consumes one admission record'
 Assert-True ($refreshSource.Contains('-SkipFetch:$ZeroFetchAtomic')) 'only the explicit atomic mode forwards SkipFetch to the generator'
+Assert-True ($refreshSource.Contains('Invoke-RefreshGitOwnerBaselineAdvance -RepoRoot $RepoRoot')) 'full refresh automatically converges an existing Git owner baseline'
+Assert-True ($refreshSource.Contains("status -notin @('missing', 'current')")) 'full refresh rejects an invalid owner baseline before publication'
+Assert-True ($refreshSource.IndexOf('$publication = Invoke-AtomicGitHubLocalIndexRefresh') -lt $refreshSource.IndexOf('Invoke-RefreshGitOwnerBaselineAdvance -RepoRoot $RepoRoot')) 'owner baseline advances after refresh updates private clone navigation'
+$attributes = Get-Content -LiteralPath (Join-Path $repoRoot '.gitattributes') -Raw -Encoding utf8
+foreach ($requiredAttribute in @(
+    '/00_总览/current-generation.json text eol=lf',
+    '/00_总览/generations/** text eol=lf',
+    '/00_总览/*.md text eol=lf',
+    '/01_仓库索引/*.md text eol=lf',
+    '/02_同步诊断/*.md text eol=lf'
+)) {
+    Assert-True ($attributes.Contains($requiredAttribute, [StringComparison]::Ordinal)) "hashed closure LF attribute exists: $requiredAttribute"
+}
 
 $atomicModeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('github-index-atomic-mode-' + [guid]::NewGuid().ToString('N'))
 try {

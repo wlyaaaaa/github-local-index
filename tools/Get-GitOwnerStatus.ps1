@@ -955,6 +955,7 @@ function Add-GitOwnerBaselineHistory {
 
     if ($null -eq $History) { return $Status }
     $attentions = @()
+    $historyBlocks = $false
     if ([string]$History.state -eq 'bootstrap_gap') {
         $attentions += [pscustomobject][ordered]@{
             code = 'owner_history_gap'
@@ -963,20 +964,18 @@ function Add-GitOwnerBaselineHistory {
         if ([string]$Status.domain_status -eq 'current') {
             $Status.domain_status = 'unknown'
         }
+        $historyBlocks = $true
     }
     if ([int]$History.transition_delta_count -gt 0) {
         $attentions += [pscustomobject][ordered]@{
-            code = 'owner_baseline_transition_review'
+            code = 'owner_baseline_transition_recorded'
             scope = 'previous_to_current'
-        }
-        if ([string]$Status.domain_status -eq 'current') {
-            $Status.domain_status = 'review_needed'
         }
     }
     $Status | Add-Member -NotePropertyName history -NotePropertyValue $History -Force
     $Status | Add-Member -NotePropertyName attentions -NotePropertyValue @($attentions) -Force
     $Status.summary | Add-Member -NotePropertyName attention_count -NotePropertyValue $attentions.Count -Force
-    if ($attentions.Count -gt 0) {
+    if ($historyBlocks) {
         $Status.blocking_scopes = @($Status.blocking_scopes + 'git_owner_history' | Sort-Object -Unique)
     }
     return $Status

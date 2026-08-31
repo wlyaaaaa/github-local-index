@@ -578,8 +578,10 @@ try {
         -IdentityResolver { param($Root) $fixtureIndexIdentity } `
         -RegistryReader { param($Root) $registryA } `
         -RemoteReader $fixtureRemoteReader
-    Assert-OwnerEqual 'review_needed' $transitionStatus.domain_status 'baseline advance retains its previous-to-current review delta'
+    Assert-OwnerEqual 'current' $transitionStatus.domain_status 'one baseline advance converges live facts without a second migration ritual'
     Assert-OwnerEqual 1 $transitionStatus.history.transition_delta_count 'transition history retains the added repository exactly once'
+    Assert-OwnerTrue (@($transitionStatus.attentions | Where-Object code -EQ 'owner_baseline_transition_recorded').Count -eq 1) 'accepted transition remains visible as nonblocking history'
+    Assert-OwnerTrue (@($transitionStatus.blocking_scopes) -notcontains 'git_owner_history') 'continuous transition history does not block owner convergence'
 
     [void](Invoke-GitOwnerBaselineMigration `
         -Owner 'fixture-owner' -ExpectedRepository 'fixture-owner/index' `

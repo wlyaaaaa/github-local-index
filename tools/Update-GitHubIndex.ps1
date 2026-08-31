@@ -1485,7 +1485,7 @@ function Set-GitHubIndexTextFile {
         $normalizedLines = @($normalizedLines[0..($normalizedLines.Count - 2)])
     }
 
-    $text = ($normalizedLines -join [Environment]::NewLine) + [Environment]::NewLine
+    $text = ($normalizedLines -join "`n") + "`n"
     $tempPath = Join-Path $directory ('.' + (Split-Path -Leaf $Path) + '.' + [guid]::NewGuid().ToString('N') + '.tmp')
     try {
         [System.IO.File]::WriteAllText($tempPath, $text, [System.Text.UTF8Encoding]::new($false))

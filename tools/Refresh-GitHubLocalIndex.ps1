@@ -487,9 +487,10 @@ function Write-RefreshAtomicTextFile {
         [Parameter(Mandatory = $true)] [string] $Text
     )
 
+    $normalizedText = $Text.Replace("`r`n", "`n").Replace("`r", "`n")
     Write-RefreshAtomicBytesFile `
         -Path $Path `
-        -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes($Text))
+        -Bytes ([System.Text.UTF8Encoding]::new($false).GetBytes($normalizedText))
 }
 
 function Publish-RefreshGenerationFile {

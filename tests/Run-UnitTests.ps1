@@ -857,8 +857,11 @@ $refreshParameters = @($refreshAst.ParamBlock.Parameters | ForEach-Object { $_.N
 Assert-True ($refreshParameters -contains 'Json') 'fast refresh exposes JSON output'
 Assert-True ($refreshParameters -contains 'ZeroFetchAtomic') 'full refresh exposes an explicit zero-fetch atomic mode'
 $refreshSource = Get-Content -LiteralPath $refreshPath -Raw -Encoding utf8
+$updateSource = Get-Content -LiteralPath (Join-Path $repoRoot 'tools/Update-GitHubIndex.ps1') -Raw -Encoding utf8
 Assert-True ($refreshSource -match 'Get-ProjectAdmissionRecord') 'fast refresh consumes one admission record'
 Assert-True ($refreshSource.Contains('-SkipFetch:$ZeroFetchAtomic')) 'only the explicit atomic mode forwards SkipFetch to the generator'
+Assert-True ($updateSource.Contains('$text = ($normalizedLines -join "`n") + "`n"', [StringComparison]::Ordinal)) 'index document writer uses canonical LF'
+Assert-True ($refreshSource.Contains('$normalizedText = $Text.Replace("`r`n", "`n").Replace("`r", "`n")', [StringComparison]::Ordinal)) 'generation JSON writer normalizes CRLF and CR to LF'
 Assert-True ($refreshSource.Contains('Invoke-RefreshGitOwnerBaselineAdvance -RepoRoot $RepoRoot')) 'full refresh automatically converges an existing Git owner baseline'
 Assert-True ($refreshSource.Contains("status -notin @('missing', 'current')")) 'full refresh rejects an invalid owner baseline before publication'
 Assert-True ($refreshSource.IndexOf('$publication = Invoke-AtomicGitHubLocalIndexRefresh') -lt $refreshSource.IndexOf('Invoke-RefreshGitOwnerBaselineAdvance -RepoRoot $RepoRoot')) 'owner baseline advances after refresh updates private clone navigation'

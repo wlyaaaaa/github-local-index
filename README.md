@@ -53,7 +53,7 @@ pwsh -NoProfile -File tools\Test-GitHubLocalIndexConsistency.ps1 -SkipFetch
 
 ## 公开与私有边界
 
-本仓库是 `PUBLIC`。不得提交真实 API key/token/private key、完整 `.env` 或 OAuth JSON、原始日志/数据库/聊天/健康资料、私密截图、机器快照、完整任务 XML 或可直接滥用的运维细节。
+本仓库是 `PUBLIC`。真实 API key/token/private key、含秘密的 `.env` 或 OAuth 私密载荷等可复用秘密不得提交。日志、数据库、机器快照、完整任务 XML 和普通技术标识只按实际内容判断，不能因形态、路径或私人来源整类禁止；公开个人数据遵循活动全局分级，原始私人聊天、完整健康资料和确属私密的截图仍按相应边界处理。具体标准见 [推送放行与否决规则](05_规则与模板/推送放行与否决规则.md)。
 
 Git transport readiness 与内容 publication 是两件事：能 push 不等于适合公开。准备发布时必须重新确认当前 visibility、实际候选 commits/paths/content、项目规则和用户授权。
 

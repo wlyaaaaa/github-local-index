@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -1266,6 +1266,40 @@ Assert-Equal 'verification_required' `
     'missing factor is not reported as a permanent deny'
 Assert-Equal 0 $script:Fixture.native_effects `
     'missing factor performs no adapter effect'
+Assert-Equal $null (Get-OptionalMapValue $verificationRequired 'reason_code') `
+    'older broker responses do not invent an underlying reason'
+
+$reasonBroker = {
+    param($Action, $InputPath, $OperationId, $SelectedAuthorityFactor, $SelectedAccountProvider)
+    $response = & $verificationBroker $Action $InputPath $OperationId $SelectedAuthorityFactor $SelectedAccountProvider
+    $response.value | Add-Member -NotePropertyName reason_code -NotePropertyValue 'runtime_agent_not_registered'
+    $response
+}
+$reasonRequired = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $proposal -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $reasonBroker
+Assert-Equal 'runtime_agent_not_registered' $reasonRequired.reason_code `
+    'authorization preserves the broker reason without changing its meaning'
+Assert-Equal 'verification_required' $reasonRequired.authorization_status `
+    'a detailed reason does not grant authority'
+
+$script:ReasonTestSuccessBroker = $brokerInvoker
+$consumeReasonBroker = {
+    param($Action, $InputPath, $OperationId, $SelectedAuthorityFactor, $SelectedAccountProvider)
+    if ($Action -eq 'ConsumeMajorActionCapability') {
+        return (& $reasonBroker $Action $InputPath $OperationId $SelectedAuthorityFactor $SelectedAccountProvider)
+    }
+    & $script:ReasonTestSuccessBroker $Action $InputPath $OperationId $SelectedAuthorityFactor $SelectedAccountProvider
+}
+$consumeReason = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $proposal -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $consumeReasonBroker
+Assert-Equal 'runtime_agent_not_registered' $consumeReason.reason_code `
+    'consume preserves the broker reason too'
+Assert-Equal 0 $script:Fixture.native_effects `
+    'verification reasons never invoke a native effect'
 
 $script:Fixture.visibility = 'PUBLIC'
 $script:Fixture.native_effects = 0

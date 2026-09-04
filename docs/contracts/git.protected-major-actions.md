@@ -6,7 +6,7 @@ adapter: `github.protected-major-actions.v1`
 
 实现：`tools/Invoke-ProtectedGitHubMajorAction.ps1`
 
-生产激活状态：只认 PCConfig AuthorityHost 发布的活动策略，不由本仓源码自证
+生产授权入口：PCConfig 独立保留的 Password Center/SecretBroker；旧 C policy/router 已退役，不作为当前授权依据。本仓源码不自证 provider 的安装或可用状态。
 
 ## 产品语义
 
@@ -56,7 +56,7 @@ adapter 必须在 broker 和 effect 之前返回
    但不污染这次精确目标的 effect 判定；
 2. 调用固定入口
    `C:\ProgramData\PCConfig\AuthorityHost\tools\Invoke-SecretBroker.ps1`
-   的 `AuthorizeMajorAction`；adapter 把冻结后解析出的单一因子传给 broker，
+   的 `AuthorizeMajorAction`；该目录名由独立 Password Center 安装器保留，不表示旧规则宿主仍活动。adapter 把冻结后解析出的单一因子传给 broker，
    Runtime 使用 `codex-root`，人类下限使用已登记的四类因子之一；Account 另传
    已登记的 Google 或 Microsoft provider；
 3. 再次取证后，以 `pcconfig.major-action-consume-request.v1` 调用
@@ -68,9 +68,11 @@ adapter 必须在 broker 和 effect 之前返回
 
 任何 target、executor、参数、precondition、assessment、user intent、
 `authorization_requirement` 或
-AuthorityHost epoch binding 漂移都使旧能力失效。`-DryRun` 仍完成 AuthorityHost
+独立 SecretBroker 的能力绑定漂移都使旧能力失效。`-DryRun` 仍完成 SecretBroker
 授权与 capability 验证，但要求 `execute_allowed=false`、
 `capability_consumed=false`，不会调用 effect executor。
+
+`highest_authority_verification_required` 表示本次动作身份或因子验证尚未完成，不证明用户未授权，也不证明 provider 已退役。若 provider 返回 `reason_code`，adapter 原样保留该机器可读原因；旧返回缺少它时保持未知，不从目录名猜测原因、不因此要求用户重复已有授权。该字段不改变既有状态或执行判定。
 
 authorization 的 `executor_sha256` 绑定 adapter 脚本自身；native git/gh hash
 另以 `parameters.native_executor_sha256` 精确绑定。发送给 broker 的 authorization

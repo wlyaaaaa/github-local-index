@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 
 [CmdletBinding()]
 param(
@@ -1589,9 +1589,10 @@ function Assert-Proposal {
 function New-BlockedResult {
     param(
         [Parameter(Mandatory)][string] $Error,
-        [string] $AuthorizationStatus = 'denied'
+        [string] $AuthorizationStatus = 'denied',
+        [AllowNull()][string] $ReasonCode = $null
     )
-    [pscustomobject][ordered]@{
+    $result = [ordered]@{
         schema = $script:ResultSchema
         status = 'blocked'
         result = if ($AuthorizationStatus -eq 'verification_required') {
@@ -1606,6 +1607,10 @@ function New-BlockedResult {
         mutation_performed = $false
         read_back_verified = $false
     }
+    if (-not [string]::IsNullOrWhiteSpace($ReasonCode)) {
+        $result.reason_code = $ReasonCode
+    }
+    [pscustomobject]$result
 }
 
 function Test-LiveProposalBinding {
@@ -2082,7 +2087,8 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             'verification_required') {
             return New-BlockedResult `
                 -Error 'highest_authority_verification_required' `
-                -AuthorizationStatus 'verification_required'
+                -AuthorizationStatus 'verification_required' `
+                -ReasonCode (Get-OptionalMapValue $authorization.value 'reason_code')
         }
         if ($authorization.exit_code -ne 0 -or
             $authorization.value.status -ne 'pass' -or
@@ -2132,7 +2138,8 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             'verification_required') {
             return New-BlockedResult `
                 -Error 'highest_authority_verification_required' `
-                -AuthorizationStatus 'verification_required'
+                -AuthorizationStatus 'verification_required' `
+                -ReasonCode (Get-OptionalMapValue $consume.value 'reason_code')
         }
         if ($consume.exit_code -ne 0 -or
             $consume.value.status -ne 'pass' -or

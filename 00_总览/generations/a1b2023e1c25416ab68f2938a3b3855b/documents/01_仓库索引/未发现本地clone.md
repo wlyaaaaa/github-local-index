@@ -4,12 +4,12 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-08-31T16:38:17.8482007+00:00 -->
-<!-- generation_id=70efc65cdfec4b9cb1305ff48086744d -->
+<!-- observed_at=2026-09-04T19:59:46.9698564+00:00 -->
+<!-- generation_id=a1b2023e1c25416ab68f2938a3b3855b -->
 
 # 未发现本地 Clone
 
-更新时间：2026-09-01
+更新时间：2026-09-05
 
 扩大搜索范围后仍未发现本地 clone 的仓库：
 

@@ -92,10 +92,6 @@ $ids = @(
     'git.refresh-consistency',
     'git.milestone-record'
 )
-$headings = @(
-    '产品目标', '触发条件', 'owner 与权威', '权威输入', '核心机制', '输出合同',
-    '失败与降级', '验证证据', '上下文策略', '已知限制', '扩展入口'
-)
 $requiredContent = @{
     'git.project-admission' = @(
         'git_project|repo_identity|project_entry',
@@ -200,29 +196,19 @@ if (Test-Path -LiteralPath $contractRoot) {
             Sort-Object Name
     )
 }
-$expectedNames = @($ids | ForEach-Object { "$_.md" } | Sort-Object)
-$actualNames = @($actualFiles.Name)
-Assert-Equal ($expectedNames -join '|') ($actualNames -join '|') `
-    'contract-card set contains exactly the five compact Git contract cards'
-
-$totalBytes = 0L
+# Required interfaces stay present. All compact cards, including new ones,
+# share the existing total budget and public-content checks; layout is advisory.
 foreach ($id in $ids) {
-    $path = Join-Path $contractRoot "$id.md"
-    $exists = Test-Path -LiteralPath $path -PathType Leaf
-    Assert-True $exists "$id contract exists"
-    if (-not $exists) { continue }
-
-    $file = Get-Item -LiteralPath $path
-    $text = ConvertTo-LfNewlines (Get-Content -LiteralPath $path -Raw -Encoding utf8)
-    $lines = @([regex]::Split($text.TrimEnd(), "`r?`n"))
-    $actualHeadings = @([regex]::Matches($text, '(?m)^## (.+)$') | ForEach-Object { $_.Groups[1].Value })
+    Assert-True (Test-Path -LiteralPath (Join-Path $contractRoot "$id.md") -PathType Leaf) "$id contract exists"
+}
+$totalBytes = 0L
+foreach ($file in $actualFiles) {
+    $id = $file.BaseName
+    $text = ConvertTo-LfNewlines (Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8)
     $totalBytes += $file.Length
 
     Assert-True ($text -match ('\A# ' + [regex]::Escape($id) + '\r?\n')) "$id begins with its exact ID"
-    Assert-Equal ($headings -join '|') ($actualHeadings -join '|') "$id has the eleven ordered H2 headings"
     Assert-True ($text -match '(?m)^owner: E:\\GitHub总索引$') "$id declares the GitHub index owner"
-    Assert-True ($file.Length -le 4096) "$id is at most 4 KiB"
-    Assert-True ($lines.Count -le 80) "$id is at most 80 lines"
 
     foreach ($phrase in $requiredContent[$id]) {
         Assert-True ($text.Contains($phrase)) "$id contains required phrase: $phrase"

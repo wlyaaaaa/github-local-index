@@ -18,6 +18,8 @@ provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTER
 ## 输出合同
 输出仓库 identity、定位、visibility、worktrees、branches、artifact governance、necessary retention、default-branch integration、sync、目标作用域及 transport 结论。顶层必须显式返回 `evidence_source={local_git,github_metadata,remote_refs}`、`freshness=live|mixed|cached` 与 `live_checked`；调用方不得从字段缺失或旧 Markdown 猜新鲜度。`push_decision` / `push_strategy` 不构成写入或 publication 授权。
 
+执行失败的 `errors` 保留原 `category`/`exit_code`，可附 `diagnostic`：优先 stderr，缺失时取 stdout，最多合并三条非空信息并限 512 字符；含疑似凭据或异常控制字符时省略正文。摘要不改变原 decision/freshness，也不触发重试或授予权限。
+
 ## 失败与降级
 provider、schema、identity 不明确或证据仍为 cached 时保留限制；artifact registry 缺失、JSON/schema 无效、owner/ref/retention entry 不完整或重复时在模块加载阶段 fail closed，避免静默失去 owner 边界。`decision=block` 阻止依赖不足证据的写入和直接 transport，但保留 read-only diagnosis。
 

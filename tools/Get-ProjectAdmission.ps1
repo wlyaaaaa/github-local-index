@@ -87,7 +87,7 @@ if ($MyInvocation.InvocationName -ne '.') {
                 -RemoteMode 'cached' `
                 -Decision 'block' `
                 -Reasons @('internal_error') `
-                -Errors @([pscustomobject]@{ category = 'internal_error'; exit_code = 1 }) `
+                -Errors @(New-AdmissionError -Category 'internal_error' -ExitCode 1 -Stderr $_.Exception.Message) `
                 -Worktrees @() |
                 ConvertTo-Json -Depth 10
         }

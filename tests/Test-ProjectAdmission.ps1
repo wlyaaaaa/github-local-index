@@ -412,6 +412,29 @@ try {
         Assert-Equal ($cached.PSObject.Properties.Name -join '|') ($errorRecord.PSObject.Properties.Name -join '|') 'normal and exceptional admission records keep the same JSON shape'
         Assert-Equal 'example/project' $errorRecord.repo 'exceptional admission JSON keeps the normalized repo slug'
     }
+    $plainError = New-AdmissionError -Category fixture_failure -ExitCode 17
+    Assert-Equal 'category|exit_code' ($plainError.PSObject.Properties.Name -join '|') 'empty diagnostics retain the legacy error shape'
+    foreach ($case in @(
+        @{ Name='stderr preferred'; Stderr="stderr reason`nsecond line"; Stdout='unused'; Expected='stderr reason second line' },
+        @{ Name='stdout fallback'; Stderr=' '; Stdout='stdout fallback'; Expected='stdout fallback' },
+        @{ Name='three non-empty lines'; Stderr="first`r`n `n second`nthird`nfourth"; Stdout=''; Expected='first second third' },
+        @{ Name='512 character bound'; Stderr=('x' * 600); Stdout=''; Expected=(('x' * 509) + '...') },
+        @{ Name='legitimate local path'; Stderr='git failed at C:\fixture\repo'; Stdout=''; Expected='git failed at C:\fixture\repo' }
+    )) {
+        $projected = New-AdmissionError -Category fixture_failure -ExitCode 17 -Stderr $case.Stderr -Stdout $case.Stdout
+        Assert-Equal $case.Expected $projected.diagnostic "admission diagnostic: $($case.Name)"
+    }
+    foreach ($case in @(
+        @{ Name='PAT before truncation'; Text=('safe prefix ' + ('x' * 520) + ' ghp_' + ('A' * 36)) },
+        @{ Name='private key'; Text=('-----BEGIN ' + 'PRIVATE KEY----- fixture') },
+        @{ Name='credential URL'; Text='remote https://user:password@example.invalid/repo.git' },
+        @{ Name='JSON token'; Text='{"token":"fixture-token"}' },
+        @{ Name='control character'; Text=('visible' + [char]0 + 'hidden') }
+    )) {
+        $projected = New-AdmissionError -Category fixture_failure -ExitCode 17 -Stderr $case.Text
+        Assert-Equal 'category|exit_code' ($projected.PSObject.Properties.Name -join '|') "unsafe diagnostic omitted: $($case.Name)"
+        Assert-Equal 17 $projected.exit_code 'omitting unsafe text preserves the actual exit code'
+    }
     $cliSource = Get-Content -LiteralPath $cliPath -Raw -Encoding utf8
     Assert-True ($cliSource -match 'New-ProjectAdmissionRecord') 'CLI exceptional JSON uses the shared stable record factory'
     Assert-Equal 'cached' $cached.remote_mode 'labels cached observation explicitly'
@@ -863,12 +886,25 @@ try {
     $failedFetch = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchFailure -GitHubInvoker $ghSuccess
     Assert-Equal 'cached' $failedFetch.remote_mode 'falls back to cached when fetch fails'
     Assert-Equal 'block' $failedFetch.decision 'blocks when requested live fetch evidence is unavailable'
-    Assert-True (@($failedFetch.errors | Where-Object category -eq 'fetch_failed').Count -eq 1) 'categorizes fetch failure'
+    $failedFetchError = @($failedFetch.errors | Where-Object category -eq 'fetch_failed')
+    Assert-Equal 1 $failedFetchError.Count 'categorizes fetch failure'
+    Assert-Equal 'network unavailable' $failedFetchError[0].diagnostic 'preserves fetch stderr diagnostic'
 
     $failedMetadata = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchSuccess -GitHubInvoker $ghFailure
     Assert-Equal 'cached' $failedMetadata.remote_mode 'falls back to cached when GitHub metadata fails'
     Assert-Equal 'block' $failedMetadata.decision 'blocks when requested live metadata is unavailable'
-    Assert-True (@($failedMetadata.errors | Where-Object category -eq 'github_metadata_failed').Count -eq 1) 'categorizes GitHub metadata failure'
+    $failedMetadataError = @($failedMetadata.errors | Where-Object category -eq 'github_metadata_failed')
+    Assert-Equal 1 $failedMetadataError.Count 'categorizes GitHub metadata failure'
+    Assert-Equal 'not authenticated' $failedMetadataError[0].diagnostic 'preserves GitHub metadata stderr diagnostic'
+
+    $failedBoth = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchFailure -GitHubInvoker $ghFailure
+    Assert-Equal 'block' $failedBoth.decision 'both live providers failing still blocks admission'
+    $failedBothFetchError = @($failedBoth.errors | Where-Object category -eq 'fetch_failed')
+    $failedBothMetadataError = @($failedBoth.errors | Where-Object category -eq 'github_metadata_failed')
+    Assert-Equal 1 $failedBothFetchError.Count 'both failures retain the fetch error separately'
+    Assert-Equal 1 $failedBothMetadataError.Count 'both failures retain the metadata error separately'
+    Assert-Equal 'network unavailable' $failedBothFetchError[0].diagnostic 'both failures retain fetch stderr'
+    Assert-Equal 'not authenticated' $failedBothMetadataError[0].diagnostic 'both failures retain metadata stderr'
 
     $mismatch = Get-ProjectAdmissionRecord -Repo 'example/other' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
     Assert-Equal 'block' $mismatch.decision 'blocks a remote mismatch'

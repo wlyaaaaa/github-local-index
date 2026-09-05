@@ -1224,8 +1224,20 @@ function Resolve-AdmissionTargetScope {
 }
 
 function New-AdmissionError {
-    param([string] $Category, [int] $ExitCode)
-    [pscustomobject]@{ category = $Category; exit_code = $ExitCode }
+    param([string] $Category, [int] $ExitCode, [string] $Stderr = '', [string] $Stdout = '')
+    $errorRecord = [ordered]@{ category = $Category; exit_code = $ExitCode }
+    $text = if ([string]::IsNullOrWhiteSpace($Stderr)) { $Stdout } else { $Stderr }
+    $summary = @($text -split '\r?\n' | ForEach-Object { $_.Trim() } |
+        Where-Object { $_ } | Select-Object -First 3) -join ' '
+    # Inspect before truncating: a credential must not become a printable prefix.
+    $unsafe = '(?i)[a-z][a-z0-9+.-]*://[^\s/]*@|-----BEGIN[ A-Z]+PRIVATE KEY-----|(?:ghp_|github_pat_|sk-|xox[baprs]-)[A-Za-z0-9_-]{20,}|\b(?:authorization|access[_-]?token|refresh[_-]?token|token|client[_-]?secret|password|passwd|pwd|api[_-]?key|secret|signature|sig|key)["'']?\s*[:=]\s*\S+'
+    if ($summary -and $summary -notmatch $unsafe -and
+        $summary -notmatch '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]') {
+        $summary = $summary -replace '\s+', ' '
+        if ($summary.Length -gt 512) { $summary = $summary.Substring(0, 509) + '...' }
+        $errorRecord.diagnostic = $summary
+    }
+    [pscustomobject]$errorRecord
 }
 
 function Get-ProjectPushGuidance {
@@ -1505,7 +1517,7 @@ function Get-ProjectAdmissionRecord {
                 }
             }
             else {
-                $errors.Add((New-AdmissionError -Category 'fetch_failed' -ExitCode ([int] $fetchResult.exit_code)))
+                $errors.Add((New-AdmissionError -Category 'fetch_failed' -ExitCode ([int] $fetchResult.exit_code) -Stderr ([string]$fetchResult.stderr) -Stdout ([string]$fetchResult.stdout)))
                 $reasons.Add('live_evidence_unavailable')
             }
         }
@@ -1530,16 +1542,16 @@ function Get-ProjectAdmissionRecord {
                     $metadataRepo = ConvertTo-GitHubRepoSlug ([string] $metadata.nameWithOwner)
                     if (-not $metadataRepo -or $metadataRepo -ine $normalizedRepo) {
                         $metadata = $null
-                        $errors.Add((New-AdmissionError -Category 'github_metadata_mismatch' -ExitCode 1))
+                        $errors.Add((New-AdmissionError -Category 'github_metadata_mismatch' -ExitCode 1 -Stderr 'GitHub returned a different repository identity.'))
                     }
                 }
                 catch {
                     $metadata = $null
-                    $errors.Add((New-AdmissionError -Category 'github_metadata_invalid' -ExitCode 1))
+                    $errors.Add((New-AdmissionError -Category 'github_metadata_invalid' -ExitCode 1 -Stderr 'GitHub metadata could not be parsed as JSON.'))
                 }
             }
             else {
-                $errors.Add((New-AdmissionError -Category 'github_metadata_failed' -ExitCode ([int] $metadataResult.exit_code)))
+                $errors.Add((New-AdmissionError -Category 'github_metadata_failed' -ExitCode ([int] $metadataResult.exit_code) -Stderr ([string]$metadataResult.stderr) -Stdout ([string]$metadataResult.stdout)))
             }
 
             if ($metadata) {
@@ -1749,6 +1761,7 @@ Export-ModuleMember -Function @(
     'Get-GitDefaultBranchIntegrationEvidence',
     'Get-GitRepositoryBranchInventory',
     'Get-IndexedProjectFacts',
+    'New-AdmissionError',
     'New-ProjectAdmissionRecord',
     'Get-ProjectAdmissionRecord'
 )

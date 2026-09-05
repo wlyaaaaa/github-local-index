@@ -1301,6 +1301,86 @@ Assert-Equal 'runtime_agent_not_registered' $consumeReason.reason_code `
 Assert-Equal 0 $script:Fixture.native_effects `
     'verification reasons never invoke a native effect'
 
+$authorizationErrorBroker = {
+    param($Action, $InputPath, $OperationId, $SelectedAuthorityFactor, $SelectedAccountProvider)
+    if ($Action -eq 'AuthorizeMajorAction') {
+        return [pscustomobject]@{
+            exit_code = 2
+            value = [pscustomobject]@{
+                schema = 'pcconfig.secret-broker-result.v1'
+                status = 'error'
+                error = 'authority_admin_target_invalid'
+                authorization_status = 'denied'
+                runtime_proof_verified = $false
+                mutations_performed = $false
+            }
+        }
+    }
+    & $script:ReasonTestSuccessBroker $Action $InputPath $OperationId $SelectedAuthorityFactor $SelectedAccountProvider
+}
+$authorizationError = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $proposal -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $authorizationErrorBroker
+Assert-Equal 'major_action_authorization_failed' $authorizationError.error `
+    'non-pass authorization preserves the outer adapter error'
+Assert-Equal 'authority_admin_target_invalid' $authorizationError.reason_code `
+    'non-pass authorization projects a bounded machine error as reason code'
+Assert-Equal 0 $script:Fixture.native_effects `
+    'authorization errors never invoke a native effect'
+
+$consumeErrorBroker = {
+    param($Action, $InputPath, $OperationId, $SelectedAuthorityFactor, $SelectedAccountProvider)
+    if ($Action -eq 'ConsumeMajorActionCapability') {
+        return [pscustomobject]@{
+            exit_code = 2
+            value = [pscustomobject]@{
+                schema = 'pcconfig.secret-broker-result.v1'
+                status = 'error'
+                error = 'authority_admin_target_invalid'
+                authorization_status = 'denied'
+                capability_verified = $false
+                mutations_performed = $false
+            }
+        }
+    }
+    & $script:ReasonTestSuccessBroker $Action $InputPath $OperationId $SelectedAuthorityFactor $SelectedAccountProvider
+}
+$consumeError = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $proposal -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $consumeErrorBroker
+Assert-Equal 'major_action_capability_invalid' $consumeError.error `
+    'non-pass consume preserves the outer adapter error'
+Assert-Equal 'authority_admin_target_invalid' $consumeError.reason_code `
+    'non-pass consume projects a bounded machine error as reason code'
+Assert-Equal 0 $script:Fixture.native_effects `
+    'consume errors never invoke a native effect'
+
+$humanErrorBroker = {
+    param($Action, $InputPath, $OperationId, $SelectedAuthorityFactor, $SelectedAccountProvider)
+    if ($Action -eq 'AuthorizeMajorAction') {
+        return [pscustomobject]@{
+            exit_code = 2
+            value = [pscustomobject]@{
+                schema = 'pcconfig.secret-broker-result.v1'
+                status = 'error'
+                error = 'authorization failed for user'
+                authorization_status = 'denied'
+                runtime_proof_verified = $false
+                mutations_performed = $false
+            }
+        }
+    }
+    & $script:ReasonTestSuccessBroker $Action $InputPath $OperationId $SelectedAuthorityFactor $SelectedAccountProvider
+}
+$humanError = Invoke-ProtectedGitHubMajorActionProposal `
+    -Proposal $proposal -AdmissionInvoker $admissionInvoker `
+    -MetadataInvoker $metadataInvoker -NativeInvoker $nativeInvoker `
+    -BrokerInvoker $humanErrorBroker
+Assert-Equal $null (Get-OptionalMapValue $humanError 'reason_code') `
+    'human-readable provider errors are not projected as machine reason codes'
+
 $script:Fixture.visibility = 'PUBLIC'
 $script:Fixture.native_effects = 0
 $drifted = Invoke-ProtectedGitHubMajorActionProposal `
@@ -1476,6 +1556,43 @@ finally {
             [Environment]::SetEnvironmentVariable($name, $saved, 'Process')
         }
     }
+}
+
+$brokerTemp = New-PrivateTemporaryDirectory
+$savedBrokerEntry = $script:BrokerEntry
+try {
+    $fakeBrokerEntry = Join-Path $brokerTemp 'fake-broker.ps1'
+    $fakeBrokerText = @'
+$forcedNul = (
+    [string]$env:GIT_CONFIG_GLOBAL -ceq 'NUL' -or
+    [string]$env:GIT_CONFIG_SYSTEM -ceq 'NUL' -or
+    [string]$env:GIT_CONFIG_NOSYSTEM -ceq '1'
+)
+[ordered]@{
+    schema = 'pcconfig.secret-broker-result.v1'
+    status = 'pass'
+    authorization_status = 'authorized'
+    git_config_forced_nul = $forcedNul
+    plaintext_returned = $false
+} | ConvertTo-Json -Compress
+'@
+    [IO.File]::WriteAllText(
+        $fakeBrokerEntry,
+        $fakeBrokerText,
+        [Text.UTF8Encoding]::new($false)
+    )
+    $script:BrokerEntry = $fakeBrokerEntry
+    $defaultBrokerInvoker = Get-DefaultBrokerInvoker
+    $brokerEnvironment = & $defaultBrokerInvoker `
+        'AuthorizeMajorAction' $tool 'synthetic-operation' 'Runtime' ''
+    Assert-Equal 0 $brokerEnvironment.exit_code `
+        'default broker invoker completes the isolated fake broker process'
+    Assert-Equal $false $brokerEnvironment.value.git_config_forced_nul `
+        'broker invoker preserves host Git configuration availability'
+}
+finally {
+    $script:BrokerEntry = $savedBrokerEntry
+    Remove-Item -LiteralPath $brokerTemp -Recurse -Force
 }
 
 $privateTemp = New-PrivateTemporaryDirectory

@@ -108,6 +108,32 @@ function Get-OptionalMapValue {
     $property.Value
 }
 
+function Get-BoundedBrokerReasonCode {
+    param([AllowNull()][object] $Value)
+
+    $machineCodePattern = '^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$'
+    $reasonCode = Get-OptionalMapValue $Value 'reason_code'
+    if ($reasonCode -is [string] -and
+        $reasonCode.Length -le 128 -and
+        $reasonCode -cmatch $machineCodePattern) {
+        return $reasonCode
+    }
+
+    $error = Get-OptionalMapValue $Value 'error'
+    if ($error -isnot [string] -or
+        $error.Length -gt 128 -or
+        $error -cnotmatch $machineCodePattern -or
+        $error -in @(
+            'highest_authority_verification_required',
+            'major_action_authorization_failed',
+            'major_action_capability_invalid',
+            'major_action_capability_not_consumed'
+        )) {
+        return $null
+    }
+    return $error
+}
+
 function ConvertTo-CanonicalNode {
     param([AllowNull()][object] $Value)
     if ($null -eq $Value) { return $null }
@@ -620,7 +646,8 @@ function Get-DefaultBrokerInvoker {
             -Executable $pwsh `
             -Arguments $brokerArguments `
             -WorkingDirectory $PSScriptRoot `
-            -AllowFailure $true
+            -AllowFailure $true `
+            -AllowHostGitConfig $true
         try { $value = $result.stdout | ConvertFrom-Json -Depth 50 }
         catch { Throw-ProtectedActionError 'authority_broker_response_invalid' }
         [pscustomobject]@{ exit_code = $result.exit_code; value = $value }
@@ -2088,14 +2115,16 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             return New-BlockedResult `
                 -Error 'highest_authority_verification_required' `
                 -AuthorizationStatus 'verification_required' `
-                -ReasonCode (Get-OptionalMapValue $authorization.value 'reason_code')
+                -ReasonCode (Get-BoundedBrokerReasonCode $authorization.value)
         }
         if ($authorization.exit_code -ne 0 -or
             $authorization.value.status -ne 'pass' -or
             $authorization.value.authorization_status -ne 'authorized' -or
             $authorization.value.runtime_proof_verified -ne $true -or
             $null -eq $authorization.value.major_action_capability) {
-            return New-BlockedResult 'major_action_authorization_failed'
+            return New-BlockedResult `
+                -Error 'major_action_authorization_failed' `
+                -ReasonCode (Get-BoundedBrokerReasonCode $authorization.value)
         }
         $postAuthorizationBindingValid = if (
             $request.effect_family -ceq 'github-api' -and
@@ -2139,12 +2168,14 @@ function Invoke-ProtectedGitHubMajorActionProposal {
             return New-BlockedResult `
                 -Error 'highest_authority_verification_required' `
                 -AuthorizationStatus 'verification_required' `
-                -ReasonCode (Get-OptionalMapValue $consume.value 'reason_code')
+                -ReasonCode (Get-BoundedBrokerReasonCode $consume.value)
         }
         if ($consume.exit_code -ne 0 -or
             $consume.value.status -ne 'pass' -or
             $consume.value.capability_verified -ne $true) {
-            return New-BlockedResult 'major_action_capability_invalid'
+            return New-BlockedResult `
+                -Error 'major_action_capability_invalid' `
+                -ReasonCode (Get-BoundedBrokerReasonCode $consume.value)
         }
         if ($DryRun) {
             if ($consume.value.execute_allowed -ne $false -or

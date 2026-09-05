@@ -72,7 +72,7 @@ adapter 必须在 broker 和 effect 之前返回
 授权与 capability 验证，但要求 `execute_allowed=false`、
 `capability_consumed=false`，不会调用 effect executor。
 
-`highest_authority_verification_required` 表示本次动作身份或因子验证尚未完成，不证明用户未授权，也不证明 provider 已退役。若 provider 返回 `reason_code`，adapter 原样保留该机器可读原因；旧返回缺少它时保持未知，不从目录名猜测原因、不因此要求用户重复已有授权。该字段不改变既有状态或执行判定。
+`highest_authority_verification_required` 表示本次动作身份或因子验证尚未完成，不证明用户未授权，也不证明 provider 已退役。若 provider 返回符合有界机器码格式的 `reason_code`，adapter 原样保留该原因；非 verification 的 provider error 在缺少 `reason_code` 时，仅当其本身符合同一格式、长度不超过 128 且不是 adapter 自身 generic error，才投影为 `reason_code`。旧 generic error、缺字段和人类文本保持未知，不从目录名猜测原因、不因此要求用户重复已有授权。该字段不改变既有状态或执行判定。
 
 authorization 的 `executor_sha256` 绑定 adapter 脚本自身；native git/gh hash
 另以 `parameters.native_executor_sha256` 精确绑定。发送给 broker 的 authorization
@@ -95,6 +95,10 @@ redirect 等环境覆盖，禁用 system/global config，并用
 `core.hooksPath=NUL`、空 credential helper 隔离 hook/helper。GitHub effect 只调
 固定 `gh api` 与固定 GitHub REST endpoint/method；不存在通用命令、别名、扩展、
 重定向或任意 API endpoint 通道。
+
+适配器内部调用独立 PCConfig SecretBroker 的固定 broker 入口不属于 Git effect；该
+子进程可继承宿主 Git 配置，以便 SecretBroker 读取自己的 PRIVATE 备份分支。这个
+例外只适用于 broker helper，Git effect 仍保持上述隔离；适配器不读取或输出凭据值。
 
 ### `github-api/create-repository`
 

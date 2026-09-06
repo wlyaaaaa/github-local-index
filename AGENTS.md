@@ -20,7 +20,7 @@
 
 ## 维护原则
 
-- 按目标、风险、证据新鲜度和成本选择 provider、Git 命令、索引快照或项目证据；工具存在不构成固定调用链。`tools/Install-GitHook.ps1` 只用于首次 bootstrap、缺失或损坏 repair；Hook 是 defense in depth，不能替代 candidate 内容复审，也不每任务重装。Fast refresh 仅兼容维护，不作普通收尾；完整 refresh 仅在索引事实、生成口径或用户要求更新快照时用。`tools/Add-PushRecord.ps1` 只在用户要求或确有公开里程碑价值时用，普通 commit/push 不记流水。
+- 按目标、风险、证据新鲜度和成本选择 provider、Git 命令、索引快照或项目证据；工具存在不构成固定调用链。`tools/Install-GitHook.ps1 -Inspect` 按需只读检查现役副本是否 current/missing/drift；不带该参数才安装，仅用于首次 bootstrap、缺失或漂移 repair。Hook 是 defense in depth，不能替代 candidate 内容复审，也不每任务重装。Fast refresh 仅兼容维护，不作普通收尾；完整 refresh 仅在索引事实、生成口径或用户要求更新快照时用。`tools/Add-PushRecord.ps1` 只在用户要求或确有公开里程碑价值时用，普通 commit/push 不记流水。
 - 只显式 stage 本次目标文件，保护已有改动，不用 `git add .`。计划任务在这里只留短 owner 路由，不复制任务名、状态、Action、时间表或恢复事实；实时状态、机器配置/恢复和业务语义分别归 Task Scheduler、PCConfig、所属项目。
 - 生成 Markdown 只展开 PUBLIC 仓库并隐藏本机绝对路径；PRIVATE identity/精确 clone 路径进入 ignored 私有导航 cache，provider 使用后回读 `.git` identity，cache 缺失时显式 bootstrap 或失败关闭。
 - Git/GitHub 与受管 registry 是可审计事实源：generation 完整回读后原子进入 current，顶层 Markdown 只是可检 stale 的兼容投影，默认 current+previous。`refs/codex/turn-diffs/checkpoints`、unreachable objects、generation manifest 的保留/恢复先有证据，未证明不得 `gc`/`prune`。不引入数据库，未来查询 cache 仅可删除/重建且不能替代 Git/GitHub/registry。

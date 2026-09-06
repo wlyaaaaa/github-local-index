@@ -2,7 +2,8 @@
 
 [CmdletBinding()]
 param(
-    [string] $RepoPath = (Split-Path -Parent $PSScriptRoot)
+    [string] $RepoPath = (Split-Path -Parent $PSScriptRoot),
+    [switch] $Inspect
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -14,9 +15,6 @@ if ($LASTEXITCODE -ne 0 -or $hooksOutput.Count -ne 1) {
     throw 'Unable to resolve the Git hooks directory.'
 }
 $hooksDirectory = [System.IO.Path]::GetFullPath([string] $hooksOutput[0])
-if (-not (Test-Path -LiteralPath $hooksDirectory -PathType Container)) {
-    New-Item -ItemType Directory -Path $hooksDirectory -Force | Out-Null
-}
 $hookPath = Join-Path $hooksDirectory 'pre-commit'
 
 $policyPath = Join-Path $PSScriptRoot 'PublicExposurePolicy.psd1'
@@ -69,5 +67,26 @@ $hookContent = $hookContent.Replace('__ENV_PATH_REGEX__', $envPaths)
 $hookContent = $hookContent.Replace('__ALLOWED_TEMPLATE_PATH_REGEX__', $allowedTemplatePaths)
 
 $normalized = $hookContent.Replace("`r`n", "`n").TrimEnd("`n") + "`n"
+if ($Inspect) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $expectedHash = [System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalized))).Replace('-', '')
+    }
+    finally { $sha.Dispose() }
+    $actualHash = if (Test-Path -LiteralPath $hookPath) {
+        (Get-FileHash -LiteralPath $hookPath -Algorithm SHA256 -ErrorAction Stop).Hash
+    } else { $null }
+    $status = if ($null -eq $actualHash) { 'missing' } elseif ($actualHash -ceq $expectedHash) { 'current' } else { 'drift' }
+    [pscustomobject]@{
+        status = $status
+        hook_path = $hookPath
+        expected_sha256 = $expectedHash
+        actual_sha256 = $actualHash
+    }
+    return
+}
+if (-not (Test-Path -LiteralPath $hooksDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $hooksDirectory -Force | Out-Null
+}
 [System.IO.File]::WriteAllText($hookPath, $normalized, [System.Text.UTF8Encoding]::new($false))
 [pscustomobject]@{ hook_path = $hookPath; installed = $true }

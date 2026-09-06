@@ -1272,6 +1272,9 @@ function Get-ProjectPushGuidance {
         @($Reasons) -contains 'merged_residual_branch') {
         return [pscustomobject]@{ decision = 'warn'; strategy = 'retire_integrated_branch' }
     }
+    if (@($Reasons) -contains 'detached_worktree') {
+        return [pscustomobject]@{ decision = 'warn'; strategy = 'choose_branch_or_refspec' }
+    }
     if (@($Worktrees | Where-Object { $_.exists -and $_.sync_state -eq 'no_upstream' }).Count -gt 0) {
         return [pscustomobject]@{ decision = 'warn'; strategy = 'set_upstream' }
     }
@@ -1302,7 +1305,7 @@ function New-ProjectAdmissionRecord {
         [AllowNull()] [string] $TargetRef,
         [ValidateSet('proceed', 'warn', 'block')] [string] $Decision = 'block',
         [ValidateSet('proceed', 'warn', 'block')] [string] $PushDecision = 'block',
-        [ValidateSet('none', 'normal', 'fetch_recheck', 'clean_or_stage_explicitly', 'set_upstream', 'update_then_recheck', 'reconcile_then_recheck', 'integrate_default_branch', 'inspect_default_branch_integration', 'retire_integrated_branch', 'resolve_public_exposure', 'resolve_admission_block')] [string] $PushStrategy = 'resolve_admission_block',
+        [ValidateSet('none', 'normal', 'fetch_recheck', 'clean_or_stage_explicitly', 'set_upstream', 'choose_branch_or_refspec', 'update_then_recheck', 'reconcile_then_recheck', 'integrate_default_branch', 'inspect_default_branch_integration', 'retire_integrated_branch', 'resolve_public_exposure', 'resolve_admission_block')] [string] $PushStrategy = 'resolve_admission_block',
         [string[]] $Reasons = @(),
         [object[]] $Errors = @(),
         [object[]] $Worktrees = @(),
@@ -1480,7 +1483,10 @@ function Get-ProjectAdmissionRecord {
                 $reasons.Add('missing_repo_path')
             }
 
-            $localRoot = ConvertTo-NormalizedGitPath $RepoPath
+            $rootResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('rev-parse', '--show-toplevel')
+            $localRoot = if ($rootResult.exit_code -eq 0 -and -not [string]::IsNullOrWhiteSpace($rootResult.stdout)) {
+                ConvertTo-NormalizedGitPath $rootResult.stdout
+            } else { ConvertTo-NormalizedGitPath $RepoPath }
             if ($commonResult.exit_code -eq 0) {
                 $gitCommonDir = $candidateCommonDir
             }

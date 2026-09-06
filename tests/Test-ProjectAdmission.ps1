@@ -286,6 +286,7 @@ if ($pushGuidanceCommand) {
         @{ name = 'live clean in-sync'; decision = 'proceed'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $cleanSummary }); expectedDecision = 'proceed'; expectedStrategy = 'none' },
         @{ name = 'dirty'; decision = 'warn'; reasons = @('dirty_worktree'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $dirtySummaryFixture }); expectedDecision = 'warn'; expectedStrategy = 'clean_or_stage_explicitly' },
         @{ name = 'no upstream'; decision = 'warn'; reasons = @('no_upstream'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'no_upstream'; dirty_summary = $cleanSummary }); expectedDecision = 'warn'; expectedStrategy = 'set_upstream' },
+        @{ name = 'detached HEAD'; decision = 'warn'; reasons = @('detached_worktree', 'no_upstream'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; detached = $true; sync_state = 'no_upstream'; dirty_summary = $cleanSummary }); expectedDecision = 'warn'; expectedStrategy = 'choose_branch_or_refspec' },
         @{ name = 'behind'; decision = 'warn'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'behind'; dirty_summary = $cleanSummary }); expectedDecision = 'block'; expectedStrategy = 'update_then_recheck' },
         @{ name = 'diverged'; decision = 'warn'; reasons = @(); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'diverged'; dirty_summary = $cleanSummary }); expectedDecision = 'block'; expectedStrategy = 'reconcile_then_recheck' },
         @{ name = 'public exposure'; decision = 'block'; reasons = @('public_exposure_conflict'); mode = 'live'; worktrees = @([pscustomobject]@{ exists = $true; sync_state = 'in_sync'; dirty_summary = $dirtySummaryFixture }); expectedDecision = 'block'; expectedStrategy = 'resolve_public_exposure' }
@@ -382,6 +383,19 @@ try {
     $cached = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main'
     Assert-Equal 'github-local-index.project-admission.v1' $cached.schema 'uses versioned admission schema'
     Assert-Equal ([System.IO.Path]::GetFullPath($primaryPath).TrimEnd('\', '/')) $cached.local_root 'keeps the selected repository path as local root'
+    foreach ($worktreePath in @($primaryPath, $linkedPath, $detachedPath)) {
+        $nestedPath = Join-Path $worktreePath 'nested/source'
+        New-Item -ItemType Directory -Path $nestedPath -Force | Out-Null
+        $nestedAdmission = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $nestedPath -Visibility 'PUBLIC' -DefaultBranch 'main'
+        Assert-Equal ([System.IO.Path]::GetFullPath($worktreePath).TrimEnd('\', '/')) $nestedAdmission.local_root 'nested lookup reports its actual worktree root'
+        Assert-Equal ($cached.reasons -join ',') ($nestedAdmission.reasons -join ',') 'root normalization does not alter whole-repository admission reasons'
+    }
+    $nestedTarget = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -TargetWorktree (Join-Path $primaryPath 'nested/source') -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-Equal 'block' $nestedTarget.decision 'root reporting must not silently broaden an exact subdirectory target'
+    Assert-True ($nestedTarget.reasons -contains 'target_worktree_not_found') 'subdirectory target retains its exact-scope diagnostic'
+    $detachedAdmission = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -TargetWorktree $detachedPath -Visibility 'PUBLIC' -DefaultBranch 'main'
+    Assert-Equal 'warn' $detachedAdmission.decision 'detached HEAD remains available for ordinary work'
+    Assert-Equal 'choose_branch_or_refspec' $detachedAdmission.push_strategy 'full admission record gives detached HEAD an applicable push strategy'
     Assert-Equal 'example/project' $cached.repo 'normalizes the repository slug in admission JSON'
     Assert-Equal 'https://github.com/example/project.git' $cached.remote_url 'keeps the real configured remote URL in cached admission JSON'
     $requiredAdmissionProperties = @(

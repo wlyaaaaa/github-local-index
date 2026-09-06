@@ -20,6 +20,8 @@ provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTER
 
 输出仓库 identity、定位、visibility、worktrees、branches、artifact governance、necessary retention、default-branch integration、sync、目标作用域及 transport 结论。顶层必须显式返回 `evidence_source={local_git,github_metadata,remote_refs}`、`freshness=live|mixed|cached` 与 `live_checked`；调用方不得从字段缺失或旧 Markdown 猜新鲜度。`push_decision` / `push_strategy` 不构成写入或 publication 授权。
 
+`local_root` 优先采用 Git 回读的工作树根目录，未取得时保留原定位路径；不会改写调用者的精确 target。游离 HEAD 不应收到 `set_upstream` 指引，改为 `choose_branch_or_refspec`（先确定分支或显式推送目标），不新增读写授权或阻断普通工作。
+
 执行失败的 `errors` 保留原 `category`/`exit_code`，可附 `diagnostic`：优先 stderr，缺失时取 stdout，最多合并三条非空信息并限 512 字符；含疑似凭据或异常控制字符时省略正文。摘要不改变原 decision/freshness，也不授予权限。
 
 ## 失败与降级

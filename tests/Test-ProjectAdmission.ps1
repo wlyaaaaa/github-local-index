@@ -387,7 +387,7 @@ try {
     $requiredAdmissionProperties = @(
         'schema', 'observed_utc', 'repo', 'remote_url', 'visibility', 'default_branch',
         'local_root', 'git_common_dir', 'remote_mode', 'metadata_mode', 'refs_mode',
-        'evidence_source', 'freshness', 'live_checked',
+        'evidence_source', 'freshness', 'live_checked', 'fetch_attempts',
         'target_worktree', 'target_ref', 'decision', 'push_decision', 'push_strategy',
         'reasons', 'errors', 'worktrees', 'branches'
     )
@@ -571,6 +571,7 @@ try {
             -FetchInvoker $readOnlyFetchGuard `
             -GitHubInvoker $ghSuccess
         Assert-Equal 0 $script:ReadOnlyFetchCalls 'read-only live metadata never invokes git fetch'
+        Assert-Equal 0 $metadataOnly.fetch_attempts 'metadata-only reports no fetch attempt'
         Assert-Equal 'live' $metadataOnly.metadata_mode 'read-only live metadata is labeled live'
         Assert-Equal 'cached' $metadataOnly.refs_mode 'read-only live metadata leaves refs cached'
 
@@ -595,6 +596,7 @@ try {
 
     $live = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchSuccess -GitHubInvoker $ghSuccess
     Assert-Equal 'live' $live.remote_mode 'labels successful fetch and metadata observation live'
+    Assert-Equal 1 $live.fetch_attempts 'successful refresh uses one fetch attempt'
     Assert-Equal 'live' $live.freshness 'fully live evidence exposes live freshness'
     Assert-True $live.live_checked 'fully live evidence sets live_checked'
     Assert-Equal 'live' $live.evidence_source.github_metadata 'live metadata source is explicit'
@@ -889,6 +891,37 @@ try {
     $failedFetchError = @($failedFetch.errors | Where-Object category -eq 'fetch_failed')
     Assert-Equal 1 $failedFetchError.Count 'categorizes fetch failure'
     Assert-Equal 'network unavailable' $failedFetchError[0].diagnostic 'preserves fetch stderr diagnostic'
+    Assert-Equal 1 $failedFetch.fetch_attempts 'unclassified failures do not retry'
+
+    $tlsEof = 'fatal: OpenSSL SSL_read: OpenSSL/3.5.7: unexpected eof while reading, errno 0'
+    foreach ($outcome in @('recover', 'repeat', 'auth')) {
+        $script:FetchRetryPaths = [Collections.Generic.List[string]]::new()
+        $retryFetch = {
+            param($path)
+            $script:FetchRetryPaths.Add($path)
+            if ($outcome -eq 'auth') {
+                return [pscustomobject]@{exit_code=128;stdout='';stderr='fatal: Authentication failed'}
+            }
+            if ($outcome -eq 'repeat' -or $script:FetchRetryPaths.Count -eq 1) {
+                return [pscustomobject]@{exit_code=128;stdout='';stderr=$tlsEof}
+            }
+            & $fetchSuccess $path
+        }
+        $retried = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -ForPublication -FetchInvoker $retryFetch -GitHubInvoker $ghSuccess
+        $expectedAttempts = if ($outcome -eq 'auth') { 1 } else { 2 }
+        Assert-Equal $expectedAttempts $script:FetchRetryPaths.Count "bounded fetch count for $outcome"
+        Assert-Equal $expectedAttempts $retried.fetch_attempts "reports actual fetch attempts for $outcome"
+        Assert-True (@($script:FetchRetryPaths | Where-Object { $_ -cne $primaryPath }).Count -eq 0) 'retry preserves the exact repository path'
+        if ($outcome -eq 'recover') {
+            Assert-Equal 'live' $retried.refs_mode 'a real successful second fetch restores live evidence'
+            Assert-Equal 0 @($retried.errors | Where-Object category -eq 'fetch_failed').Count 'recovered fetch is not reported as an unresolved failure'
+        }
+        else {
+            Assert-Equal 'block' $retried.decision "unresolved $outcome remains blocked"
+            Assert-Equal 'cached' $retried.refs_mode "unresolved $outcome is not called live"
+            Assert-Equal 1 @($retried.errors | Where-Object category -eq 'fetch_failed').Count 'final failure remains visible once'
+        }
+    }
 
     $failedMetadata = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchSuccess -GitHubInvoker $ghFailure
     Assert-Equal 'cached' $failedMetadata.remote_mode 'falls back to cached when GitHub metadata fails'

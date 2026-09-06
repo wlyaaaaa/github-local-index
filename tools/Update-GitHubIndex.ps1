@@ -207,38 +207,6 @@ function Invoke-ExternalCommandWithRetry {
     throw "$Operation failed after $MaxAttempts attempt(s). Last exit code: $lastExitCode. $summary"
 }
 
-function Invoke-GitFetchWithRetry {
-    param(
-        [Parameter(Mandatory = $true)] [string] $Path,
-        [int] $MaxAttempts = 3,
-        [int] $DelaySeconds = 2,
-        [scriptblock] $Invoker
-    )
-
-    if ($MaxAttempts -lt 1) {
-        throw 'MaxAttempts must be at least 1.'
-    }
-    $lastResult = $null
-    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        $lastResult = if ($Invoker) {
-            & $Invoker $Path
-        }
-        else {
-            Invoke-GitCommandResult -Path $Path -Arguments @('fetch', '--prune', 'origin')
-        }
-        if ($null -eq $lastResult -or $null -eq $lastResult.PSObject.Properties['exit_code']) {
-            throw 'Git fetch invoker returned an invalid result.'
-        }
-        if ([int] $lastResult.exit_code -eq 0) {
-            return $lastResult
-        }
-        if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) {
-            Start-Sleep -Seconds $DelaySeconds
-        }
-    }
-    return $lastResult
-}
-
 function Get-DefaultBranchName {
     param([object] $Repository)
 
@@ -1084,22 +1052,6 @@ function Resolve-CloneStatuses {
                 $null
             }
             $shouldRefreshRefs = (-not $SkipFetch) -and $null -eq $pinnedPreflight
-            $fetchResult = if ($shouldRefreshRefs) {
-                Invoke-GitFetchWithRetry -Path $clone.Path -Invoker $FetchInvoker
-            }
-            else {
-                $null
-            }
-            $admissionFetchInvoker = if ($null -ne $fetchResult) {
-                $capturedFetchResult = $fetchResult
-                {
-                    param($path)
-                    $capturedFetchResult
-                }.GetNewClosure()
-            }
-            else {
-                $null
-            }
             $admission = Get-ProjectAdmissionRecord `
                 -Repo $name `
                 -RepoPath $clone.Path `
@@ -1107,7 +1059,7 @@ function Resolve-CloneStatuses {
                 -DefaultBranch (Get-DefaultBranchName -Repository $repo) `
                 -LiveMetadata:(-not $SkipFetch) `
                 -RefreshRefs:$shouldRefreshRefs `
-                -FetchInvoker $admissionFetchInvoker `
+                -FetchInvoker $FetchInvoker `
                 -GitHubInvoker $metadataInvoker
 
             $repoErrorReasons = @($admission.errors | ForEach-Object { [string] $_.category })

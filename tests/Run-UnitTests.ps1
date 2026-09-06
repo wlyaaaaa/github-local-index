@@ -105,36 +105,6 @@ Assert-True ($nativeFailureMessage -match 'Last exit code: 19') 'native failure 
 Assert-True ($nativeFailureMessage -match 'stderr-marker') 'native failure retains a stderr summary'
 Assert-True ($nativeFailureMessage.Length -le 768) 'native failure stderr summary is bounded'
 
-$script:FetchRetryAttempts = 0
-$fetchRetryResult = Invoke-GitFetchWithRetry `
-    -Path 'C:\fixture' `
-    -MaxAttempts 2 `
-    -DelaySeconds 0 `
-    -Invoker {
-        param($path)
-        $script:FetchRetryAttempts++
-        if ($script:FetchRetryAttempts -eq 1) {
-            [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'transient connection failure' }
-        }
-        else {
-            [pscustomobject]@{ exit_code = 0; stdout = ''; stderr = '' }
-        }
-    }
-Assert-Equal 2 $script:FetchRetryAttempts 'Git refs refresh retries one transient failure'
-Assert-Equal 0 $fetchRetryResult.exit_code 'Git refs refresh returns the successful retry evidence'
-$script:FetchFailureAttempts = 0
-$fetchFailureResult = Invoke-GitFetchWithRetry `
-    -Path 'C:\fixture' `
-    -MaxAttempts 2 `
-    -DelaySeconds 0 `
-    -Invoker {
-        param($path)
-        $script:FetchFailureAttempts++
-        [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'persistent failure' }
-    }
-Assert-Equal 2 $script:FetchFailureAttempts 'Git refs refresh keeps retries bounded'
-Assert-Equal 128 $fetchFailureResult.exit_code 'persistent Git refs failure remains explicit for fail-closed admission'
-
 $testFixtureRoot = Join-Path $repoRoot '99_private/test-fixtures'
 New-Item -ItemType Directory -Path $testFixtureRoot -Force | Out-Null
 $resolveRetryRoot = Join-Path $testFixtureRoot (
@@ -170,17 +140,30 @@ try {
             param($path)
             $script:ResolveRetryAttempts++
             if ($script:ResolveRetryAttempts -eq 1) {
-                [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'transient failure' }
+                [pscustomobject]@{ exit_code = 128; stdout = ''; stderr = 'OpenSSL SSL_read: unexpected eof while reading' }
             }
             else {
                 [pscustomobject]@{ exit_code = 0; stdout = ''; stderr = '' }
             }
         }
     $resolvedRetryClone = @($resolveRetryMap['example/retry'])[0]
-    Assert-Equal 2 $script:ResolveRetryAttempts 'clone resolver performs the bounded fetch retry in its own scope'
+    Assert-Equal 2 $script:ResolveRetryAttempts 'clone resolver delegates both real fetch attempts to admission'
     Assert-Equal 'live' $resolvedRetryClone.RemoteMode 'clone resolver hands successful fetch evidence across the module boundary'
     Assert-True (-not (@($resolvedRetryClone.QueueReasons) -contains 'fetch_failed')) `
         'successful retry does not leave a stale fetch_failed action'
+    foreach ($failure in @('OpenSSL SSL_read: unexpected eof while reading', 'fatal: Authentication failed')) {
+        $script:ResolveRetryAttempts = 0
+        Resolve-CloneStatuses -CloneMap $resolveRetryMap -Repositories @($resolveRetryRepo) -FetchInvoker {
+            param($path)
+            $script:ResolveRetryAttempts++
+            [pscustomobject]@{exit_code=128;stdout='';stderr=$failure}
+        }
+        $expectedAttempts = if ($failure -match 'SSL_read') { 2 } else { 1 }
+        Assert-Equal $expectedAttempts $script:ResolveRetryAttempts 'clone resolver does not stack retries or replay captured failures'
+        $failedClone = @($resolveRetryMap['example/retry'])[0]
+        Assert-Equal 'cached' $failedClone.RemoteMode 'failed clone fetch cannot become live evidence'
+        Assert-True (@($failedClone.QueueReasons) -contains 'fetch_failed') 'clone refresh keeps unresolved fetch failures visible'
+    }
 }
 finally {
     if (Test-Path -LiteralPath $resolveRetryRoot) {

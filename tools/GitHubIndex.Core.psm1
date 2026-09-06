@@ -1297,6 +1297,7 @@ function New-ProjectAdmissionRecord {
         [ValidateSet('cached', 'live')] [string] $RemoteMode = 'cached',
         [ValidateSet('cached', 'live')] [string] $MetadataMode = 'cached',
         [ValidateSet('cached', 'live')] [string] $RefsMode = 'cached',
+        [int] $FetchAttempts = 0,
         [AllowNull()] [string] $TargetWorktree,
         [AllowNull()] [string] $TargetRef,
         [ValidateSet('proceed', 'warn', 'block')] [string] $Decision = 'block',
@@ -1335,6 +1336,7 @@ function New-ProjectAdmissionRecord {
         remote_mode = $RemoteMode
         metadata_mode = $MetadataMode
         refs_mode = $RefsMode
+        fetch_attempts = $FetchAttempts
         evidence_source = [pscustomobject][ordered]@{
             local_git = if ([string]::IsNullOrWhiteSpace($LocalRoot)) { 'unavailable' } else { 'live' }
             github_metadata = $MetadataMode
@@ -1386,6 +1388,7 @@ function Get-ProjectAdmissionRecord {
     $remoteMode = 'cached'
     $metadataMode = 'cached'
     $refsMode = 'cached'
+    $fetchAttempts = 0
     $useLiveMetadata = [bool] ($ForPublication -or $LiveMetadata -or $Fetch)
     $useRefreshRefs = [bool] ($ForPublication -or $RefreshRefs -or $Fetch)
     $visibilityWasSupplied = -not [string]::IsNullOrWhiteSpace($Visibility)
@@ -1500,12 +1503,16 @@ function Get-ProjectAdmissionRecord {
 
     if ($useRefreshRefs -and -not $isExternalGovernance) {
         if (-not [string]::IsNullOrWhiteSpace($RepoPath)) {
-            $fetchResult = if ($FetchInvoker) {
-                & $FetchInvoker $RepoPath
-            }
-            else {
-                Invoke-GitCommandResult -Path $RepoPath -Arguments @('fetch', '--prune', 'origin')
-            }
+            do {
+                $fetchAttempts++
+                $fetchResult = if ($FetchInvoker) {
+                    & $FetchInvoker $RepoPath
+                }
+                else {
+                    Invoke-GitCommandResult -Path $RepoPath -Arguments @('fetch', '--prune', 'origin')
+                }
+            } while ($fetchAttempts -lt 2 -and $fetchResult.exit_code -eq 128 -and
+                [string]$fetchResult.stderr -match 'SSL_read:.*unexpected eof while reading')
             if ($fetchResult.exit_code -eq 0) {
                 try {
                     $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)
@@ -1731,6 +1738,7 @@ function Get-ProjectAdmissionRecord {
         -RemoteMode $remoteMode `
         -MetadataMode $metadataMode `
         -RefsMode $refsMode `
+        -FetchAttempts $fetchAttempts `
         -TargetWorktree $targetScope.target_worktree `
         -TargetRef $targetScope.target_ref `
         -Decision $decision `

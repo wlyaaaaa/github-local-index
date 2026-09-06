@@ -16,7 +16,7 @@ owner: E:\GitHub总索引
 provider 是 optional structured evidence。visibility 是 `PUBLIC|PRIVATE|INTERNAL` 闭集，非法值 fail closed。`-LiveMetadata` 只读查询 GitHub 且 never fetch；`-RefreshRefs` 才运行 `git fetch`；兼容 `-Fetch` 等价于两者。`-ForPublication` 是发布决策的 live profile，会刷新本地 remote refs 并要求 GitHub metadata 与 remote refs 新鲜，任一失败即保持阻断；普通本地/只读任务不默认使用。`-TargetWorktree` / `-TargetRef` 让顶层 decision 只使用精确目标，仍保留全部 worktree 与 branch inventory 作为证据，并比较 target 与实际 remote default branch reachability。调用者给出 `-TargetWorktree` 时，该精确路径可直接作为待验证的本地定位提示，不依赖可能陈旧的私有导航 cache；provider 仍须回读 `.git` identity、remote、worktree、dirty/sync 与 PUBLIC exposure，任何冲突都失败关闭。exact artifact-owner registry 只排除明确跨 owner ref，不隐藏普通未来分支；exact necessary-retention registry 只为同时匹配 repo、路径和 HEAD 的已查明保留项附带 owner、用途与退出条件，不把名称猜测当作保留依据。
 
 ## 输出合同
-显式 remote refs 刷新遇到退出码 128 且包含 `SSL_read: ... unexpected eof while reading` 的已知短暂中断时，仅以相同参数重试一次 fetch；其他失败不自动重试，也不重试 push 或远端写入。只有 fetch 成功并重新读取 worktree 后才标为 live；最终失败仍保留阻断与错误。`fetch_attempts=0|1|2` 显示实际次数，metadata-only 保持 0，不改变代理、TLS 或凭据配置。
+显式 remote refs 刷新遇到退出码 128 且包含 `SSL_read:` 或 `TLS connect error:` 后接 `unexpected eof while reading` 的已知短暂中断时，仅以相同参数重试一次 fetch；其他失败（含认证、证书错误）不自动重试，也不重试 push 或远端写入。只有 fetch 成功并重新读取 worktree 后才标为 live；最终失败仍保留阻断与错误。`fetch_attempts=0|1|2` 显示实际次数，metadata-only 保持 0，不改变代理、TLS 或凭据配置。
 
 输出仓库 identity、定位、visibility、worktrees、branches、artifact governance、necessary retention、default-branch integration、sync、目标作用域及 transport 结论。顶层必须显式返回 `evidence_source={local_git,github_metadata,remote_refs}`、`freshness=live|mixed|cached` 与 `live_checked`；调用方不得从字段缺失或旧 Markdown 猜新鲜度。`push_decision` / `push_strategy` 不构成写入或 publication 授权。
 

@@ -893,8 +893,11 @@ try {
     Assert-Equal 'network unavailable' $failedFetchError[0].diagnostic 'preserves fetch stderr diagnostic'
     Assert-Equal 1 $failedFetch.fetch_attempts 'unclassified failures do not retry'
 
-    $tlsEof = 'fatal: OpenSSL SSL_read: OpenSSL/3.5.7: unexpected eof while reading, errno 0'
-    foreach ($outcome in @('recover', 'repeat', 'auth')) {
+    foreach ($tlsEof in @(
+        'fatal: OpenSSL SSL_read: OpenSSL/3.5.7: unexpected eof while reading, errno 0',
+        "fatal: unable to access 'https://example.invalid/project.git/': TLS connect error: error:0A000126:SSL routines::unexpected eof while reading"
+    )) {
+    foreach ($outcome in @('recover', 'repeat', 'auth', 'certificate', 'plain-eof', 'wrong-exit')) {
         $script:FetchRetryPaths = [Collections.Generic.List[string]]::new()
         $retryFetch = {
             param($path)
@@ -902,13 +905,22 @@ try {
             if ($outcome -eq 'auth') {
                 return [pscustomobject]@{exit_code=128;stdout='';stderr='fatal: Authentication failed'}
             }
+            if ($outcome -eq 'certificate') {
+                return [pscustomobject]@{exit_code=128;stdout='';stderr='TLS connect error: certificate verify failed'}
+            }
+            if ($outcome -eq 'plain-eof') {
+                return [pscustomobject]@{exit_code=128;stdout='';stderr='fatal: unexpected eof while reading'}
+            }
+            if ($outcome -eq 'wrong-exit') {
+                return [pscustomobject]@{exit_code=1;stdout='';stderr=$tlsEof}
+            }
             if ($outcome -eq 'repeat' -or $script:FetchRetryPaths.Count -eq 1) {
                 return [pscustomobject]@{exit_code=128;stdout='';stderr=$tlsEof}
             }
             & $fetchSuccess $path
         }
         $retried = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -ForPublication -FetchInvoker $retryFetch -GitHubInvoker $ghSuccess
-        $expectedAttempts = if ($outcome -eq 'auth') { 1 } else { 2 }
+        $expectedAttempts = if ($outcome -in @('recover', 'repeat')) { 2 } else { 1 }
         Assert-Equal $expectedAttempts $script:FetchRetryPaths.Count "bounded fetch count for $outcome"
         Assert-Equal $expectedAttempts $retried.fetch_attempts "reports actual fetch attempts for $outcome"
         Assert-True (@($script:FetchRetryPaths | Where-Object { $_ -cne $primaryPath }).Count -eq 0) 'retry preserves the exact repository path'
@@ -921,6 +933,7 @@ try {
             Assert-Equal 'cached' $retried.refs_mode "unresolved $outcome is not called live"
             Assert-Equal 1 @($retried.errors | Where-Object category -eq 'fetch_failed').Count 'final failure remains visible once'
         }
+    }
     }
 
     $failedMetadata = Get-ProjectAdmissionRecord -Repo 'example/project' -RepoPath $primaryPath -Visibility 'PUBLIC' -DefaultBranch 'main' -Fetch -FetchInvoker $fetchSuccess -GitHubInvoker $ghFailure

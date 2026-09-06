@@ -1512,7 +1512,7 @@ function Get-ProjectAdmissionRecord {
                     Invoke-GitCommandResult -Path $RepoPath -Arguments @('fetch', '--prune', 'origin')
                 }
             } while ($fetchAttempts -lt 2 -and $fetchResult.exit_code -eq 128 -and
-                [string]$fetchResult.stderr -match 'SSL_read:.*unexpected eof while reading')
+                [string]$fetchResult.stderr -match '(?:SSL_read:|TLS connect error:).*unexpected eof while reading')
             if ($fetchResult.exit_code -eq 0) {
                 try {
                     $worktrees = @(Get-GitRepositoryWorktrees -Path $RepoPath)

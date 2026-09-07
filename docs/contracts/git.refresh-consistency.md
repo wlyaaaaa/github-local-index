@@ -18,7 +18,7 @@ ignored 私有 `github-local-index.owner-baseline-store.v3` 分存 identity（re
 
 `-MigrateBaseline` 仅保留 explicit bootstrap/repair 兼容。已有有效 v3 baseline 时，默认 full refresh 在同一用户命令内先原子发布 generation、刷新 private clone navigation，再用 fresh owner inventory 原子 advance baseline/readback。previous→current transition 保留为 nonblocking history，不要求第二次相同 migration。
 
-默认 full refresh 重建 Markdown，fetch 最多尝试三次；commit-pinned snapshot 只刷 metadata。Fast compatibility mode 写 private log；CheckOnly 用 system temp。仅 `-ZeroFetchAtomic` 传 `SkipFetch`，复用 atomic generation/manifest/projection readback/pointer CAS/rollback；禁止与 Fast/CheckOnly 合用，也不构成 refs freshness/publication 证据。byte-hashed pointer、generation 和 projections 由 `.gitattributes text eol=lf` 固定为 UTF-8/LF，避免 checkout 改写行尾破坏闭包。
+默认 full refresh 重建 Markdown，fetch 复用 project admission 的有界重试：仅退出码 128 且包含 `SSL_read:` 或 `TLS connect error:` 后接 `unexpected eof while reading` 时原参数重试一次，其他失败不自动重试；commit-pinned snapshot 只刷 metadata。Fast compatibility mode 写 private log；CheckOnly 用 system temp。仅 `-ZeroFetchAtomic` 传 `SkipFetch`，复用 atomic generation/manifest/projection readback/pointer CAS/rollback；禁止与 Fast/CheckOnly 合用，也不构成 refs freshness/publication 证据。byte-hashed pointer、generation 和 projections 由 `.gitattributes text eol=lf` 固定为 UTF-8/LF，避免 checkout 改写行尾破坏闭包。
 
 持久事实为 Git/GitHub、JSON registry、generation manifest。generation 经同卷 `.incoming` 回读后原子改名，仅留 current+previous；projection id mismatch 即 stale。`refs/codex/turn-diffs/checkpoints`、unreachable objects 无 owner 证明不得 `gc`、`prune` 或清理。不引入数据库；cache 可删除、可重建，不能成为权威。
 
@@ -28,7 +28,7 @@ ignored 私有 `github-local-index.owner-baseline-store.v3` 分存 identity（re
 
 `completed` 退出 0；`gh` 不可启动、remote 非零或 JSON 无效为 `error/unknown`，退出 2。migration 仅返回计数/hash/bootstrap/history，不回显 identity 或路径。hidden CheckOnly 原子写 private `github-local-index.consistency-receipt.v1`（`task_key=github_local_index_consistency`），不自动 stage/commit/push，也不授权发布。
 
-v3 baseline 缺失、无效或首次 history gap → `completed/unknown`，不回退 PUBLIC Markdown；事实、registry 或 index identity 缺失/mismatch → `completed/blocked`。unknown 不等于一致；current 只表示完整 current/previous owner facts 与 live observation 一致。三次 fetch 失败保留 `fetch_failed`；刷新或比较失败写 `outcome=error`，均不证明 publication。
+v3 baseline 缺失、无效或首次 history gap → `completed/unknown`，不回退 PUBLIC Markdown；事实、registry 或 index identity 缺失/mismatch → `completed/blocked`。unknown 不等于一致；current 只表示完整 current/previous owner facts 与 live observation 一致。fetch 最终失败保留 `fetch_failed`；刷新或比较失败写 `outcome=error`，均不证明 publication。
 
 ## 读取、验证与扩展
 

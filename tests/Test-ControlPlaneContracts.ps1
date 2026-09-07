@@ -137,7 +137,7 @@ $requiredContent = @{
         'explicit user authorization', 'cannot block L1/L2',
         'secrets', 'raw chats', 'health', '至少', 'L4', '上位边界', 'secret-path'
     )
-    'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '最多尝试三次', 'commit-pinned snapshot', 'fetch_failed', '日常项目任务不需要', 'github_local_index_consistency', 'outcome=error')
+    'git.refresh-consistency' = @('refresh|consistency|index_drift', 'compatibility mode', 'private log', 'CheckOnly', 'system temp', '原参数重试一次，其他失败不自动重试', 'commit-pinned snapshot', 'fetch_failed', '日常项目任务不需要', 'github_local_index_consistency', 'outcome=error')
     'git.milestone-record' = @(
         'milestone|push_record', 'pure-file', 'idempotent', 'not zero-write',
         'no Git transaction', 'milestone_records', 'github-local-index.milestone-records.v1',

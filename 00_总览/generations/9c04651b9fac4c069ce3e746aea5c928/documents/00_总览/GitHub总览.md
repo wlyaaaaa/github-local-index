@@ -4,12 +4,12 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-09-01T01:34:29.9587964+00:00 -->
-<!-- generation_id=275553278b7747f5b9c64f1a325b86b0 -->
+<!-- observed_at=2026-09-08T01:46:07.4137779+00:00 -->
+<!-- generation_id=9c04651b9fac4c069ce3e746aea5c928 -->
 
 # GitHub 总览
 
-更新时间：2026-09-01
+更新时间：2026-09-08
 
 本机 GitHub 工作区按公开索引、私有备份仓库和公开业务仓库三类管理。详细事实来自同一组仓库行，不在总览中维护第二份项目清单。
 
@@ -17,7 +17,7 @@
 
 | 账户仓库总数 | PUBLIC 明细 | PRIVATE 汇总（不展开） | PUBLIC 已发现 clone | PUBLIC 审核队列 |
 |---|---|---|---|---|
-| 49 | 27 | 22 | 26 | 2 |
+| 47 | 25 | 22 | 24 | 24 |
 
 ## 发布边界
 

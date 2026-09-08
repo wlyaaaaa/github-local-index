@@ -1,66 +1,66 @@
 {
   "schema": "github-local-index.current-generation.v1",
-  "generation_id": "a1b2023e1c25416ab68f2938a3b3855b",
-  "observed_at": "2026-09-04T19:59:46.9698564+00:00",
+  "generation_id": "9c04651b9fac4c069ce3e746aea5c928",
+  "observed_at": "2026-09-08T01:46:07.4137779+00:00",
   "authoritative": false,
   "integrity_authoritative_for_generation": true,
   "decision_authority": false,
-  "as_of_observed_at": "2026-09-04T19:59:46.9698564+00:00",
+  "as_of_observed_at": "2026-09-08T01:46:07.4137779+00:00",
   "owner": "github-local-index",
-  "generation_root": "00_总览/generations/a1b2023e1c25416ab68f2938a3b3855b",
-  "generation_manifest_sha256": "F23092833148BAA9A0B8F735F4BA544737343FC29E6B954FEEDED3D5A0535A8F",
+  "generation_root": "00_总览/generations/9c04651b9fac4c069ce3e746aea5c928",
+  "generation_manifest_sha256": "8F3AB9035CA492FB6F6E177C786FD2392041516C1AF8D8DE35D2F4C5B8019B21",
   "projection_role": "compatibility_only",
   "documents": [
     {
       "path": "documents/00_总览/GitHub总览.md",
       "projection_path": "00_总览/GitHub总览.md",
-      "sha256": "FF385C69666E03FCF36971E742264570BD8B1765A8F2407818AAEE5FD7F5EC7D",
-      "bytes": 1239
+      "sha256": "C11EE211DCB6F22746D681D3D37AA40485F5695E4D915944EC280E32D758892A",
+      "bytes": 1240
     },
     {
       "path": "documents/00_总览/当前同步看板.md",
       "projection_path": "00_总览/当前同步看板.md",
-      "sha256": "5A8397B497A25C519BD8186EFF5DD553DE62E0E8FCEEA39BEEC7E209D7FE5A46",
-      "bytes": 1543
+      "sha256": "CD01CF49C225F05E74619E718476AD3D11DA1215EFFA56F0F0185414AA17E264",
+      "bytes": 1544
     },
     {
       "path": "documents/01_仓库索引/GitHub仓库索引.md",
       "projection_path": "01_仓库索引/GitHub仓库索引.md",
-      "sha256": "447A37DAECBFF6735A5A3388AF528C7F390A78BB813753EA2613A5670CD9171B",
-      "bytes": 5813
+      "sha256": "DDEDB618FC9D7219DCDDC6CE220F3023D71A8DBA938BB668ECA4B2CDC8FE46A4",
+      "bytes": 6162
     },
     {
       "path": "documents/01_仓库索引/本地clone索引.md",
       "projection_path": "01_仓库索引/本地clone索引.md",
-      "sha256": "128EC6DB856FECFC48A1B498305ED9853D7B8B56A7A485006214618DD45595F0",
-      "bytes": 4142
+      "sha256": "E1A24C3444EC2F4B2511C0521C3A3B35286763057C1E4756FC1EB5B9AE03EE41",
+      "bytes": 4370
     },
     {
       "path": "documents/01_仓库索引/未发现本地clone.md",
       "projection_path": "01_仓库索引/未发现本地clone.md",
-      "sha256": "C2B49D86B34D4C7CC97CF9190582D5950E74C8A5A7098E67B5D4B56CFC1D6330",
+      "sha256": "20B50E52A6A3ADE7EBF9E695950E69794A724B302EFCEA899D7C7A83C51D3A44",
       "bytes": 765
     },
     {
       "path": "documents/02_同步诊断/未推送队列.md",
       "projection_path": "02_同步诊断/未推送队列.md",
-      "sha256": "D5B15FE072CBF78C3CFBB36E895D3C2AF1FF34B15DE84ABA6880CC3C70F511C2",
-      "bytes": 1552
+      "sha256": "C7778FEEAFC7BB776AE5E9B3641EB42B20951E67FF438BA15C10EBAD5EF7CE0C",
+      "bytes": 5295
     },
     {
       "path": "documents/02_同步诊断/工作区脏状态.md",
       "projection_path": "02_同步诊断/工作区脏状态.md",
-      "sha256": "21F8BC9855981566F00D1E9C18811EF513EA97445DB2E9E0E8A4F8201622299E",
-      "bytes": 1556
+      "sha256": "96A36956A973F815B1472363A2BBB2FB95FC47F228F6B46BA51B492687F39C06",
+      "bytes": 2142
     },
     {
       "path": "documents/02_同步诊断/分支与远端诊断.md",
       "projection_path": "02_同步诊断/分支与远端诊断.md",
-      "sha256": "CC93A15B2055E8DD330ACDB7D62F79298B446A7F3014898CB0739B704CD0F10A",
-      "bytes": 4278
+      "sha256": "FC2A90BB107B113E5D3313BAFF38343DCC460B8E54E2C002606F79348E088F37",
+      "bytes": 4074
     }
   ],
   "retention_policy": "current+previous",
-  "previous_generation_id": "275553278b7747f5b9c64f1a325b86b0",
+  "previous_generation_id": "a1b2023e1c25416ab68f2938a3b3855b",
   "publication": "pointer_switch_after_immutable_generation_and_projection_readback"
 }

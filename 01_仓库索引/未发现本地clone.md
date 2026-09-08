@@ -4,8 +4,8 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-09-08T01:46:07.4137779+00:00 -->
-<!-- generation_id=9c04651b9fac4c069ce3e746aea5c928 -->
+<!-- observed_at=2026-09-08T03:15:32.7525421+00:00 -->
+<!-- generation_id=284f02f94edf4c5584c4f51f680d4f7a -->
 
 # 未发现本地 Clone
 
@@ -16,5 +16,6 @@
 | GitHub 仓库 | 可见性 | 当前决策 |
 | --- | --- | --- |
 | wlyaaaaa/human-alignment-dataset-001 | PUBLIC | 需要时统一 clone，或标记远端存档 |
+| wlyaaaaa/rtx5090d-ollama-agent-bundle | PUBLIC | 需要时统一 clone，或标记远端存档 |
 
 说明：PRIVATE 仓库不在公开投影中展开；精确 identity 与本机路径只通过受保护 owner/provider 按需读取。

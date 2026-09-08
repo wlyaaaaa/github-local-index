@@ -4,8 +4,8 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-09-08T01:46:07.4137779+00:00 -->
-<!-- generation_id=9c04651b9fac4c069ce3e746aea5c928 -->
+<!-- observed_at=2026-09-08T03:15:32.7525421+00:00 -->
+<!-- generation_id=284f02f94edf4c5584c4f51f680d4f7a -->
 
 # GitHub 总览
 
@@ -17,7 +17,7 @@
 
 | 账户仓库总数 | PUBLIC 明细 | PRIVATE 汇总（不展开） | PUBLIC 已发现 clone | PUBLIC 审核队列 |
 |---|---|---|---|---|
-| 47 | 25 | 22 | 24 | 24 |
+| 48 | 25 | 23 | 23 | 23 |
 
 ## 发布边界
 

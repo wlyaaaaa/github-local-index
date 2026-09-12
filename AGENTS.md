@@ -13,6 +13,7 @@
 ## Owner 分工与按需取证
 
 - `E:\.agents` 拥有 Agent 行为、skills/plugins、能力路由与公开分级，本仓库不复制第二套行为规则。Git consumer 只处理 Git 事实，不从项目限制、路径或仓库可见性反推更高敏感级别。`E:\PCConfig` 仅在路径迁移、计划任务、端口、运行时、本机数据、备份或恢复事实会改变当前决定时参与；绝对路径字面量不是触发。项目拥有业务语义、源码、规则、测试和部署，本仓库不替代项目证据。
+- 项目是否冻结以及能否主动维护，消费 `Invoke-EAgentRulesRelease.ps1 -Mode Inspect -Json` 返回的活动 `four_base_decision_context_contract`，不从候选或 dirty 的 `.agents` 源码取规则。仓库存在、Git 未 archived、同步正常或索引中标为 active 只属于身份与同步事实，不证明 AI 可主动查看代码或维护。活动合同标为冻结的项目，用户未主动提出该具体项目需求时不读其代码、不维护；“全部项目”等批量范围默认排除，只可读识别排除所需的最小身份/状态元数据。冻结不自动停止既有运行或备份；用户点名具体需求时按当次范围执行，无需另说“解冻”。名单与判定只留在活动 E 合同，本 PUBLIC 仓库不复制。
 - `wlyaaaaa/PersonalOS-Retired` 是普通 PRIVATE 冻结文档仓库，不是第四基座、默认个人上下文 Owner 或外部治理例外；维护其 Git/GitHub 身份与同步事实时不读业务正文。`PersonalKnowledge` 名称只给独立现行个人知识库项目。
 - 现有路径保留为事实。未来新建/clone 的个人 Git 仓库默认 `V:\Personal\Projects`，临时 worktree 默认 `V:\Personal\Worktrees`，未来工作仓库 `V:\Work\...`；`V:\Dev` 只兼容已有 worktree，不新增。仅在实际创建、clone 或迁移后写入索引，不预登记空目录；项目兼容性或公司合规可覆盖默认位置。
 - `tools/Get-ProjectAdmission.ps1 -Json` 是可选结构化证据：identity、worktree、sync、visibility 或 direct transport 不清，或信息价值高于成本时使用；新鲜可靠证据已明确时不打卡重调。admission V1 `decision`、`push_decision`、`push_strategy` 只描述进入/transport 条件，不授予写入或公开；`decision=block` 停止不充分证据下的写入/直接 transport，不停只读诊断。

@@ -64,6 +64,11 @@ function Invoke-ProjectAdmissionCli {
         @($record.reasons) -contains 'missing_repo_path') {
         $record.reasons = @($record.reasons + ('private_navigation_cache_' + $navigation.status + '_bootstrap_required') | Sort-Object -Unique)
     }
+    # Companion facts are advisory and never change ordinary Git admission.
+    . (Join-Path $PSScriptRoot 'Get-ProjectPrivateCompanion.ps1') -Repo $Repo -RepoPath $effectiveRepoPath -IndexRoot $IndexRoot
+    $companionPath = if ($TargetWorktree) { $TargetWorktree } else { $effectiveRepoPath }
+    $companion = Get-ProjectPrivateCompanion -Repo $Repo -RepoPath $companionPath -IndexRoot $IndexRoot
+    $record | Add-Member -NotePropertyName private_companion -NotePropertyValue $companion -Force
     return $record
 }
 

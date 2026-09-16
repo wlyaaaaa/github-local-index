@@ -4,12 +4,12 @@
 <!-- source=git_and_github_owner_providers -->
 <!-- freshness=as_of_observed_at -->
 <!-- expires_after=next_successful_refresh -->
-<!-- observed_at=2026-09-08T03:15:32.7525421+00:00 -->
-<!-- generation_id=284f02f94edf4c5584c4f51f680d4f7a -->
+<!-- observed_at=2026-09-16T18:54:09.1905523+00:00 -->
+<!-- generation_id=69ce8379e02a4cc68f8f6017430ed293 -->
 
 # GitHub 总览
 
-更新时间：2026-09-08
+更新时间：2026-09-17
 
 本机 GitHub 工作区按公开索引、私有备份仓库和公开业务仓库三类管理。详细事实来自同一组仓库行，不在总览中维护第二份项目清单。
 

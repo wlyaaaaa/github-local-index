@@ -347,7 +347,9 @@ if ($convergenceClassifier) {
     $dirtyMerged = Get-BranchConvergenceDisposition `
         -IntegrationState 'merged_ancestry' -IsDefaultBranch:$false -DirtyCount 1 -HasWorktree:$true
     Assert-True (-not $dirtyMerged.retirement_candidate) 'dirty merged worktree is never auto-cleanable'
-    Assert-Equal 'active_dirty_worktree' $dirtyMerged.queue_reason 'dirty worktree remains an active-work queue item'
+    Assert-Equal 'dirty_worktree' $dirtyMerged.queue_reason 'dirty alone does not claim active construction'
+    Assert-True $dirtyMerged.needs_review 'dirty merged worktree still requires review'
+    Assert-True ($dirtyMerged.next_action -match '核对实际施工状态.*无活跃施工') 'dirty guidance covers both concurrent work and abandoned changes'
 
     $pinnedMerged = Get-BranchConvergenceDisposition `
         -IntegrationState 'merged_ancestry' -IsDefaultBranch:$false -DirtyCount 0 -HasWorktree:$true -PinnedSnapshot
@@ -469,9 +471,11 @@ try {
     & git -C $inspectionRoot add fixture.txt 2>&1 | Out-Null
     & git -C $inspectionRoot commit -m fixture 2>&1 | Out-Null
     & git -C $inspectionRoot remote add origin 'https://github.com/wlyaaaaa/inspection-fixture.git'
+    & git -C $inspectionRoot update-ref refs/remotes/origin/main HEAD
+    & git -C $inspectionRoot symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+    & git -C $inspectionRoot branch --set-upstream-to=origin/main main 2>&1 | Out-Null
     $inspectionIndex = [string] (& git -C $inspectionRoot rev-parse --git-path index)
     if (-not [System.IO.Path]::IsPathRooted($inspectionIndex)) { $inspectionIndex = Join-Path $inspectionRoot $inspectionIndex }
-    [System.IO.File]::WriteAllBytes($inspectionIndex, [byte[]] @(1, 2, 3, 4))
 
     $inspectionRepositories = @([pscustomobject]@{
         nameWithOwner = 'wlyaaaaa/inspection-fixture'
@@ -482,6 +486,15 @@ try {
     $inspectionCloneMap = @{
         'wlyaaaaa/inspection-fixture' = @([pscustomobject]@{ Path = $inspectionRoot })
     }
+    Add-Content -LiteralPath (Join-Path $inspectionRoot 'fixture.txt') -Value 'unfinished change' -Encoding utf8
+    Resolve-CloneStatuses -CloneMap $inspectionCloneMap -Repositories $inspectionRepositories -SkipFetch
+    $defaultDirtyRow = @($inspectionCloneMap['wlyaaaaa/inspection-fixture'])[0]
+    Assert-True $defaultDirtyRow.IsDefaultBranch 'dirty fixture uses the actual default branch'
+    Assert-Equal 1 $defaultDirtyRow.DirtyCount 'default-branch convergence shortcut preserves dirty evidence'
+    Assert-True $defaultDirtyRow.NeedsReview 'dirty default branch remains in the review queue'
+    Assert-True (-not $defaultDirtyRow.RetirementCandidate) 'dirty default branch cannot become a retirement candidate'
+
+    [System.IO.File]::WriteAllBytes($inspectionIndex, [byte[]] @(1, 2, 3, 4))
     Resolve-CloneStatuses -CloneMap $inspectionCloneMap -Repositories $inspectionRepositories -SkipFetch
     $inspectionRow = @($inspectionCloneMap['wlyaaaaa/inspection-fixture'])[0]
     Assert-True ($null -eq $inspectionRow.DirtyCount) 'generator does not coerce failed worktree inspection to dirty count zero'

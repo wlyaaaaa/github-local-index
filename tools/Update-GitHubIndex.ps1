@@ -533,13 +533,13 @@ function Get-BranchConvergenceDisposition {
             'default_branch_integration_unknown'
         }
         else {
-            'active_dirty_worktree'
+            'dirty_worktree'
         }
         $result.next_action = if ($null -eq $DirtyCount) {
             '当前收尾继续追溯默认分支可达性；无法查清则 BLOCK'
         }
         else {
-            '保留活跃脏工作区；完成并验证后再整合到默认分支'
+            '核对实际施工状态；保护并发改动，无活跃施工的遗留由治理接续审查、验证和收口'
         }
         return [pscustomobject] $result
     }

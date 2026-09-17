@@ -95,7 +95,8 @@ function Invoke-ExternalCommandResult {
     param(
         [Parameter(Mandatory = $true)] [string] $FilePath,
         [string[]] $ArgumentList = @(),
-        [string] $WorkingDirectory
+        [string] $WorkingDirectory,
+        [ValidateRange(1, 3600)][int] $TimeoutSeconds = 180
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -118,9 +119,18 @@ function Invoke-ExternalCommandResult {
         $process = [System.Diagnostics.Process]::new()
         $process.StartInfo = $startInfo
         [void] $process.Start()
-        $stdout = $process.StandardOutput.ReadToEnd()
-        $stderr = $process.StandardError.ReadToEnd()
-        $process.WaitForExit()
+        # Drain both pipes concurrently: large stderr must not block a stdout read.
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $process.Kill($true)
+            $process.WaitForExit()
+            [void] $stdoutTask.GetAwaiter().GetResult()
+            [void] $stderrTask.GetAwaiter().GetResult()
+            return [pscustomobject]@{ exit_code = 124; stdout = ''; stderr = 'External command exceeded its bounded deadline.' }
+        }
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
         return [pscustomobject]@{
             exit_code = [int] $process.ExitCode
             stdout = $stdout.TrimEnd("`r", "`n")
@@ -150,6 +160,20 @@ function Invoke-GitCommandResult {
 
     $gitArguments = @('-C', $Path) + @($Arguments)
     Invoke-ExternalCommandResult -FilePath 'git.exe' -ArgumentList $gitArguments
+}
+
+function Get-GitReadFailureReason {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] $Result, [switch] $OriginConfig)
+    if ($Result.exit_code -eq 0) { return $null }
+    $errorText = [string] $Result.stderr
+    if ($Result.exit_code -eq 127) { return 'git_executable_unavailable' }
+    if ($Result.exit_code -eq 124) { return 'git_read_timeout' }
+    if ($errorText -match '(?i)dubious ownership|safe\.directory') { return 'git_ownership_restricted' }
+    if ($errorText -match '(?i)permission denied|access (?:is )?denied') { return 'git_access_denied' }
+    if ($errorText -match '(?i)not a git repository') { return 'not_git_repository' }
+    if ($OriginConfig -and $Result.exit_code -eq 1 -and [string]::IsNullOrWhiteSpace($errorText)) { return 'remote_missing' }
+    return 'local_git_read_failed'
 }
 
 function ConvertTo-GitHubRepoSlug {
@@ -1463,7 +1487,23 @@ function Get-ProjectAdmissionRecord {
         else {
             $null
         }
-        if ($navigationHintUsed -and (-not $candidateRemoteSlug -or
+        if ($remoteResult.exit_code -ne 0 -or $commonResult.exit_code -ne 0) {
+            # An unreadable repository is not a missing directory or a verified remote conflict.
+            foreach ($observation in @(
+                @{ result = $remoteResult; origin = $true },
+                @{ result = $commonResult; origin = $false }
+            )) {
+                if ($observation.result.exit_code -ne 0) {
+                    $category = Get-GitReadFailureReason -Result $observation.result -OriginConfig:$observation.origin
+                    $reasons.Add($category)
+                    $errors.Add((New-AdmissionError -Category $category -ExitCode $observation.result.exit_code))
+                }
+            }
+            $localRoot = ConvertTo-NormalizedGitPath $RepoPath
+            $reasons.Add('local_git_identity_unavailable')
+            $RepoPath = $null
+        }
+        elseif ($navigationHintUsed -and (-not $candidateRemoteSlug -or
             ($normalizedRepo -and $candidateRemoteSlug -ine $normalizedRepo) -or
             [string]::IsNullOrWhiteSpace($candidateCommonDir))) {
             if (-not $candidateRemoteSlug -or ($normalizedRepo -and $candidateRemoteSlug -ine $normalizedRepo)) {
@@ -1480,7 +1520,7 @@ function Get-ProjectAdmissionRecord {
             }
             catch {
                 $errors.Add((New-AdmissionError -Category 'worktree_enumeration_failed' -ExitCode 1))
-                $reasons.Add('missing_repo_path')
+                $reasons.Add('worktree_inspection_error')
             }
 
             $rootResult = Invoke-GitCommandResult -Path $RepoPath -Arguments @('rev-parse', '--show-toplevel')
@@ -1706,6 +1746,14 @@ function Get-ProjectAdmissionRecord {
     $reasonArray = @($reasons | Sort-Object -Unique)
     $blockingReasons = @(
         'invalid_repo',
+        'git_executable_unavailable',
+        'git_read_timeout',
+        'git_ownership_restricted',
+        'git_access_denied',
+        'not_git_repository',
+        'remote_missing',
+        'local_git_read_failed',
+        'local_git_identity_unavailable',
         'missing_repo_path',
         'ambiguous_repo_path',
         'remote_mismatch',

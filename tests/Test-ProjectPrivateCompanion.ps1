@@ -65,6 +65,20 @@ try {
     $admission = (& pwsh -NoProfile -File (Join-Path $root 'tools/Get-ProjectAdmission.ps1') -Repo example/source -RepoPath $source -IndexRoot $index -Visibility PUBLIC -DefaultBranch main -Json) | ConvertFrom-Json
     Assert-Companion ($admission.decision -eq $decision -and $admission.private_companion.status -eq 'unavailable') 'malformed companion metadata does not block unrelated admission'
     Write-TestJson $registryPath @{ schema='github-local-index.public-project-private-companion.v1'; target_id='fixture'; repository='example/companion'; local_path=$target; visibility='PRIVATE'; catalog='catalog.json' }
+    $originalGitReader = (Get-Command Invoke-GitCommandResult).ScriptBlock
+    $script:failedGitPath = $target
+    function Invoke-GitCommandResult {
+        param([string]$Path,[string[]]$Arguments)
+        if ($Path -eq $script:failedGitPath) { return [pscustomobject]@{exit_code=128;stdout='';stderr='synthetic unavailable Git read'} }
+        return & $originalGitReader -Path $Path -Arguments $Arguments
+    }
+    try {
+        $r=Read-Companion
+        Assert-Companion ($r.status-eq 'unavailable' -and $r.issues-contains 'target_git_read_failed' -and $r.issues-notcontains 'target_identity_mismatch') 'failed target Git read remains unknown, not conflicting identity'
+        $script:failedGitPath=$source
+        $r=Read-Companion
+        Assert-Companion ($r.status-eq 'unavailable' -and $r.issues-contains 'source_git_read_failed' -and $r.issues-notcontains 'source_identity_mismatch') 'failed source Git read remains unknown, not conflicting identity'
+    } finally { Set-Item Function:\Invoke-GitCommandResult $originalGitReader }
     & git -C $source remote set-url origin https://github.com/example/wrong.git
     Assert-Companion ((Read-Companion).issues -contains 'source_identity_mismatch') 'source identity mismatch rejects mapping'
 }

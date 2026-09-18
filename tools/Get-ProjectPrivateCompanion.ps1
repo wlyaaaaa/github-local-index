@@ -60,13 +60,19 @@ function Get-ProjectPrivateCompanion {
         if ($RepoPath) {
             $origin = Invoke-GitCommandResult -Path $RepoPath -Arguments @('remote', 'get-url', 'origin')
             $sourceIdentity = ConvertTo-GitHubRepoSlug $origin.stdout
-            if ($origin.exit_code -ne 0 -or -not $sourceIdentity -or $sourceIdentity -ine $result.source_repository) {
+            if ($origin.exit_code -ne 0) {
+                $issues.Add('source_git_read_failed'); $result.status = 'unavailable'; return $result
+            }
+            if (-not $sourceIdentity -or $sourceIdentity -ine $result.source_repository) {
                 $issues.Add('source_identity_mismatch'); $result.status = 'conflict'; return $result
             }
             $result.source_identity_verified = $true
         }
         $origin = Invoke-GitCommandResult -Path $targetPath -Arguments @('remote', 'get-url', 'origin')
-        if ($origin.exit_code -ne 0 -or (ConvertTo-GitHubRepoSlug $origin.stdout) -ine $registry.repository) {
+        if ($origin.exit_code -ne 0) {
+            $issues.Add('target_git_read_failed'); $result.status = 'unavailable'; return $result
+        }
+        if ((ConvertTo-GitHubRepoSlug $origin.stdout) -ine $registry.repository) {
             $issues.Add('target_identity_mismatch'); $result.status = 'conflict'; return $result
         }
         $result.registered_target.identity_verified = $true

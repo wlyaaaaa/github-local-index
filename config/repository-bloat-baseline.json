@@ -2,13 +2,13 @@
   "schema": "repository-bloat-baseline.v1",
   "repository_id": "git",
   "limits": {
-    "git_visible_file_count": 68,
-    "git_visible_bytes": 958000
+    "git_visible_file_count": 70,
+    "git_visible_bytes": 973824
   },
   "budget_change": {
     "owner": "GitHub index",
-    "consumer": "Current Git identity, visibility, synchronization and publication views",
-    "reason": "Owns the size baseline locally and counts this file. Modest editing headroom stays within the existing eight-percent maximum; shared structural checks are unchanged.",
-    "exit_condition": "Rebaseline against measured current consumers when the ceiling is exhausted or excessive headroom remains after retirement."
+    "consumer": "Current registered owner providers, user-facing entries and their regression tests",
+    "reason": "Current Git owner identity, private-companion discovery and read-error categorization require the two files added since the prior baseline. No additional Git platform or snapshot is introduced. Byte headroom is bounded by the measured UTF-8 LF-to-CRLF checkout expansion plus 1 KiB, not a feature allowance; the general eight-percent ceiling is unchanged.",
+    "exit_condition": "Recompute against measured retained consumers after removals or when this exact ceiling is exhausted; do not retain obsolete behavior or raise limits without evidence."
   }
 }

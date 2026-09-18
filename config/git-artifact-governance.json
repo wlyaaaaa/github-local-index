@@ -16,6 +16,15 @@
       ],
       "purpose": "由 .github/workflows/snake.yml 发布并被 README SVG 引用的 orphan 生成分支",
       "exit_condition": "同时移除 README 中的 output 引用并修改或停用该 workflow"
+    },
+    {
+      "repo": "wlyaaaaa/codex-memory",
+      "owner": "Codex memory secondary-laptop backup",
+      "refs": [
+        "backup/secondary-laptop"
+      ],
+      "purpose": "Independent secondary-laptop backup data branch; the primary machine uses main. Do not merge the two machine snapshots.",
+      "exit_condition": "Remove only after the backup owner retires this machine profile or verifies a replacement carrier and its recovery path."
     }
   ],
   "repository_overrides": [

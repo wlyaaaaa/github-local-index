@@ -216,6 +216,10 @@ $secretBrokerBackupArtifact = Get-GitArtifactGovernance `
     -Branch 'origin/secret-broker-backup'
 Assert-Equal 'PCConfig Secret Broker' $secretBrokerBackupArtifact.owner `
     'artifact registry separates the contract-defined encrypted backup stream from default-branch feature convergence'
+$secondaryBackup = Get-GitArtifactGovernance -Repo 'wlyaaaaa/codex-memory' -Branch 'origin/backup/secondary-laptop'
+Assert-Equal 'Codex memory secondary-laptop backup' $secondaryBackup.owner 'secondary-machine backup is an independent owner stream, not a missing feature merge'
+Assert-True ($null -eq (Get-GitArtifactGovernance -Repo 'wlyaaaaa/codex-memory' -Branch 'main')) 'primary backup and source main must not be excluded'
+Assert-True ($null -eq (Get-GitArtifactGovernance -Repo 'wlyaaaaa/codex-memory' -Branch 'backup/other-machine')) 'unregistered backup branches must not inherit an exception'
 $governedEvidence = & $admissionModule {
     $worktree = [pscustomobject]@{ branch = 'codex/personalos-beacon-receipt' }
     $branch = [pscustomobject]@{ branch = 'origin/codex/personalos-beacon-receipt' }
